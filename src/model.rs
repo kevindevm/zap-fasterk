@@ -2567,6 +2567,11 @@ pub enum Action {
     },
     /// Asks for an audio file for one chat's notifications.
     PickChatSound(ChatId),
+    /// Sets a chat's own voice message speed; `None` follows Settings.
+    SetChatVoiceSpeed {
+        chat: ChatId,
+        speed: Option<f32>,
+    },
     /// Asks for a folder for new downloads.
     PickDownloadFolder,
     /// Changes our display name and About text; `None` keeps the current one.

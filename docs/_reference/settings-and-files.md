@@ -137,7 +137,8 @@ beside their labels.
 **Notifications**
 
 - **Desktop notifications**: for chats you are not looking at. Muted chats stay
-  quiet.
+  quiet. The bell beside each number in the account switcher turns the same
+  setting off and on for that number without switching to it.
 - **Message sound** and **Mention sound**: Pidgin's sounds, the system sound,
   none, or an audio file.
 - **Play sounds for group messages**: when off, only mentions and replies to

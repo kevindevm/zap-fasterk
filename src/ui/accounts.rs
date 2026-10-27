@@ -17,6 +17,8 @@ const MENU_WIDTH: f32 = 280.0;
 const ROW: f32 = 48.0;
 /// Avatar size in an account row.
 const ROW_AVATAR: f32 = 32.0;
+/// Side of the notifications button at the end of an account row.
+const BELL: f32 = 28.0;
 
 /// Stable id of the switcher button, for tests and the demo.
 pub fn button_id() -> egui::Id {
@@ -87,6 +89,8 @@ struct Entry {
     picture: Option<std::path::PathBuf>,
     unread: u32,
     current: bool,
+    /// Whether this account's desktop notifications are off.
+    muted: bool,
 }
 
 fn entries(app: &mut App) -> Vec<Entry> {
@@ -116,6 +120,7 @@ fn entries(app: &mut App) -> Vec<Entry> {
                 picture,
                 unread: account.unread_chat_count(),
                 current: index == active,
+                muted: !account.settings.notifications,
             }
         })
         .collect()
@@ -134,15 +139,26 @@ fn menu(app: &mut App, button: &egui::Response) {
         .id(popup_id)
         .width(width)
         .frame(widgets::menu_frame(&palette))
+        // Rows and items close the menu themselves; the bell leaves it open,
+        // so it shows what changed.
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
         .show(|ui| {
             egui::ScrollArea::vertical()
                 .max_height((button.ctx.content_rect().height() - 100.0).max(1.0))
                 .min_scrolled_height((button.ctx.content_rect().height() - 100.0).max(1.0))
                 .show(ui, |ui| {
                     for entry in &entries {
-                        if account_row(app, ui, entry) && !entry.current {
-                            app.actions.push(Action::SwitchAccount(entry.id.clone()));
-                            ui.close();
+                        match account_row(app, ui, entry) {
+                            Some(RowClick::Bell) => app.actions.push(
+                                Action::SetAccountNotifications(entry.id.clone(), entry.muted),
+                            ),
+                            Some(RowClick::Row) => {
+                                if !entry.current {
+                                    app.actions.push(Action::SwitchAccount(entry.id.clone()));
+                                }
+                                ui.close();
+                            }
+                            None => {}
                         }
                     }
                 });
@@ -158,9 +174,20 @@ fn menu(app: &mut App, button: &egui::Response) {
         });
 }
 
+/// What was clicked in an account row.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RowClick {
+    /// The row itself, which shows the account.
+    Row,
+    /// Its bell, which turns the account's notifications off or on.
+    Bell,
+}
+
 /// One account in the switcher: its picture, name and number, its unread
-/// chats, and a check on the one on screen. Returns whether it was clicked.
-fn account_row(app: &App, ui: &mut egui::Ui, entry: &Entry) -> bool {
+/// chats, a check on the one on screen, and a bell that mutes its
+/// notifications. The bell shows while the account is muted, or while the
+/// row is pointed at or the bell has the keyboard focus.
+fn account_row(app: &App, ui: &mut egui::Ui, entry: &Entry) -> Option<RowClick> {
     let palette = app.palette;
     let width = ui.available_width();
     let text_height = ui
@@ -183,6 +210,21 @@ fn account_row(app: &App, ui: &mut egui::Ui, entry: &Entry) -> bool {
         };
     let (rect, response) =
         ui.allocate_exact_size(vec2(width, ROW.max(text_height + 16.0)), Sense::click());
+    // Registered after the row, so it takes the clicks over it.
+    let bell_rect = Rect::from_center_size(
+        pos2(rect.right() - 6.0 - BELL / 2.0, rect.center().y),
+        Vec2::splat(BELL),
+    );
+    let bell = ui.interact(bell_rect, response.id.with("bell"), Sense::click());
+    theme::reveal_focus(&bell);
+    bell.widget_info(|| {
+        egui::WidgetInfo::selected(
+            egui::WidgetType::Checkbox,
+            ui.is_enabled(),
+            entry.muted,
+            gettext(app.locale, "Mute notifications"),
+        )
+    });
     let masked;
     let hide_name = app
         .settings
@@ -216,6 +258,7 @@ fn account_row(app: &App, ui: &mut egui::Ui, entry: &Entry) -> bool {
             },
             unread: entry.unread,
             current: entry.current,
+            muted: entry.muted,
         };
         &masked
     } else {
@@ -255,8 +298,23 @@ fn account_row(app: &App, ui: &mut egui::Ui, entry: &Entry) -> bool {
             },
             entry.picture.as_deref(),
         );
-        // Room on the right for the check, or the unread count.
-        let right = rect.right() - 10.0;
+        if entry.muted || ui.rect_contains_pointer(rect) || bell.has_focus() {
+            if bell.hovered() {
+                ui.painter()
+                    .circle_filled(bell_rect.center(), BELL / 2.0, palette.surface_hover);
+            }
+            let (icon, color) = if entry.muted {
+                (Icon::BellOff, palette.dim)
+            } else {
+                (Icon::Bell, palette.secondary)
+            };
+            icon.image(color, 16.0).paint_at(
+                ui,
+                Rect::from_center_size(bell_rect.center(), Vec2::splat(16.0)),
+            );
+        }
+        // Room on the right for the bell, then the check or the unread count.
+        let right = bell_rect.left() - 4.0;
         let mut text_right = right;
         if entry.current {
             let check =
@@ -269,7 +327,7 @@ fn account_row(app: &App, ui: &mut egui::Ui, entry: &Entry) -> bool {
                 &palette,
                 pos2(right - 12.0, rect.center().y),
                 entry.unread,
-                false,
+                entry.muted,
             );
             text_right -= width.max(24.0) + 4.0;
         }
@@ -300,11 +358,29 @@ fn account_row(app: &App, ui: &mut egui::Ui, entry: &Entry) -> bool {
             ui.painter().galley(pos2(x, y), detail, palette.secondary);
         }
     }
+    let bell_clicked = bell.clicked();
+    bell.on_hover_text(bell_label(app, entry))
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
     let clicked = response.clicked();
     if !entry.current {
         response.on_hover_cursor(egui::CursorIcon::PointingHand);
     }
-    clicked
+    if bell_clicked {
+        Some(RowClick::Bell)
+    } else if clicked {
+        Some(RowClick::Row)
+    } else {
+        None
+    }
+}
+
+/// What the bell of an account row does when clicked.
+fn bell_label(app: &App, entry: &Entry) -> String {
+    if entry.muted {
+        gettext(app.locale, "Unmute notifications").into_owned()
+    } else {
+        gettext(app.locale, "Mute notifications").into_owned()
+    }
 }
 
 /// What a screen reader says for an account row.
@@ -325,6 +401,10 @@ fn row_label(app: &App, entry: &Entry) -> String {
             )
             .replace("{count}", &entry.unread.to_string()),
         );
+    }
+    if entry.muted {
+        label.push_str(", ");
+        label.push_str(&gettext(app.locale, "notifications muted"));
     }
     label
 }

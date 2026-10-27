@@ -74,7 +74,11 @@ top of the chat list to switch between them or to add another (**Settings >
 Account > Add account** works too); a dot on it means another number has
 unread chats. `Ctrl+Shift+A` (Command+Shift+A on macOS) switches to the next
 number. Each number keeps its own keys, archive, media, and
-notification, receipt, download, and wallpaper settings.
+notification, receipt, download, and wallpaper settings. To silence a number
+without unlinking it, click the bell beside it in the switcher: it stays
+connected and its chats stay readable, but it sends no desktop notifications
+until you click the bell again. A muted number shows a crossed-out bell there,
+and its unread chats count toward neither the dot nor the taskbar badge.
 
 ## Message history
 
