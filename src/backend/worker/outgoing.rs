@@ -387,6 +387,8 @@ impl Worker {
             return;
         };
         if !self.destination_writable(&job.chat) {
+            // Never sent, so never acked.
+            self.awaiting_ack.remove(&job.id);
             self.finish_outgoing(&job, Delivery::Failed);
             self.emit(Event::Error(
                 "This conversation is read-only in Zap Faster".into(),

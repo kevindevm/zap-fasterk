@@ -3376,6 +3376,7 @@ impl App {
                 ..
             }
         );
+        let mut restamped = None;
         if let Some(conversation) = self.conversations.get_mut(&message.chat)
             && let Some(existing) = conversation.message_mut(&message.id)
         {
@@ -3383,6 +3384,8 @@ impl App {
                 || existing.timestamp != message.timestamp
                 || existing.waiting_to_send() != message.waiting_to_send())
             .then(|| message.id.clone());
+            // A restamped row moves in chat order; the selection follows it.
+            restamped = (existing.timestamp != message.timestamp).then(|| message.chat.clone());
             let state = existing.content.media().map(|media| media.state.clone());
             let motion_state = match &existing.content {
                 Content::Image {
@@ -3428,6 +3431,11 @@ impl App {
             if let Some(id) = moved {
                 conversation.reposition(&id, requeued);
             }
+        }
+        // A restamped message moves in chat order, so the selection follows
+        // it. A hidden account's events never touch the window's selection.
+        if let Some(chat) = restamped.filter(|_| !self.events_hidden) {
+            self.order_selection(&chat);
         }
     }
 
@@ -4566,7 +4574,10 @@ impl App {
             Event::AccountRemoved => {}
         }
         self.restore_refused_edit();
-        self.prune_selection();
+        // A hidden account's events never touch the window's selection.
+        if !self.events_hidden {
+            self.prune_selection();
+        }
     }
 
     fn prune_selection(&mut self) {
@@ -4603,6 +4614,24 @@ impl App {
             sweep.base = base;
         }
         self.selection = Some((chat, ids));
+    }
+
+    /// Puts the selected messages of `chat` back in chat order after one of
+    /// them moved, so selection actions keep following the chat.
+    fn order_selection(&mut self, chat: &ChatId) {
+        let Some((selected, mut ids)) = self.selection.clone() else {
+            return;
+        };
+        let Some(conversation) = self.conversations.get(chat).filter(|_| &selected == chat) else {
+            return;
+        };
+        ids.sort_by_key(|id| {
+            conversation
+                .messages
+                .iter()
+                .position(|message| message.id == *id)
+        });
+        self.selection = Some((selected, ids));
     }
 
     /// Restores an idle composer's refused correction, using a normal draft
@@ -19356,6 +19385,68 @@ mod tests {
         assert_eq!(ids, vec!["a", "b", "c"]);
         conversation.merge(vec![message("c", "c", 3)], false);
         assert_eq!(conversation.messages.len(), 3);
+    }
+
+    #[test]
+    fn a_restamped_message_moves_to_its_new_place() {
+        let mut app = app();
+        let (backend, events) = Backend::detached();
+        app.backend = backend;
+        let chat = "1@s.whatsapp.net";
+        let mut mine = message(chat, "mine", 200);
+        mine.from_me = true;
+        let restamped = Message {
+            timestamp: 120,
+            ..mine.clone()
+        };
+        app.conversations.entry(chat.into()).or_default().merge(
+            vec![message(chat, "a", 100), mine, message(chat, "reply", 150)],
+            false,
+        );
+        let ids = |app: &App| {
+            app.conversations[chat]
+                .messages
+                .iter()
+                .map(|m| m.id.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(&app), ["a", "reply", "mine"]);
+        app.selection = Some((chat.into(), vec!["reply".into(), "mine".into()]));
+        // The server's time for our message arrives as an update.
+        events
+            .send(Event::MessageUpdated(Box::new(restamped)))
+            .unwrap();
+        app.handle_events();
+        assert_eq!(ids(&app), ["a", "mine", "reply"]);
+        assert_eq!(
+            app.selection.as_ref().map(|(_, ids)| ids.as_slice()),
+            Some(["mine".to_owned(), "reply".to_owned()].as_slice()),
+            "the selection follows the chat's order"
+        );
+    }
+
+    /// Events of a hidden account are checked against that account's chats,
+    /// so they must not prune the selection the window holds.
+    #[test]
+    fn a_hidden_accounts_event_keeps_the_window_selection() {
+        let directory = tempfile::tempdir().unwrap();
+        let (mut app, _commands) = two_accounts(directory.path());
+        let chat = "15550003333@s.whatsapp.net";
+        app.conversations
+            .entry(chat.into())
+            .or_default()
+            .merge(vec![message(chat, "reply", 150)], false);
+        app.selection = Some((chat.into(), vec!["reply".into()]));
+        app.active = 1;
+        app.events_hidden = true;
+        app.apply_backend_event(Event::Info("Contact saved".into()), false);
+        app.events_hidden = false;
+        app.active = 0;
+        assert_eq!(
+            app.selection,
+            Some((chat.into(), vec!["reply".into()])),
+            "the window's selection survives another account's event"
+        );
     }
 
     #[test]
