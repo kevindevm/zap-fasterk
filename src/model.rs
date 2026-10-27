@@ -240,6 +240,8 @@ pub struct Chat {
     pub labels: Vec<String>,
     /// This chat's own notification sound; `None` follows Settings.
     pub notification_sound: Option<crate::settings::NotificationSound>,
+    /// This chat's own voice message speed; `None` follows Settings.
+    pub voice_speed: Option<f32>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -296,6 +298,7 @@ impl Chat {
             ephemeral_expiration: None,
             labels: Vec::new(),
             notification_sound: None,
+            voice_speed: None,
         }
     }
 
@@ -2657,6 +2660,9 @@ pub enum Action {
     CancelAddAccount,
     /// Unlinks an account and deletes what is stored here for it.
     RemoveAccount(AccountId),
+    /// Turns one account's desktop notifications on or off, from the account
+    /// switcher, without showing that account. It stays linked either way.
+    SetAccountNotifications(AccountId, bool),
     /// Mutes until Unix time, indefinitely with `Some(0)`, or unmutes with `None`.
     SetMuted(ChatId, Option<i64>),
     SetDisappearingTimer(ChatId, u32),
