@@ -128,8 +128,6 @@ rodio = { git = "https://github.com/RustAudio/rodio", rev = "e89e685d326a684b298
 symphonia = { version = "0.5.5", default-features = false, features = ["aac"] }
 opus = "0.4"
 ogg = "0.9"
-# Runs downloaded Whisper models locally for manual voice-message transcripts.
-whisper-rs = "0.16.0"
 # Converts animated Signal APNG stickers to the animated WebP used by WhatsApp.
 webp-animation = "0.10"
 # Encodes stickers made from pictures as still lossy WebP. Already included
@@ -245,9 +243,9 @@ raw-window-handle = "0.6"
 # recording or playing voice messages. The same version cpal already uses.
 windows = { version = "0.62", features = ["Media_Control", "Foundation_Collections", "Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_UI_Controls", "Win32_System_Com", "Win32_System_Ole", "Win32_System_LibraryLoader", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
-# clang-cl is required by whisper.cpp on Windows ARM64. Opus's runtime SIMD
-# probe uses MSVC-only __emit intrinsics, so keep its portable scalar path on
-# that one target. Cargo unifies this feature with opus's transitive dependency.
+# Opus's runtime SIMD probe uses MSVC-only __emit intrinsics, so keep its
+# portable scalar path on that one target. Cargo unifies this feature with
+# opus's transitive dependency.
 [target.'cfg(all(windows, target_arch = "aarch64"))'.dependencies]
 opusic-sys = { version = "0.7.5", features = ["no-simd"] }
 

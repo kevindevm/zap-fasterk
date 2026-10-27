@@ -276,4 +276,6 @@ reporting an issue. **Settings > Files > Log > Open** shows it.
 
 ## Zap Faster local transcripts
 
-Whisper transcribes voice notes locally. The first request downloads a 1.5 GB model from Hugging Face and verifies its pinned digest. Automatic transcription is off by default. Transcript text stays in the encrypted account archive; models are cached under the account cache `models/` directory. Transcription is unavailable through locked chat or app-lock surfaces.
+Older releases transcribed voice notes locally and cached the text in the
+encrypted account archive; transcripts cached then still show under their
+voice message and disappear with it. New transcriptions are not available.

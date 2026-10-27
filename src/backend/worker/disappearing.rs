@@ -112,8 +112,6 @@ impl Worker {
                 continue;
             }
             self.drop_cached_media(&paths);
-            self.pending_transcriptions
-                .remove(&(chat.clone(), id.clone()));
             self.pending_edits.remove(&(chat.clone(), id.clone()));
             self.emit(Event::MessageDeleted {
                 chat: chat.clone(),

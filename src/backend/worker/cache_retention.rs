@@ -18,8 +18,6 @@ impl Worker {
             && self.uploads.is_empty()
             && self.upload_pending.is_empty()
             && self.upload_running.is_none()
-            && self.transcriptions.is_empty()
-            && self.pending_transcriptions.is_empty()
             && self.message_removals_in_flight.is_empty()
     }
 

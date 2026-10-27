@@ -429,17 +429,6 @@ microphone. Press Enter or the send button to send the recording, or Escape or
 the delete button to discard it. Zap Faster raises the volume of quiet recordings.
 Starting a reply before recording includes the quoted message.
 
-Right-click a voice message and choose **Transcribe locally** to turn it into
-selectable text with Whisper. The first request downloads and verifies the
-multilingual large-v3-turbo model (1.5 GB). Zap Faster shows whether it is
-downloading the voice note or model, verifying or loading the model, or
-transcribing. After that, transcription works offline, and the loaded model is
-reused while Zap Faster stays open. Recordings never leave your computer. Turn on **Transcribe received
-voice messages automatically** in Settings to process new incoming voice notes
-as they arrive; it is off by default. Results are cached in the encrypted
-message archive and disappear when their source message is deleted or its chat
-is cleared.
-
 ## Copying
 
 On Windows, drag a downloaded attachment from its message to another

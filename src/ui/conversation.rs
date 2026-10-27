@@ -2296,8 +2296,6 @@ struct View<'a> {
     player: &'a crate::audio::Player,
     video: &'a crate::video::Player,
     transcripts: &'a HashMap<String, String>,
-    transcribing: &'a HashSet<String>,
-    transcription_progress: &'a HashMap<String, crate::transcribe::Progress>,
     copy_rows: Option<&'a std::sync::Mutex<Vec<crate::transcript::Row>>>,
 }
 
@@ -2489,8 +2487,6 @@ fn messages(app: &mut App, ui: &mut egui::Ui, chat: &Chat, under: f32) {
     // Keep transcript state independently borrowable while row measurements
     // and paging state are updated on the checked-out conversation.
     let transcripts = conversation.transcripts.clone();
-    let transcribing = conversation.transcribing.clone();
-    let transcription_progress = conversation.transcription_progress.clone();
     let mut avatars = HashMap::new();
     if shows_sender_pictures(chat) {
         let mut senders: HashSet<String> = conversation
@@ -2571,8 +2567,6 @@ fn messages(app: &mut App, ui: &mut egui::Ui, chat: &Chat, under: f32) {
         copy_rows: (!app.selection.as_ref().is_some_and(|(id, _)| *id == chat.id))
             .then_some(app.copy_rows.as_ref()),
         transcripts: &transcripts,
-        transcribing: &transcribing,
-        transcription_progress: &transcription_progress,
     };
     let mut actions = Vec::new();
     let mut anchored = false;
@@ -4092,20 +4086,6 @@ fn bubble(
                     transcript_text(ui, view, transcript, max_width);
                 });
                 ui.add_space(3.0);
-            } else if view.transcribing.contains(&message.id) {
-                ui.horizontal(|ui| {
-                    if with_avatar {
-                        ui.add_space(SENDER_AVATAR + 8.0);
-                    }
-                    theme::spinner(ui, 13.0, view.palette.accent);
-                    theme::text(
-                        ui,
-                        transcription_status(view, &message.id),
-                        theme::regular(BODY_SIZE - 1.0),
-                        view.palette.secondary,
-                    );
-                });
-                ui.add_space(3.0);
             }
         },
     );
@@ -4125,39 +4105,6 @@ fn privacy_what(content: &Content) -> ScreenPrivacyWhat {
             ScreenPrivacyWhat::Message
         }
         _ => ScreenPrivacyWhat::Media,
-    }
-}
-
-fn transcription_status(view: &View<'_>, message: &str) -> String {
-    use crate::transcribe::Progress;
-    match view.transcription_progress.get(message) {
-        Some(Progress::DownloadingVoice) => {
-            crate::i18n::gettext(view.locale, "Downloading voice message…").into_owned()
-        }
-        Some(Progress::DownloadingModel {
-            received,
-            total: Some(total),
-        }) if *total > 0 => crate::i18n::gettext(
-            view.locale,
-            "Downloading Whisper large-v3-turbo… {percent}%",
-        )
-        .replace(
-            "{percent}",
-            &(received.saturating_mul(100) / total).min(100).to_string(),
-        ),
-        Some(Progress::DownloadingModel { .. }) => {
-            crate::i18n::gettext(view.locale, "Downloading Whisper large-v3-turbo (1.5 GB)…")
-                .into_owned()
-        }
-        Some(Progress::InstallingModel) => {
-            crate::i18n::gettext(view.locale, "Verifying Whisper model…").into_owned()
-        }
-        Some(Progress::LoadingModel) => {
-            crate::i18n::gettext(view.locale, "Loading Whisper model…").into_owned()
-        }
-        Some(Progress::Transcribing) | None => {
-            crate::i18n::gettext(view.locale, "Transcribing locally…").into_owned()
-        }
     }
 }
 
@@ -6115,8 +6062,6 @@ pub(crate) fn list_menu(
         motion_playing: None,
         selecting: false,
         transcripts: &HashMap::new(),
-        transcribing: &HashSet::new(),
-        transcription_progress: &HashMap::new(),
         // Nothing scrolls, highlights, or selects in a list row.
         anchor: None,
         open_menu: None,
@@ -6455,35 +6400,6 @@ fn context_menu_contents(
             });
         }
         actions.push(Action::SelectMessage(message.id.clone()));
-    }
-    if matches!(
-        message.content,
-        Content::Audio {
-            voice_note: true,
-            ..
-        }
-    ) {
-        let pending = view.transcribing.contains(&message.id);
-        let available = view.transcripts.contains_key(&message.id);
-        let label = if pending {
-            "Transcribing locally…"
-        } else if available {
-            "Transcript available"
-        } else {
-            "Transcribe locally"
-        };
-        if widgets::menu_item_enabled(
-            ui,
-            &palette,
-            Some(Icon::FileText),
-            label,
-            !pending && !available,
-        ) {
-            actions.push(Action::Transcribe {
-                chat: chat.clone(),
-                message: message.id.clone(),
-            });
-        }
     }
     let text = match &message.content {
         Content::Text { text, .. } | Content::Interactive { text, .. } => Some(text.clone()),

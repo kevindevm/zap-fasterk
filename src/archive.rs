@@ -90,6 +90,10 @@ pub struct Transcription {
     pub created_at: i64,
 }
 
+/// Model tag of the cached transcripts kept in the archive. Local
+/// transcription was removed; this only matches rows written before that.
+pub const TRANSCRIPT_MODEL: &str = "Whisper large-v3-turbo (multilingual)";
+
 pub type Result<T> = std::result::Result<T, rusqlite::Error>;
 
 /// Marks an archived photo whose clip is known as a motion photo. Only the
@@ -2302,6 +2306,8 @@ impl Archive {
     /// Stores a transcription, replacing any earlier result for the message.
     /// The row exists only when its source message still exists, preventing a
     /// late background result from recreating data after deletion.
+    /// Local transcription was removed; the table only serves rows cached
+    /// before its removal.
     pub fn set_transcription(
         &self,
         chat: &str,
@@ -2330,14 +2336,14 @@ impl Archive {
     }
 
     /// Returns a message's cached transcription text from the current model.
-    /// Results from an older model are ignored so an explicit request upgrades
-    /// them rather than perpetuating a lower-quality transcript.
+    /// Results from an older model are ignored. Local transcription was
+    /// removed; this only reads rows cached before its removal.
     pub fn transcription(&self, chat: &str, message: &str) -> Result<Option<String>> {
         self.connection
             .query_row(
                 "SELECT text FROM transcriptions
                  WHERE chat = ?1 AND message = ?2 AND model = ?3",
-                params![chat, message, crate::transcribe::MODEL_NAME],
+                params![chat, message, TRANSCRIPT_MODEL],
                 |row| row.get(0),
             )
             .optional()
@@ -2348,7 +2354,7 @@ impl Archive {
         let mut statement = self
             .connection
             .prepare("SELECT message, text FROM transcriptions WHERE chat = ?1 AND model = ?2")?;
-        let rows = statement.query_map(params![chat, crate::transcribe::MODEL_NAME], |row| {
+        let rows = statement.query_map(params![chat, TRANSCRIPT_MODEL], |row| {
             Ok((row.get(0)?, row.get(1)?))
         })?;
         rows.collect()
@@ -6478,7 +6484,7 @@ mod transcription_tests {
     fn transcript(text: &str) -> Transcription {
         Transcription {
             text: text.into(),
-            model: crate::transcribe::MODEL_NAME.into(),
+            model: TRANSCRIPT_MODEL.into(),
             source_sha256: "abc".into(),
             created_at: 100,
         }

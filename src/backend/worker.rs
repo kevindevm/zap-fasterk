@@ -697,8 +697,6 @@ pub async fn run(
         upload_order: HashMap::new(),
         send_sequence: 0,
         pending_outbound_order: None,
-        transcriptions: HashSet::new(),
-        pending_transcriptions: HashSet::new(),
         read_sync: ReadSync::default(),
         favorite_chats: Default::default(),
         poll_decrypting: 0,
@@ -1275,10 +1273,6 @@ struct Worker {
     upload_order: HashMap<u64, i64>,
     send_sequence: i64,
     pending_outbound_order: Option<i64>,
-    /// Active local transcriptions by chat and message id.
-    transcriptions: HashSet<(ChatId, String)>,
-    /// Transcriptions waiting for their voice attachment to download.
-    pending_transcriptions: HashSet<(ChatId, String)>,
     outgoing: outgoing::Outgoing,
 }
 
@@ -6584,12 +6578,6 @@ impl Worker {
                     });
                 }
             }
-            Command::Transcribe { chat, message } => self.transcribe(chat, message),
-            Command::TranscriptionResult {
-                chat,
-                message,
-                result,
-            } => self.transcription_result(chat, message, result),
             Command::FetchAvatar { id, full } => self.fetch_avatar(id, full),
             Command::EditText {
                 chat,
@@ -9555,10 +9543,6 @@ impl Worker {
         card: Option<usize>,
         mut result: Result<PathBuf, String>,
     ) {
-        let waiting_for_transcript = card.is_none()
-            && self
-                .pending_transcriptions
-                .remove(&(chat.clone(), id.clone()));
         if let Ok(path) = &result {
             let job = crate::archive::MediaJob {
                 chat: chat.clone(),
@@ -9603,8 +9587,6 @@ impl Worker {
         let clicked = self.sticker_clicked.remove(&key);
         let retried = self.sticker_retried.remove(&key);
         let result_ok = result.is_ok();
-        let transcript_path = result.as_ref().ok().cloned();
-        let transcript_error = result.as_ref().err().cloned();
         if for_picker && let Err(error) = &result {
             if sticker_pace::rate_limited(error) {
                 log::warn!("sticker downloads paused: the server asked to slow down");
@@ -9628,19 +9610,6 @@ impl Worker {
             message: id.clone(),
             result,
         });
-        if waiting_for_transcript {
-            if let Some(path) = transcript_path {
-                self.start_transcription(chat, id, path);
-            } else {
-                self.transcriptions.remove(&(chat.clone(), id.clone()));
-                self.emit(Event::Transcribed {
-                    chat,
-                    message: id,
-                    text: Err(transcript_error
-                        .unwrap_or_else(|| "Could not download the voice message".to_owned())),
-                });
-            }
-        }
         if retried && !for_picker && result_ok {
             self.emit_stickers();
         }
@@ -9648,131 +9617,6 @@ impl Worker {
             self.fetch_missing_stickers();
             self.picker_sticker_settled(result_ok);
         }
-    }
-
-    /// Starts a requested local transcript, serving the encrypted cache first
-    /// and downloading the voice attachment when necessary. Requests may come
-    /// from the message menu or the incoming-voice opt-in.
-    fn transcribe(&mut self, chat: ChatId, id: String) {
-        if !self.privacy_ready || !self.transcriptions.insert((chat.clone(), id.clone())) {
-            return;
-        }
-        if let Ok(Some(text)) = self.archive.transcription(&chat, &id) {
-            self.transcriptions.remove(&(chat.clone(), id.clone()));
-            self.emit(Event::Transcribed {
-                chat,
-                message: id,
-                text: Ok(text),
-            });
-            return;
-        }
-        let message = match self.archive.message(&chat, &id) {
-            Ok(Some(message)) => message,
-            result => {
-                self.transcriptions.remove(&(chat.clone(), id.clone()));
-                self.emit(Event::Transcribed {
-                    chat,
-                    message: id,
-                    text: Err(if result.is_err() {
-                        "Could not read the source voice message"
-                    } else {
-                        "The source voice message is unavailable"
-                    }
-                    .to_owned()),
-                });
-                return;
-            }
-        };
-        if !matches!(
-            message.content,
-            Content::Audio {
-                voice_note: true,
-                ..
-            }
-        ) {
-            self.transcriptions.remove(&(chat.clone(), id.clone()));
-            self.emit(Event::Transcribed {
-                chat,
-                message: id,
-                text: Err("Only voice messages can be transcribed".to_owned()),
-            });
-            return;
-        }
-        let path = message
-            .content
-            .media()
-            .and_then(|media| media.path.clone())
-            .filter(|path| path.is_file());
-        match path {
-            Some(path) => self.start_transcription(chat, id, path),
-            None => {
-                self.pending_transcriptions
-                    .insert((chat.clone(), id.clone()));
-                self.emit(Event::TranscriptionProgress {
-                    chat: chat.clone(),
-                    message: id.clone(),
-                    progress: crate::transcribe::Progress::DownloadingVoice,
-                });
-                self.download(chat, id);
-            }
-        }
-    }
-
-    fn start_transcription(&mut self, chat: ChatId, id: String, path: PathBuf) {
-        let commands = self.commands.clone();
-        let events = self.events.clone();
-        let waker = self.waker.clone();
-        let models = self.dirs.transcription_model_dir();
-        tokio::task::spawn_blocking(move || {
-            let result = crate::transcribe::transcribe_with_progress(&models, &path, |progress| {
-                let _ = events.send(Event::TranscriptionProgress {
-                    chat: chat.clone(),
-                    message: id.clone(),
-                    progress,
-                });
-                waker.wake();
-            });
-            let _ = commands.send(Command::TranscriptionResult {
-                chat,
-                message: id,
-                result,
-            });
-        });
-    }
-
-    /// Stores a result only while the source message still exists. This makes
-    /// message deletion and chat clearing win over in-flight inference.
-    fn transcription_result(
-        &mut self,
-        chat: ChatId,
-        id: String,
-        result: Result<crate::transcribe::Completed, String>,
-    ) {
-        self.transcriptions.remove(&(chat.clone(), id.clone()));
-        let text = match result {
-            Ok(completed) => {
-                let row = crate::archive::Transcription {
-                    text: completed.text.clone(),
-                    model: crate::transcribe::MODEL_NAME.to_owned(),
-                    source_sha256: completed.source_sha256,
-                    created_at: crate::util::now(),
-                };
-                match self.archive.set_transcription(&chat, &id, &row) {
-                    Ok(true) => Ok(completed.text),
-                    Ok(false) => return,
-                    Err(error) => {
-                        log::warn!("could not cache the voice transcript: {error}");
-                        Err("Could not save the voice transcript".to_owned())
-                    }
-                }
-            }
-            Err(error) => Err(error),
-        };
-        self.emit(Event::Transcribed {
-            chat,
-            message: id,
-            text,
-        });
     }
 
     fn picker_downloads(&self) -> usize {
@@ -16505,8 +16349,6 @@ fn offline_worker(
         upload_order: HashMap::new(),
         send_sequence: 0,
         pending_outbound_order: None,
-        transcriptions: HashSet::new(),
-        pending_transcriptions: HashSet::new(),
         read_sync: ReadSync::default(),
         favorite_chats: Default::default(),
         poll_decrypting: 0,
