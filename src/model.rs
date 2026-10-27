@@ -1194,6 +1194,19 @@ pub(crate) const ATTACHMENT_DOWNLOAD_LIMIT: u64 = 64 * 1024 * 1024;
 /// Explicit downloads stream to disk with a separate 2 GiB cap.
 pub(crate) const MANUAL_DOWNLOAD_LIMIT: u64 = 2 * 1024 * 1024 * 1024;
 
+/// How many chats a message may be forwarded to at once, as on WhatsApp.
+pub const FORWARD_LIMIT: usize = 5;
+
+/// The forwarding limit for messages: one chat when any of them was
+/// forwarded many times, [`FORWARD_LIMIT`] otherwise.
+pub fn forward_limit(frequently_forwarded: bool) -> usize {
+    if frequently_forwarded {
+        1
+    } else {
+        FORWARD_LIMIT
+    }
+}
+
 /// Attachment metadata, download state, and optional local file. Download keys
 /// remain in the archive's raw message.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

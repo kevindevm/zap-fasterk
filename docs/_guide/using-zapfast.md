@@ -35,11 +35,13 @@ to the chat header for 24 hours, 7 days, or 30 days. See the
 [starred and pinned message guide]({{ site.baseurl }}/starred-pinned-messages/) for sync behavior
 and recovery limits.
 
-Forwarding opens a recipient picker. Select one or more writable chats, then
-review the selected recipients before confirming. **Back** returns to the
-picker without losing the selection. If a destination becomes locked or
-read-only, Zap Faster returns to selection instead of sending a partial batch.
-Switching accounts discards the open forwarding selection.
+Forwarding opens a recipient picker. Select up to five writable chats, as on
+WhatsApp; a message labelled as forwarded many times goes to one chat at a
+time, replacing the previous pick. **Review recipients** lists the selection
+for you to confirm, and **Back** returns to the picker without losing it. If a
+destination becomes locked or read-only, Zap Faster returns to selection
+instead of sending a partial batch. Switching accounts discards the open
+forwarding selection.
 
 Outgoing text can be edited for 15 minutes after its original send time.
 Zap Faster validates that limit again before sending and keeps the original

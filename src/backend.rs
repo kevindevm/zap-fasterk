@@ -261,6 +261,12 @@ pub enum Command {
         messages: Vec<String>,
         to_chat: ChatId,
     },
+    /// Asks how many chats these messages may be forwarded to at once,
+    /// answered with [`Event::ForwardLimit`].
+    ForwardLimit {
+        from_chat: ChatId,
+        messages: Vec<String>,
+    },
     /// Updates our typing state in a chat.
     Composing {
         chat: ChatId,
@@ -1156,6 +1162,11 @@ pub enum Event {
         chat: ChatId,
         message: String,
         error: Option<String>,
+    },
+    ForwardLimit {
+        from_chat: ChatId,
+        messages: Vec<String>,
+        limit: usize,
     },
     Link(LinkStatus),
     /// Linked account identity.

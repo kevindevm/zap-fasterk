@@ -6650,6 +6650,17 @@ impl Worker {
                 messages,
                 to_chat,
             } => self.forward_messages(from_chat, messages, to_chat),
+            Command::ForwardLimit {
+                from_chat,
+                messages,
+            } => {
+                let limit = self.forward_limit(&from_chat, &messages);
+                self.emit(Event::ForwardLimit {
+                    from_chat,
+                    messages,
+                    limit,
+                });
+            }
             // Stores the open chat's unsent text, or clears it when empty.
             Command::SaveDraft { chat, text } => {
                 let at = std::time::SystemTime::now()
@@ -9146,6 +9157,20 @@ impl Worker {
     }
 
     /// Prepares archived copies and queues each destination behind active sends.
+    /// How many chats these messages may be forwarded to at once. The
+    /// forwarding score lives in the raw protobuf, so messages archived before
+    /// the limit existed are judged the same way.
+    fn forward_limit(&self, from_chat: &str, messages: &[String]) -> usize {
+        crate::model::forward_limit(messages.iter().any(|id| {
+            self.archive
+                .raw(from_chat, id)
+                .ok()
+                .flatten()
+                .and_then(|raw| wa::Message::decode_from_slice(&raw).ok())
+                .is_some_and(|message| frequently_forwarded(message.get_base_message()))
+        }))
+    }
+
     fn forward_messages(&mut self, from_chat: ChatId, messages: Vec<String>, to_chat: ChatId) {
         let Some(_client) = self.client.clone() else {
             self.emit(Event::Error("Not connected to WhatsApp".to_owned()));
@@ -11960,6 +11985,16 @@ fn forwarded_of(base: &wa::Message) -> bool {
     context_of(base).is_some_and(|context| {
         context.is_forwarded.unwrap_or(false) || context.forwarding_score.unwrap_or(0) > 0
     })
+}
+
+/// Whether WhatsApp shows this message as forwarded many times. whatsapp-rust
+/// raises the score of a forward to its frequently-forwarded sentinel (127)
+/// once it reaches 5, the threshold WhatsApp Web uses.
+fn frequently_forwarded(base: &wa::Message) -> bool {
+    const FREQUENTLY_FORWARDED_SCORE: u32 = 5;
+    context_of(base)
+        .and_then(|context| context.forwarding_score)
+        .is_some_and(|score| score >= FREQUENTLY_FORWARDED_SCORE)
 }
 
 /// Finds the first web address when preview metadata omits its URL.
@@ -21069,6 +21104,60 @@ mod receipt_tests {
                 .try_iter()
                 .any(|event| matches!(event, Event::Incoming { .. }))
         );
+    }
+
+    /// Stores a text whose raw protobuf carries `score`, or none at all.
+    fn store_forwarded(worker: &Worker, id: &str, score: Option<u32>) {
+        let raw = score.map(|score| {
+            let mut context = wa::ContextInfo::default();
+            context.is_forwarded = Some(true);
+            context.forwarding_score = Some(score);
+            wa::Message::text_with_context("Forwarded fixture", context).encode_to_vec()
+        });
+        worker
+            .archive
+            .insert_message(&own_message(id, 1), raw.as_deref())
+            .unwrap();
+    }
+
+    /// WhatsApp lets a message forwarded many times go to one chat at a time,
+    /// judged from the score in the archived protobuf.
+    #[test]
+    fn the_forwarding_limit_follows_the_forwarding_score() {
+        let (worker, _events, _inbox, _wa) = worker();
+        store_forwarded(&worker, "plain", None);
+        store_forwarded(&worker, "twice", Some(4));
+        store_forwarded(&worker, "many", Some(5));
+        store_forwarded(&worker, "sentinel", Some(127));
+        let limit = |ids: &[&str]| {
+            worker.forward_limit(
+                PEER,
+                &ids.iter().map(|id| (*id).to_owned()).collect::<Vec<_>>(),
+            )
+        };
+        assert_eq!(limit(&["plain"]), 5);
+        assert_eq!(limit(&["twice"]), 5);
+        assert_eq!(limit(&["missing"]), 5);
+        assert_eq!(limit(&["many"]), 1);
+        assert_eq!(limit(&["sentinel"]), 1);
+        assert_eq!(limit(&["plain", "many"]), 1);
+    }
+
+    #[tokio::test]
+    async fn the_forwarding_limit_is_answered_for_the_dialog() {
+        let (mut worker, events, _inbox, _wa) = worker();
+        store_forwarded(&worker, "many", Some(127));
+        worker
+            .handle_command(Command::ForwardLimit {
+                from_chat: PEER.into(),
+                messages: vec!["many".into()],
+            })
+            .await;
+        assert!(events.try_iter().any(|event| matches!(
+            event,
+            Event::ForwardLimit { from_chat, messages, limit: 1 }
+                if from_chat == PEER && messages == ["many".to_owned()]
+        )));
     }
 
     #[test]
