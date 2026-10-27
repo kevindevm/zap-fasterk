@@ -8019,6 +8019,61 @@ mod tests {
         );
     }
 
+    /// Actual composer input leaves the list steady; parking or discarding
+    /// that draft changes its priority only after leaving the conversation.
+    #[test]
+    fn typing_and_clearing_a_draft_do_not_reorder_the_chat_list() {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        app.attach(&ctx);
+        let ids = |app: &App| -> Vec<String> {
+            app.visible_chats()
+                .iter()
+                .map(|chat| chat.id.clone())
+                .collect()
+        };
+        let original = ids(&app);
+        let draft = SAMPLES[3].id;
+        let pinned = SAMPLES[0].id;
+        app.actions
+            .push(crate::model::Action::OpenChat(draft.into()));
+        app.focus_composer = true;
+        render(&mut app, &ctx);
+        frame_with(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Text("Synthetic unfinished reply".into())],
+        );
+        assert_eq!(app.composer, "Synthetic unfinished reply");
+        assert_eq!(ids(&app), original, "typing cannot promote the open chat");
+        app.actions
+            .push(crate::model::Action::OpenChat(pinned.into()));
+        frame_with(&mut app, &ctx, vec![]);
+        let parked = ids(&app);
+        assert_eq!(parked[0], pinned, "the pin stays first");
+        assert_eq!(parked[1], draft, "the parked draft follows the pin");
+        app.actions
+            .push(crate::model::Action::OpenChat(draft.into()));
+        app.focus_composer = true;
+        render(&mut app, &ctx);
+        frame_with(
+            &mut app,
+            &ctx,
+            vec![key(egui::Key::A, egui::Modifiers::COMMAND)],
+        );
+        frame_with(
+            &mut app,
+            &ctx,
+            vec![key(egui::Key::Backspace, egui::Modifiers::NONE)],
+        );
+        assert!(app.composer.is_empty());
+        assert_eq!(ids(&app), parked, "clearing cannot demote the open chat");
+        app.actions
+            .push(crate::model::Action::OpenChat(pinned.into()));
+        frame_with(&mut app, &ctx, vec![]);
+        assert_eq!(ids(&app), original, "leaving drops the cleared draft");
+    }
+
     #[test]
     fn enter_sends_and_shift_enter_breaks_the_line() {
         let mut app = app();
@@ -17782,9 +17837,9 @@ mod bubble_detail_tests {
         );
     }
 
-    /// Both themes show old text and document drafts above pinned chats, including after switching away.
+    /// Both themes show pins above text and document drafts, including after switching away.
     #[test]
-    fn text_and_document_drafts_rise_above_pins_in_both_themes() {
+    fn pins_stay_above_text_and_document_drafts_in_both_themes() {
         for page in [
             "draft-priority",
             "draft-priority,light",
@@ -17796,7 +17851,18 @@ mod bubble_detail_tests {
             app.attach(&ctx);
             apply_flags(&mut app, Some(page));
             let shapes = frames(&mut app, &ctx, egui::vec2(1180.0, 780.0));
-            assert_eq!(app.visible_chats()[0].id, SAMPLES[3].id, "{page}");
+            assert_eq!(app.visible_chats()[0].id, SAMPLES[0].id, "{page}");
+            if page.starts_with("document") {
+                // The attachment is staged in the open chat, which gains no
+                // priority until it is left.
+                assert_eq!(
+                    app.visible_chats().last().map(|chat| chat.id.clone()),
+                    Some(SAMPLES[3].id.to_owned()),
+                    "{page}"
+                );
+            } else {
+                assert_eq!(app.visible_chats()[1].id, SAMPLES[3].id, "{page}");
+            }
             let texts: Vec<_> = shapes
                 .iter()
                 .filter_map(|shape| match &shape.shape {
@@ -17821,7 +17887,7 @@ mod bubble_detail_tests {
                     app.draft_preview(SAMPLES[3].id).as_deref(),
                     Some("Synthetic itinerary.pdf")
                 );
-                assert_eq!(app.visible_chats()[0].id, SAMPLES[3].id);
+                assert_eq!(app.visible_chats()[0].id, SAMPLES[0].id);
             }
         }
     }
