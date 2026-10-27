@@ -5544,6 +5544,54 @@ pub(crate) mod tests {
         assert_eq!(messages[0].read_at, Some(400));
     }
 
+    /// A receipt for a later send is no proof that a still-unsent one went out.
+    #[test]
+    fn later_receipts_leave_unsent_sends_and_other_chats_alone() {
+        for receipt in [Delivery::Delivered, Delivery::Read, Delivery::Played] {
+            let archive = Archive::in_memory().unwrap();
+            let chat = "1@s.whatsapp.net";
+            let other = "2@s.whatsapp.net";
+            archive.ensure_chat(chat, "Fixture").unwrap();
+            archive.ensure_chat(other, "Other fixture").unwrap();
+            for (id, status) in [
+                ("pending", Delivery::Pending),
+                ("failed", Delivery::Failed),
+                ("sent", Delivery::Sent),
+            ] {
+                let mut row = message(chat, id, 100, true);
+                row.status = status;
+                archive.insert_message(&row, None).unwrap();
+            }
+            let mut other_row = message(other, "other", 100, true);
+            other_row.status = Delivery::Sent;
+            archive.insert_message(&other_row, None).unwrap();
+            assert_eq!(
+                archive.advance_statuses(chat, 200, receipt, 300).unwrap(),
+                ["sent"]
+            );
+            for (id, expected) in [("pending", Delivery::Pending), ("failed", Delivery::Failed)] {
+                let row = archive.message(chat, id).unwrap().unwrap();
+                assert_eq!(row.status, expected);
+                assert_eq!(row.delivered_at, None);
+                assert_eq!(row.read_at, None);
+            }
+            assert_eq!(
+                archive.message(chat, "sent").unwrap().unwrap().status,
+                receipt
+            );
+            assert_eq!(
+                archive.message(other, "other").unwrap().unwrap().status,
+                Delivery::Sent
+            );
+            assert!(
+                archive
+                    .advance_statuses(chat, 200, Delivery::Delivered, 400)
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+    }
+
     #[test]
     fn dispatching_a_waiting_message_moves_it_to_the_dispatch_time() {
         let archive = Archive::in_memory().expect("opens");
