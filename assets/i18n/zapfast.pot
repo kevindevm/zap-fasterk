@@ -3240,3 +3240,67 @@ msgstr ""
 #: src/ui/call.rs
 msgid "Restore call"
 msgstr ""
+
+#: src/model.rs
+msgid "GIF"
+msgstr ""
+
+#: src/model.rs
+msgid "Video message"
+msgstr ""
+
+#: src/model.rs
+msgid "Voice message"
+msgstr ""
+
+#: src/model.rs
+msgid "Audio"
+msgstr ""
+
+#: src/model.rs
+msgid "Sticker"
+msgstr ""
+
+#: src/model.rs
+msgid "Poll"
+msgstr ""
+
+#: src/model.rs
+msgid "This message was deleted"
+msgstr ""
+
+#: src/model.rs
+msgid "Unsupported message"
+msgstr ""
+
+#: src/model.rs
+msgid "View once photo"
+msgstr ""
+
+#: src/model.rs
+msgid "View once video"
+msgstr ""
+
+#: src/model.rs
+msgid "View once voice message"
+msgstr ""
+
+#: src/model.rs
+msgid "View once audio"
+msgstr ""
+
+#: src/model.rs
+msgid "View once message"
+msgstr ""
+
+#: src/model.rs
+msgid "Message on your phone"
+msgstr ""
+
+#: src/model.rs
+msgid "Missed voice call"
+msgstr ""
+
+#: src/model.rs
+msgid "Missed video call"
+msgstr ""

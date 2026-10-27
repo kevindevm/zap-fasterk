@@ -3437,3 +3437,67 @@ msgstr "Minimalkan panggilan"
 #: src/ui/call.rs
 msgid "Restore call"
 msgstr "Pulihkan panggilan"
+
+#: src/model.rs
+msgid "GIF"
+msgstr "GIF"
+
+#: src/model.rs
+msgid "Video message"
+msgstr "Pesan video"
+
+#: src/model.rs
+msgid "Voice message"
+msgstr "Pesan suara"
+
+#: src/model.rs
+msgid "Audio"
+msgstr "Audio"
+
+#: src/model.rs
+msgid "Sticker"
+msgstr "Stiker"
+
+#: src/model.rs
+msgid "Poll"
+msgstr "Polling"
+
+#: src/model.rs
+msgid "This message was deleted"
+msgstr "Pesan ini telah dihapus"
+
+#: src/model.rs
+msgid "Unsupported message"
+msgstr "Pesan tidak didukung"
+
+#: src/model.rs
+msgid "View once photo"
+msgstr "Foto sekali lihat"
+
+#: src/model.rs
+msgid "View once video"
+msgstr "Video sekali lihat"
+
+#: src/model.rs
+msgid "View once voice message"
+msgstr "Pesan suara sekali putar"
+
+#: src/model.rs
+msgid "View once audio"
+msgstr "Audio sekali putar"
+
+#: src/model.rs
+msgid "View once message"
+msgstr "Pesan sekali lihat"
+
+#: src/model.rs
+msgid "Message on your phone"
+msgstr "Pesan di ponsel Anda"
+
+#: src/model.rs
+msgid "Missed voice call"
+msgstr "Panggilan suara tak terjawab"
+
+#: src/model.rs
+msgid "Missed video call"
+msgstr "Panggilan video tak terjawab"

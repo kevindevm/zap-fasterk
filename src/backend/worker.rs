@@ -5424,15 +5424,15 @@ impl Worker {
             .as_deref()
             .map(|participant| self.canonical_str(participant))
             .unwrap_or_default();
-        let (summary, listed) = context
+        let (summary, labelled, listed) = context
             .quoted_message
             .as_option()
             .map(|quoted| {
                 let base = quoted.get_base_message();
+                let content = classify(quoted);
                 (
-                    classify(quoted)
-                        .map(|content| content.summary())
-                        .unwrap_or_default(),
+                    content.as_ref().map(Content::summary).unwrap_or_default(),
+                    content.as_ref().map(Content::labelled),
                     self.mentions_of(&mentioned_of(base)),
                 )
             })
@@ -5440,6 +5440,7 @@ impl Worker {
         let summary = self.pn_tokens(&summary);
         let mentions = self.quote_mentions(&summary, listed);
         Some(Quoted {
+            labelled,
             chat: context
                 .remote_jid
                 .as_deref()
@@ -9053,6 +9054,7 @@ impl Worker {
             &original,
         );
         let shown = Quoted {
+            labelled: Some(row.content.labelled()),
             chat: (source != chat).then(|| source.to_owned()),
             mentions: row.mentions.clone(),
             id: row.id,
@@ -13405,6 +13407,12 @@ fn history_quote(base: &wa::Message) -> Option<Quoted> {
     let context = context_of(base)?;
     let id = context.stanza_id.clone().filter(|id| !id.is_empty())?;
     Some(Quoted {
+        labelled: context
+            .quoted_message
+            .as_option()
+            .and_then(classify)
+            .as_ref()
+            .map(Content::labelled),
         chat: context.remote_jid.clone(),
         mentions: Vec::new(),
         id,
@@ -14755,6 +14763,7 @@ mod tests {
             delivered_at: None,
             read_at: None,
             quoted: Some(Quoted {
+                labelled: None,
                 chat: None,
                 id: "quoted".into(),
                 sender: sender.into(),
@@ -16265,6 +16274,7 @@ mod tests {
         let (mut worker, _events, _commands, _wa) = worker();
         worker.client = Some(client.clone());
         let quote = Quoted {
+            labelled: None,
             chat: None,
             id: "original".into(),
             sender: "15551234567@s.whatsapp.net".into(),
@@ -17275,6 +17285,7 @@ mod tests {
             delivered_at: Some(11),
             read_at: Some(12),
             quoted: Some(Quoted {
+                labelled: None,
                 chat: None,
                 id: "quoted".into(),
                 sender: "two@s.whatsapp.net".into(),

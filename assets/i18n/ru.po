@@ -3473,3 +3473,67 @@ msgstr "Свернуть звонок"
 #: src/ui/call.rs
 msgid "Restore call"
 msgstr "Развернуть звонок"
+
+#: src/model.rs
+msgid "GIF"
+msgstr "GIF"
+
+#: src/model.rs
+msgid "Video message"
+msgstr "Видеосообщение"
+
+#: src/model.rs
+msgid "Voice message"
+msgstr "Голосовое сообщение"
+
+#: src/model.rs
+msgid "Audio"
+msgstr "Аудио"
+
+#: src/model.rs
+msgid "Sticker"
+msgstr "Стикер"
+
+#: src/model.rs
+msgid "Poll"
+msgstr "Опрос"
+
+#: src/model.rs
+msgid "This message was deleted"
+msgstr "Это сообщение удалено"
+
+#: src/model.rs
+msgid "Unsupported message"
+msgstr "Неподдерживаемое сообщение"
+
+#: src/model.rs
+msgid "View once photo"
+msgstr "Фото для однократного просмотра"
+
+#: src/model.rs
+msgid "View once video"
+msgstr "Видео для однократного просмотра"
+
+#: src/model.rs
+msgid "View once voice message"
+msgstr "Голосовое сообщение для однократного прослушивания"
+
+#: src/model.rs
+msgid "View once audio"
+msgstr "Аудио для однократного прослушивания"
+
+#: src/model.rs
+msgid "View once message"
+msgstr "Сообщение для однократного просмотра"
+
+#: src/model.rs
+msgid "Message on your phone"
+msgstr "Сообщение на телефоне"
+
+#: src/model.rs
+msgid "Missed voice call"
+msgstr "Пропущенный аудиозвонок"
+
+#: src/model.rs
+msgid "Missed video call"
+msgstr "Пропущенный видеозвонок"

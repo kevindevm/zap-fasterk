@@ -3298,3 +3298,67 @@ msgstr "最小化通话"
 #: src/ui/call.rs
 msgid "Restore call"
 msgstr "恢复通话"
+
+#: src/model.rs
+msgid "GIF"
+msgstr "GIF"
+
+#: src/model.rs
+msgid "Video message"
+msgstr "视频消息"
+
+#: src/model.rs
+msgid "Voice message"
+msgstr "语音消息"
+
+#: src/model.rs
+msgid "Audio"
+msgstr "音频"
+
+#: src/model.rs
+msgid "Sticker"
+msgstr "贴纸"
+
+#: src/model.rs
+msgid "Poll"
+msgstr "投票"
+
+#: src/model.rs
+msgid "This message was deleted"
+msgstr "此消息已删除"
+
+#: src/model.rs
+msgid "Unsupported message"
+msgstr "不支持的消息"
+
+#: src/model.rs
+msgid "View once photo"
+msgstr "一次性照片"
+
+#: src/model.rs
+msgid "View once video"
+msgstr "一次性视频"
+
+#: src/model.rs
+msgid "View once voice message"
+msgstr "一次性语音消息"
+
+#: src/model.rs
+msgid "View once audio"
+msgstr "一次性音频"
+
+#: src/model.rs
+msgid "View once message"
+msgstr "一次性消息"
+
+#: src/model.rs
+msgid "Message on your phone"
+msgstr "手机上的消息"
+
+#: src/model.rs
+msgid "Missed voice call"
+msgstr "未接语音通话"
+
+#: src/model.rs
+msgid "Missed video call"
+msgstr "未接视频通话"

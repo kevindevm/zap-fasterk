@@ -527,6 +527,7 @@ pub fn populate(app: &mut App) {
             .messages
             .last()
             .map(|last| crate::model::LastMessage {
+                labelled: last.content.labelled(),
                 from_me: last.from_me,
                 sender: last.sender.clone(),
                 sender_name: last.sender_name.clone(),
@@ -627,6 +628,7 @@ pub fn populate(app: &mut App) {
                 Content::text("Listened, agreed on *all three* points."),
             );
             row.quoted = Some(Quoted {
+                labelled: None,
                 chat: None,
                 id: "ada-voice".into(),
                 sender: ada.into(),
@@ -842,6 +844,7 @@ pub fn populate(app: &mut App) {
             row.sender = mira.0.to_owned();
             row.sender_name = Some(mira.1.to_owned());
             row.quoted = Some(Quoted {
+                labelled: None,
                 chat: None,
                 id: format!("{group}-3"),
                 sender: jonas.0.into(),
@@ -896,6 +899,7 @@ pub fn populate(app: &mut App) {
                         chat.id.clone(),
                         last.timestamp,
                         crate::model::LastMessage {
+                            labelled: last.content.labelled(),
                             from_me: last.from_me,
                             sender: last.sender.clone(),
                             sender_name: last.sender_name.clone(),
@@ -1082,6 +1086,7 @@ fn quote_sample(app: &mut App) {
             Content::text("See you there!"),
         );
         reply.quoted = Some(Quoted {
+            labelled: None,
             chat: None,
             id: "group-reply".into(),
             sender,
@@ -1115,6 +1120,7 @@ fn meta_ai_sample(app: &mut App) {
         ),
     );
     reply.quoted = Some(Quoted {
+        labelled: None,
         chat: None,
         id: "meta-ai-question".into(),
         sender: ME.into(),
@@ -1125,6 +1131,7 @@ fn meta_ai_sample(app: &mut App) {
     let mut chat = Chat::new(id.into(), "Meta AI".into());
     chat.last_activity = now;
     chat.last = Some(crate::model::LastMessage {
+        labelled: reply.content.labelled(),
         from_me: false,
         sender: reply.sender.clone(),
         sender_name: None,
@@ -1225,6 +1232,7 @@ fn interactive_sample(app: &mut App, with_image: bool) {
         },
     );
     reply.quoted = Some(Quoted {
+        labelled: None,
         chat: None,
         id: "interactive-card".into(),
         sender: id.into(),
@@ -1256,6 +1264,7 @@ fn interactive_sample(app: &mut App, with_image: bool) {
         let last = messages.last().unwrap();
         chat.last_activity = last.timestamp;
         chat.last = Some(crate::model::LastMessage {
+            labelled: last.content.labelled(),
             from_me: last.from_me,
             sender: last.sender.clone(),
             sender_name: None,
@@ -2228,6 +2237,7 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
                 let messages = &mut app.conversations.get_mut(SAMPLES[0].id).unwrap().messages;
                 messages[3].content.media_at_mut(None).unwrap().path = Some(saved);
                 messages[2].quoted = Some(crate::model::Quoted {
+                    labelled: None,
                     chat: None,
                     id: "synthetic-quoted-message".into(),
                     sender: SAMPLES[0].id.into(),
@@ -2489,6 +2499,7 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
                     let mut reply =
                         message(chat, id, own, now - 60, Content::text("Reply preview test"));
                     reply.quoted = Some(Quoted {
+                        labelled: None,
                         chat: None,
                         id: "arabic-original".into(),
                         sender: chat.into(),
@@ -2526,6 +2537,7 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
                         let mut reply =
                             message(id, "rtl-reply", true, now, Content::text("שלום עולם"));
                         reply.quoted = Some(Quoted {
+                            labelled: None,
                             chat: None,
                             id: "rtl-hebrew".into(),
                             sender: SAMPLES[0].id.into(),
@@ -2543,6 +2555,7 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
                         let text = Content::text("עולה 3.14 ש״ח");
                         let mut reply = message(id, "rtl-digits-reply", false, now, text);
                         reply.quoted = Some(Quoted {
+                            labelled: None,
                             chat: None,
                             id: "rtl-digits".into(),
                             sender: ME.into(),
@@ -2580,6 +2593,7 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
                 let mut chat = Chat::new(ME.into(), "You".into());
                 chat.last_activity = now;
                 chat.last = messages.last().map(|last| crate::model::LastMessage {
+                    labelled: last.content.labelled(),
                     from_me: true,
                     sender: last.sender.clone(),
                     sender_name: None,
@@ -3132,6 +3146,7 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
                 let mut chat = Chat::new(ME.into(), "You".into());
                 chat.last_activity = now;
                 chat.last = messages.last().map(|last| crate::model::LastMessage {
+                    labelled: last.content.labelled(),
                     from_me: true,
                     sender: last.sender.clone(),
                     sender_name: None,
@@ -7578,6 +7593,7 @@ mod tests {
         for chat in app.chats.iter_mut() {
             if chat.id == group || chat.id == typing {
                 chat.last = Some(crate::model::LastMessage {
+                    labelled: false,
                     from_me: false,
                     sender: sender.into(),
                     sender_name: Some("Linus Example".into()),
@@ -7588,6 +7604,7 @@ mod tests {
                 });
             } else if chat.id == direct {
                 chat.last = Some(crate::model::LastMessage {
+                    labelled: false,
                     from_me: false,
                     sender: direct.into(),
                     sender_name: None,
@@ -14025,6 +14042,7 @@ mod tests {
             );
             if kind == "quote" {
                 row.quoted = Some(Quoted {
+                    labelled: None,
                     chat: None,
                     id: "original".into(),
                     sender: chat.clone(),
@@ -15163,6 +15181,7 @@ mod tests {
                 Content::text("See you there"),
             );
             reply.quoted = Some(Quoted {
+                labelled: Some(original.content.labelled()),
                 chat: Some(group.into()),
                 id: original.id,
                 sender: original.sender,

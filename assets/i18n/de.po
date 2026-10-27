@@ -3483,3 +3483,67 @@ msgstr "Anruf minimieren"
 #: src/ui/call.rs
 msgid "Restore call"
 msgstr "Anruf wiederherstellen"
+
+#: src/model.rs
+msgid "GIF"
+msgstr "GIF"
+
+#: src/model.rs
+msgid "Video message"
+msgstr "Videonachricht"
+
+#: src/model.rs
+msgid "Voice message"
+msgstr "Sprachnachricht"
+
+#: src/model.rs
+msgid "Audio"
+msgstr "Audio"
+
+#: src/model.rs
+msgid "Sticker"
+msgstr "Sticker"
+
+#: src/model.rs
+msgid "Poll"
+msgstr "Umfrage"
+
+#: src/model.rs
+msgid "This message was deleted"
+msgstr "Diese Nachricht wurde gelöscht"
+
+#: src/model.rs
+msgid "Unsupported message"
+msgstr "Nicht unterstützte Nachricht"
+
+#: src/model.rs
+msgid "View once photo"
+msgstr "Einmalig anzeigbares Foto"
+
+#: src/model.rs
+msgid "View once video"
+msgstr "Einmalig anzeigbares Video"
+
+#: src/model.rs
+msgid "View once voice message"
+msgstr "Einmalig abspielbare Sprachnachricht"
+
+#: src/model.rs
+msgid "View once audio"
+msgstr "Einmalig abspielbares Audio"
+
+#: src/model.rs
+msgid "View once message"
+msgstr "Einmalig anzeigbare Nachricht"
+
+#: src/model.rs
+msgid "Message on your phone"
+msgstr "Nachricht auf deinem Telefon"
+
+#: src/model.rs
+msgid "Missed voice call"
+msgstr "Verpasster Sprachanruf"
+
+#: src/model.rs
+msgid "Missed video call"
+msgstr "Verpasster Videoanruf"

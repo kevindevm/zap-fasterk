@@ -3454,3 +3454,67 @@ msgstr "Minimizar llamada"
 #: src/ui/call.rs
 msgid "Restore call"
 msgstr "Restaurar llamada"
+
+#: src/model.rs
+msgid "GIF"
+msgstr "GIF"
+
+#: src/model.rs
+msgid "Video message"
+msgstr "Videomensaje"
+
+#: src/model.rs
+msgid "Voice message"
+msgstr "Mensaje de voz"
+
+#: src/model.rs
+msgid "Audio"
+msgstr "Audio"
+
+#: src/model.rs
+msgid "Sticker"
+msgstr "Sticker"
+
+#: src/model.rs
+msgid "Poll"
+msgstr "Encuesta"
+
+#: src/model.rs
+msgid "This message was deleted"
+msgstr "Se eliminó este mensaje"
+
+#: src/model.rs
+msgid "Unsupported message"
+msgstr "Mensaje no compatible"
+
+#: src/model.rs
+msgid "View once photo"
+msgstr "Foto de visualización única"
+
+#: src/model.rs
+msgid "View once video"
+msgstr "Video de visualización única"
+
+#: src/model.rs
+msgid "View once voice message"
+msgstr "Mensaje de voz de reproducción única"
+
+#: src/model.rs
+msgid "View once audio"
+msgstr "Audio de reproducción única"
+
+#: src/model.rs
+msgid "View once message"
+msgstr "Mensaje de visualización única"
+
+#: src/model.rs
+msgid "Message on your phone"
+msgstr "Mensaje en tu teléfono"
+
+#: src/model.rs
+msgid "Missed voice call"
+msgstr "Llamada de voz perdida"
+
+#: src/model.rs
+msgid "Missed video call"
+msgstr "Videollamada perdida"

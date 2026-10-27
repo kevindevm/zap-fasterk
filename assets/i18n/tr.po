@@ -3430,3 +3430,67 @@ msgstr "Aramayı küçült"
 #: src/ui/call.rs
 msgid "Restore call"
 msgstr "Aramayı geri yükle"
+
+#: src/model.rs
+msgid "GIF"
+msgstr "GIF"
+
+#: src/model.rs
+msgid "Video message"
+msgstr "Görüntülü mesaj"
+
+#: src/model.rs
+msgid "Voice message"
+msgstr "Sesli mesaj"
+
+#: src/model.rs
+msgid "Audio"
+msgstr "Ses"
+
+#: src/model.rs
+msgid "Sticker"
+msgstr "Çıkartma"
+
+#: src/model.rs
+msgid "Poll"
+msgstr "Anket"
+
+#: src/model.rs
+msgid "This message was deleted"
+msgstr "Bu mesaj silindi"
+
+#: src/model.rs
+msgid "Unsupported message"
+msgstr "Desteklenmeyen mesaj"
+
+#: src/model.rs
+msgid "View once photo"
+msgstr "Tek seferlik fotoğraf"
+
+#: src/model.rs
+msgid "View once video"
+msgstr "Tek seferlik video"
+
+#: src/model.rs
+msgid "View once voice message"
+msgstr "Tek seferlik sesli mesaj"
+
+#: src/model.rs
+msgid "View once audio"
+msgstr "Tek seferlik ses"
+
+#: src/model.rs
+msgid "View once message"
+msgstr "Tek seferlik mesaj"
+
+#: src/model.rs
+msgid "Message on your phone"
+msgstr "Telefonunuzdaki mesaj"
+
+#: src/model.rs
+msgid "Missed voice call"
+msgstr "Cevapsız sesli arama"
+
+#: src/model.rs
+msgid "Missed video call"
+msgstr "Cevapsız görüntülü arama"

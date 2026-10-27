@@ -746,7 +746,7 @@ fn starred_row(
     let summary = if app.settings.screen_privacy.enabled {
         "••••••".to_owned()
     } else {
-        message.content.full_summary()
+        message.content.full_summary_in(app.locale)
     };
     let words = crate::markup::plain(&app.resolve_mention_tokens(&summary), &[]);
     let body = widgets::line(
@@ -1522,7 +1522,7 @@ fn hit_row(app: &mut App, ui: &mut egui::Ui, hit: &Message) {
         }
         let words = widgets::line(
             ui,
-            &app.preview_line(&hit.summary(), hit),
+            &app.preview_line(&hit.summary_in(app.locale), hit),
             theme::regular(13.0),
             palette.dim,
             (right - x).max(0.0),
@@ -1882,7 +1882,10 @@ fn row(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> egui::Response {
             }
             let words = widgets::line(
                 ui,
-                &crate::markup::plain(&app.resolve_mention_tokens(&last.summary), &[]),
+                &crate::markup::plain(
+                    &app.resolve_mention_tokens(&last.summary_in(app.locale)),
+                    &[],
+                ),
                 theme::regular(13.0),
                 preview_color,
                 (badge_right - x).max(0.0),
@@ -1895,7 +1898,7 @@ fn row(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> egui::Response {
                     pos2(left, line_y - 4.0),
                     pos2(badge_right, line_y + words.size().y.max(16.0) + 4.0),
                 );
-                full_preview = Some((area, prefix, last.full.clone()));
+                full_preview = Some((area, prefix, last.full_in(app.locale).into_owned()));
             }
             words
         } else {
