@@ -8749,10 +8749,18 @@ impl Worker {
         let _ = self.archive.set_left(chat, true);
         if archive {
             let _ = self.archive.set_archived(chat, true);
+            let last = match self.newest_on_phone(chat) {
+                Ok(last) => last,
+                Err(error) => {
+                    log::warn!("could not read a chat to archive it on the phone: {error}");
+                    None
+                }
+            };
             self.tell_phone(chat, move |client, jid| async move {
+                let range = Some(archive_sync::archive_range(&jid, last.as_ref()));
                 client
                     .chat_actions()
-                    .archive_chat(&jid, None)
+                    .archive_chat(&jid, range)
                     .await
                     .map_err(|error| error.to_string())
             });
@@ -20257,6 +20265,77 @@ mod receipt_tests {
         unarchived.chats[0].archived = Some(false);
         worker.apply_history(unarchived, true);
         assert!(!worker.archive.chat(PEER).unwrap().unwrap().archived);
+    }
+
+    #[test]
+    fn archive_range_names_the_newest_message() {
+        let jid: Jid = PEER.parse().unwrap();
+        let last = incoming("newest", 300);
+        let range = archive_sync::archive_range(&jid, Some(&last));
+        assert_eq!(range.last_message_timestamp, Some(300));
+        assert_eq!(range.messages.len(), 1);
+        assert_eq!(range.messages[0].timestamp, Some(300));
+        assert_eq!(range.messages[0].key.id.as_deref(), Some("newest"));
+    }
+
+    #[test]
+    fn archive_range_leaves_local_call_entries_out() {
+        let jid: Jid = PEER.parse().unwrap();
+        for prefix in ["local-call:", "call-log:"] {
+            let last = incoming(&format!("{prefix}1"), 400);
+            let range = archive_sync::archive_range(&jid, Some(&last));
+            assert_eq!(range.last_message_timestamp, Some(400));
+            assert!(range.messages.is_empty(), "{prefix} names no message");
+        }
+        let empty = archive_sync::archive_range(&jid, None);
+        assert!(empty.messages.is_empty());
+        assert!(empty.last_message_timestamp.is_some());
+    }
+
+    #[test]
+    fn the_archive_range_skips_sends_the_phone_never_got() {
+        let (mut worker, _events, _inbox, _wa) = worker();
+        worker.store_message(incoming("theirs", 100), None, None);
+        worker.store_message(
+            Message {
+                status: Delivery::Failed,
+                ..own_message("failed", 200)
+            },
+            None,
+            None,
+        );
+        worker.store_message(
+            Message {
+                status: Delivery::Pending,
+                ..own_message("pending", 300)
+            },
+            None,
+            None,
+        );
+        let newest = worker.newest_on_phone(PEER).unwrap().expect("a message");
+        assert_eq!(newest.id, "theirs");
+    }
+
+    #[test]
+    fn the_archive_range_names_the_sender_in_a_group() {
+        let group: Jid = "123-456@g.us".parse().unwrap();
+        let last = Message {
+            chat: "123-456@g.us".into(),
+            sender: PEER.into(),
+            ..incoming("theirs", 100)
+        };
+        let range = archive_sync::archive_range(&group, Some(&last));
+        assert_eq!(range.messages.len(), 1);
+        assert_eq!(range.messages[0].key.participant.as_deref(), Some(PEER));
+        let untimed = archive_sync::archive_range(
+            &group,
+            Some(&Message {
+                timestamp: 0,
+                ..last
+            }),
+        );
+        assert!(untimed.messages.is_empty());
+        assert!(untimed.last_message_timestamp.is_some_and(|at| at > 0));
     }
 
     #[tokio::test]

@@ -1,5 +1,40 @@
 //! Archive requests share regular_low serialization with read state and stars.
 use super::{Command, Duration, Event, Instant, LinkStatus, Worker};
+use whatsapp_rust::Jid;
+use whatsapp_rust::wacore_binary::jid::JidExt;
+
+/// How many of a chat's newest messages are searched for one the phone has.
+const PHONE_RANGE_LOOKBACK: usize = 20;
+
+/// The range WhatsApp checks before it archives or unarchives a chat on the
+/// phone: the chat's newest message. A phone left the chat in place when the
+/// change came without one. Local call entries were never sent, so they
+/// give their time but name no message, and a message without a time is
+/// treated as none.
+pub(super) fn archive_range(
+    jid: &Jid,
+    last: Option<&crate::model::Message>,
+) -> whatsapp_rust::SyncActionMessageRange {
+    let Some(last) = last.filter(|last| last.timestamp > 0) else {
+        return whatsapp_rust::message_range(crate::util::now(), None, Vec::new());
+    };
+    let participant = (jid.is_group() && !last.from_me)
+        .then(|| Worker::jid_of(&last.sender))
+        .flatten();
+    let key = (!is_local_call_entry(&last.id))
+        .then(|| whatsapp_rust::MessageId::new(&last.id).ok())
+        .flatten()
+        .and_then(|id| {
+            whatsapp_rust::MessageRef::new(jid, id, participant.as_ref(), last.from_me).ok()
+        });
+    whatsapp_rust::message_range(last.timestamp, None, key.map(|key| (key, last.timestamp)))
+}
+
+/// Local call entries were never sent, so the phone cannot know them.
+fn is_local_call_entry(id: &str) -> bool {
+    id.starts_with("local-call:") || id.starts_with("call-log:")
+}
+
 impl Worker {
     pub(super) fn request_archive_change(&mut self, chat: String, archived: bool) {
         let chat = self.canonical_str(&chat);
@@ -16,6 +51,26 @@ impl Worker {
                 "Could not save the archive change. Try again.".into(),
             )),
         }
+    }
+
+    /// The chat's newest message the phone has: a send still pending or
+    /// failed here may never have reached it.
+    pub(super) fn newest_on_phone(
+        &self,
+        chat: &str,
+    ) -> Result<Option<crate::model::Message>, rusqlite::Error> {
+        Ok(self
+            .archive
+            .messages(chat, None, PHONE_RANGE_LOOKBACK)?
+            .into_iter()
+            .rev()
+            .find(|message| {
+                !(message.from_me
+                    && matches!(
+                        message.status,
+                        crate::model::Delivery::Pending | crate::model::Delivery::Failed
+                    ))
+            }))
     }
     pub(super) fn apply_remote_archive(&mut self, chat: String, mut archived: bool, mut at: i64) {
         let chat = self.canonical_str(&chat);
@@ -69,6 +124,15 @@ impl Worker {
         if !self.read_sync.start_archive(&chat, at, Instant::now()) {
             return;
         }
+        // The newest message the phone has travels with the change; a range
+        // made up without it could move the phone past messages it has.
+        let last = match self.newest_on_phone(&chat) {
+            Ok(last) => last,
+            Err(error) => {
+                log::warn!("could not read a chat to archive it on the phone: {error}");
+                None
+            }
+        };
         let commands = self.commands.clone();
         let generation = self.privacy_generation;
         tokio::spawn(async move {
@@ -78,10 +142,11 @@ impl Worker {
                         + Send,
                 >,
             > = Box::pin(async {
+                let range = Some(archive_range(&jid, last.as_ref()));
                 if archived {
-                    client.chat_actions().archive_chat(&jid, None).await
+                    client.chat_actions().archive_chat(&jid, range).await
                 } else {
-                    client.chat_actions().unarchive_chat(&jid, None).await
+                    client.chat_actions().unarchive_chat(&jid, range).await
                 }
             });
             let accepted = matches!(
