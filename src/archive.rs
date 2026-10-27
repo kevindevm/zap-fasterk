@@ -38,6 +38,9 @@ mod pins;
 pub use pins::{Pinned, Pinner};
 mod polls;
 mod receipts;
+mod reconcile;
+#[cfg(test)]
+mod reconcile_tests;
 mod stars;
 mod stickers;
 pub use polls::PollVote;
@@ -1444,8 +1447,7 @@ impl Archive {
                 history_order = COALESCE(messages.history_order, excluded.history_order)",
             params![lid_chat, phone_chat],
         )?;
-        transaction.execute("INSERT INTO stars(chat,id,starred,starred_at) SELECT ?2,id,starred,starred_at FROM stars WHERE chat=?1 ON CONFLICT(chat,id) DO UPDATE SET starred=excluded.starred,starred_at=excluded.starred_at WHERE excluded.starred_at>stars.starred_at OR (excluded.starred_at=stars.starred_at AND excluded.starred=0)",params![lid_chat,phone_chat])?;
-        transaction.execute("INSERT INTO message_pins(chat,id,pinned,pinned_at,changed_at,expires_at,by_me,sender) SELECT ?2,id,pinned,pinned_at,changed_at,expires_at,by_me,sender FROM message_pins WHERE chat=?1 ON CONFLICT(chat,id) DO UPDATE SET pinned=excluded.pinned,pinned_at=excluded.pinned_at,changed_at=excluded.changed_at,expires_at=excluded.expires_at,by_me=excluded.by_me,sender=excluded.sender WHERE excluded.changed_at>message_pins.changed_at OR (excluded.changed_at=message_pins.changed_at AND excluded.pinned=0)",params![lid_chat,phone_chat])?;
+        Self::move_message_metadata(transaction, &lid_chat, &phone_chat)?;
         transaction.execute("INSERT OR IGNORE INTO pin_notices(chat,id,pinned_at,expires_at,by_me,sender) SELECT ?2,id,pinned_at,expires_at,by_me,sender FROM pin_notices WHERE chat=?1",params![lid_chat,phone_chat])?;
         transaction.execute("INSERT INTO media_jobs(chat,id,card,attempts,next_attempt,state) SELECT ?2,id,card,attempts,next_attempt,state FROM media_jobs WHERE chat=?1 ON CONFLICT(chat,id,card) DO UPDATE SET attempts=MAX(media_jobs.attempts,excluded.attempts),next_attempt=MAX(media_jobs.next_attempt,excluded.next_attempt),state=MAX(media_jobs.state,excluded.state)",params![lid_chat,phone_chat])?;
         transaction.execute("INSERT INTO managed_exports(chat,id,card,root,destination,attempts,next_attempt,state) SELECT ?2,id,card,root,destination,attempts,next_attempt,state FROM managed_exports WHERE chat=?1 ON CONFLICT(chat,id,card) DO NOTHING",params![lid_chat,phone_chat])?;
