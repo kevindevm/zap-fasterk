@@ -520,10 +520,12 @@ and it resets when Zap Faster restarts.
 
 Right-click a chat to pin, favorite, archive, mark as unread, or mute it for
 eight hours, one week, or indefinitely. These changes also apply on your
-phone. **Delete chat** in the same menu and **Clear chat** in the chat
-header's menu need a connection: the phone acts first, and the chat leaves
-this computer once it confirms. Groups and channels can be left from the same
-menu, keeping their history here. `Ctrl+E` (Command+E on macOS) archives the
+phone. **Clear chat** is in this menu and in the chat header's menu; it needs a
+connection and asks first. It clears messages on this computer and your phone,
+removes cached media from this computer, and keeps the chat. Media saved in
+your configured download folder stays there. **Delete chat** in
+the same menu also needs a connection and confirmation. Groups and channels
+can be left from the same menu, keeping their history here. `Ctrl+E` (Command+E on macOS) archives the
 open chat, or unarchives it from **Archived**, as in WhatsApp.
 
 Archived chats stay archived when new messages arrive. In Settings, turn off
