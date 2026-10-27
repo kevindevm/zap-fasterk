@@ -286,6 +286,24 @@ impl Archive {
 mod tests {
     use super::*;
 
+    /// The merge looks receipts up by recipient, and without this index the
+    /// startup reconciliation scanned the whole table once per identity.
+    #[test]
+    fn the_recipient_lookup_uses_its_index() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("archive.db");
+        let archive = Archive::open_with_key(&path, &[7; 32]).unwrap();
+        let plan: String = archive
+            .connection
+            .query_row(
+                "EXPLAIN QUERY PLAN SELECT 1 FROM group_receipts WHERE recipient = ?1",
+                ["9@lid"],
+                |row| row.get(3),
+            )
+            .unwrap();
+        assert!(plan.contains("group_receipts_by_recipient"), "{plan}");
+    }
+
     #[test]
     fn group_receipts_survive_reopening_and_use_the_last_readers_time() {
         let directory = tempfile::tempdir().unwrap();
