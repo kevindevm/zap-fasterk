@@ -3494,3 +3494,39 @@ msgstr "Cevapsız sesli arama"
 #: src/model.rs
 msgid "Missed video call"
 msgstr "Cevapsız görüntülü arama"
+
+#: src/ui/conversation.rs
+msgid "Select"
+msgstr "Seç"
+
+#: src/ui/conversation.rs
+msgid "Copy text"
+msgstr "Metni kopyala"
+
+#: src/ui/conversation.rs
+msgid "Edit"
+msgstr "Düzenle"
+
+#: src/ui/conversation.rs
+msgid "Delete for everyone"
+msgstr "Herkesten sil"
+
+#: src/ui/conversation.rs
+msgid "Delete for me"
+msgstr "Benden sil"
+
+#: src/ui/conversation.rs
+msgid "Show in folder"
+msgstr "Klasörde göster"
+
+#: src/ui/conversation.rs
+msgid "Copy message ID"
+msgstr "Mesaj kimliğini kopyala"
+
+#: src/ui/conversation.rs
+msgid "Remove your reaction"
+msgstr "Tepkiyi kaldır"
+
+#: src/ui/conversation.rs
+msgid "React with any emoji"
+msgstr "Herhangi bir emojiyle tepki ver"

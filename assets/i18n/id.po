@@ -3501,3 +3501,39 @@ msgstr "Panggilan suara tak terjawab"
 #: src/model.rs
 msgid "Missed video call"
 msgstr "Panggilan video tak terjawab"
+
+#: src/ui/conversation.rs
+msgid "Select"
+msgstr "Pilih"
+
+#: src/ui/conversation.rs
+msgid "Copy text"
+msgstr "Salin teks"
+
+#: src/ui/conversation.rs
+msgid "Edit"
+msgstr "Edit"
+
+#: src/ui/conversation.rs
+msgid "Delete for everyone"
+msgstr "Hapus untuk semua orang"
+
+#: src/ui/conversation.rs
+msgid "Delete for me"
+msgstr "Hapus untuk saya"
+
+#: src/ui/conversation.rs
+msgid "Show in folder"
+msgstr "Tampilkan di folder"
+
+#: src/ui/conversation.rs
+msgid "Copy message ID"
+msgstr "Salin ID pesan"
+
+#: src/ui/conversation.rs
+msgid "Remove your reaction"
+msgstr "Hapus reaksi Anda"
+
+#: src/ui/conversation.rs
+msgid "React with any emoji"
+msgstr "Beri reaksi dengan emoji apa pun"

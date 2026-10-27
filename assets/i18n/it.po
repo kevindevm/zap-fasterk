@@ -3520,3 +3520,39 @@ msgstr "Chiamata vocale persa"
 #: src/model.rs
 msgid "Missed video call"
 msgstr "Videochiamata persa"
+
+#: src/ui/conversation.rs
+msgid "Select"
+msgstr "Seleziona"
+
+#: src/ui/conversation.rs
+msgid "Copy text"
+msgstr "Copia testo"
+
+#: src/ui/conversation.rs
+msgid "Edit"
+msgstr "Modifica"
+
+#: src/ui/conversation.rs
+msgid "Delete for everyone"
+msgstr "Elimina per tutti"
+
+#: src/ui/conversation.rs
+msgid "Delete for me"
+msgstr "Elimina per me"
+
+#: src/ui/conversation.rs
+msgid "Show in folder"
+msgstr "Mostra nella cartella"
+
+#: src/ui/conversation.rs
+msgid "Copy message ID"
+msgstr "Copia ID messaggio"
+
+#: src/ui/conversation.rs
+msgid "Remove your reaction"
+msgstr "Rimuovi la tua reazione"
+
+#: src/ui/conversation.rs
+msgid "React with any emoji"
+msgstr "Reagisci con qualsiasi emoji"

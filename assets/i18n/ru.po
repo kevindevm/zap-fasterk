@@ -3537,3 +3537,39 @@ msgstr "Пропущенный аудиозвонок"
 #: src/model.rs
 msgid "Missed video call"
 msgstr "Пропущенный видеозвонок"
+
+#: src/ui/conversation.rs
+msgid "Select"
+msgstr "Выбрать"
+
+#: src/ui/conversation.rs
+msgid "Copy text"
+msgstr "Копировать текст"
+
+#: src/ui/conversation.rs
+msgid "Edit"
+msgstr "Изменить"
+
+#: src/ui/conversation.rs
+msgid "Delete for everyone"
+msgstr "Удалить у всех"
+
+#: src/ui/conversation.rs
+msgid "Delete for me"
+msgstr "Удалить у меня"
+
+#: src/ui/conversation.rs
+msgid "Show in folder"
+msgstr "Показать в папке"
+
+#: src/ui/conversation.rs
+msgid "Copy message ID"
+msgstr "Копировать ID сообщения"
+
+#: src/ui/conversation.rs
+msgid "Remove your reaction"
+msgstr "Убрать реакцию"
+
+#: src/ui/conversation.rs
+msgid "React with any emoji"
+msgstr "Отреагировать любым эмодзи"

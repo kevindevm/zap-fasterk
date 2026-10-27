@@ -3547,3 +3547,39 @@ msgstr "Verpasster Sprachanruf"
 #: src/model.rs
 msgid "Missed video call"
 msgstr "Verpasster Videoanruf"
+
+#: src/ui/conversation.rs
+msgid "Select"
+msgstr "Auswählen"
+
+#: src/ui/conversation.rs
+msgid "Copy text"
+msgstr "Text kopieren"
+
+#: src/ui/conversation.rs
+msgid "Edit"
+msgstr "Bearbeiten"
+
+#: src/ui/conversation.rs
+msgid "Delete for everyone"
+msgstr "Für alle löschen"
+
+#: src/ui/conversation.rs
+msgid "Delete for me"
+msgstr "Für mich löschen"
+
+#: src/ui/conversation.rs
+msgid "Show in folder"
+msgstr "Im Ordner anzeigen"
+
+#: src/ui/conversation.rs
+msgid "Copy message ID"
+msgstr "Nachrichten-ID kopieren"
+
+#: src/ui/conversation.rs
+msgid "Remove your reaction"
+msgstr "Deine Reaktion entfernen"
+
+#: src/ui/conversation.rs
+msgid "React with any emoji"
+msgstr "Mit einem beliebigen Emoji reagieren"

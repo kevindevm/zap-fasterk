@@ -3304,3 +3304,39 @@ msgstr ""
 #: src/model.rs
 msgid "Missed video call"
 msgstr ""
+
+#: src/ui/conversation.rs
+msgid "Select"
+msgstr ""
+
+#: src/ui/conversation.rs
+msgid "Copy text"
+msgstr ""
+
+#: src/ui/conversation.rs
+msgid "Edit"
+msgstr ""
+
+#: src/ui/conversation.rs
+msgid "Delete for everyone"
+msgstr ""
+
+#: src/ui/conversation.rs
+msgid "Delete for me"
+msgstr ""
+
+#: src/ui/conversation.rs
+msgid "Show in folder"
+msgstr ""
+
+#: src/ui/conversation.rs
+msgid "Copy message ID"
+msgstr ""
+
+#: src/ui/conversation.rs
+msgid "Remove your reaction"
+msgstr ""
+
+#: src/ui/conversation.rs
+msgid "React with any emoji"
+msgstr ""

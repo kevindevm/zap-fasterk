@@ -3362,3 +3362,39 @@ msgstr "未接语音通话"
 #: src/model.rs
 msgid "Missed video call"
 msgstr "未接视频通话"
+
+#: src/ui/conversation.rs
+msgid "Select"
+msgstr "选择"
+
+#: src/ui/conversation.rs
+msgid "Copy text"
+msgstr "复制文本"
+
+#: src/ui/conversation.rs
+msgid "Edit"
+msgstr "编辑"
+
+#: src/ui/conversation.rs
+msgid "Delete for everyone"
+msgstr "为所有人删除"
+
+#: src/ui/conversation.rs
+msgid "Delete for me"
+msgstr "为我删除"
+
+#: src/ui/conversation.rs
+msgid "Show in folder"
+msgstr "在文件夹中显示"
+
+#: src/ui/conversation.rs
+msgid "Copy message ID"
+msgstr "复制消息 ID"
+
+#: src/ui/conversation.rs
+msgid "Remove your reaction"
+msgstr "移除你的回应"
+
+#: src/ui/conversation.rs
+msgid "React with any emoji"
+msgstr "用任意表情回应"

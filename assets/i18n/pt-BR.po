@@ -3514,3 +3514,39 @@ msgstr "Chamada de voz perdida"
 #: src/model.rs
 msgid "Missed video call"
 msgstr "Chamada de vídeo perdida"
+
+#: src/ui/conversation.rs
+msgid "Select"
+msgstr "Selecionar"
+
+#: src/ui/conversation.rs
+msgid "Copy text"
+msgstr "Copiar texto"
+
+#: src/ui/conversation.rs
+msgid "Edit"
+msgstr "Editar"
+
+#: src/ui/conversation.rs
+msgid "Delete for everyone"
+msgstr "Apagar para todos"
+
+#: src/ui/conversation.rs
+msgid "Delete for me"
+msgstr "Apagar para mim"
+
+#: src/ui/conversation.rs
+msgid "Show in folder"
+msgstr "Mostrar na pasta"
+
+#: src/ui/conversation.rs
+msgid "Copy message ID"
+msgstr "Copiar ID da mensagem"
+
+#: src/ui/conversation.rs
+msgid "Remove your reaction"
+msgstr "Remover sua reação"
+
+#: src/ui/conversation.rs
+msgid "React with any emoji"
+msgstr "Reagir com qualquer emoji"

@@ -5068,19 +5068,9 @@ fn bubble_frame(
     }
     let force_menu = view.open_menu == Some(message.id.as_str()) || keyboard_menu;
     let quick = quick_reactions(message, view.reaction_emoji).len() as f32 + 1.0;
-    let width = widgets::menu_width(
-        ui,
-        &[
-            "Delete for everyone",
-            "Show in folder",
-            "Copy message ID",
-            &crate::i18n::gettext(view.locale, "Open in system player"),
-            &crate::i18n::gettext(view.locale, "Message info"),
-            &crate::i18n::gettext(view.locale, "Reload earlier messages"),
-        ],
-        true,
-    )
-    .max(quick * 36.0 + 12.0);
+    let labels = message_menu_labels(view.locale);
+    let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+    let width = widgets::menu_width(ui, &refs, true).max(quick * 36.0 + 12.0);
     let keyboard_clicked =
         bubble.clicked() && bubble.has_focus() && !ui.input(|input| input.pointer.any_click());
     let open = if right_clicked || force_menu || reacting || keyboard_clicked {
@@ -6185,18 +6175,46 @@ pub(crate) fn menu_width(
     message: &Message,
 ) -> f32 {
     let quick = quick_reactions(message, reaction_emoji).len() as f32 + 1.0;
-    widgets::menu_width(
-        ui,
-        &[
-            "Delete for everyone",
-            "Show in folder",
-            "Copy message ID",
-            &crate::i18n::gettext(locale, "Open in system player"),
-            &crate::i18n::gettext(locale, "Message info"),
-        ],
-        true,
-    )
-    .max(quick * 36.0 + 12.0)
+    let labels = message_menu_labels(locale);
+    let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+    widgets::menu_width(ui, &refs, true).max(quick * 36.0 + 12.0)
+}
+
+/// Every label the menu of a message other than a call can show, in `locale`.
+/// The menu is as wide as the longest one, and which one that is depends on
+/// the language: a label left out here is cut when its translation is the
+/// longest.
+fn message_menu_labels(locale: crate::i18n::Locale) -> Vec<String> {
+    use crate::i18n::gettext;
+    [
+        gettext(locale, "Reply"),
+        gettext(locale, "Reply privately"),
+        gettext(locale, "Star"),
+        gettext(locale, "Unstar"),
+        gettext(locale, "Pin message"),
+        gettext(locale, "Unpin message"),
+        gettext(locale, "Forward"),
+        gettext(locale, "Open in the viewer"),
+        gettext(locale, "Select"),
+        gettext(locale, "Copy text"),
+        gettext(locale, "Edit"),
+        gettext(locale, "Delete for everyone"),
+        gettext(locale, "Delete for me"),
+        gettext(locale, "Add to favorites"),
+        gettext(locale, "Open in system player"),
+        gettext(locale, "Open file"),
+        gettext(locale, "Copy image"),
+        gettext(locale, "Save as…"),
+        gettext(locale, "Show in folder"),
+        gettext(locale, "Downloading…"),
+        gettext(locale, "Download"),
+        gettext(locale, "Message info"),
+        gettext(locale, "Reload earlier messages"),
+        gettext(locale, "Copy message ID"),
+    ]
+    .into_iter()
+    .map(|label| label.into_owned())
+    .collect()
 }
 
 /// Where a message menu was opened from. A starred row has no composer, no
@@ -6328,17 +6346,41 @@ fn selection_menu(
     selected: &[String],
     actions: &mut Vec<Action>,
 ) {
+    selection_delete_items(
+        ui,
+        &view.palette,
+        view.locale,
+        &view.chat.id,
+        selection_can_revoke(messages, selected, view.now),
+        selected,
+        actions,
+    );
+}
+
+fn selection_delete_items(
+    ui: &mut egui::Ui,
+    palette: &Palette,
+    locale: crate::i18n::Locale,
+    chat: &str,
+    can_revoke: bool,
+    selected: &[String],
+    actions: &mut Vec<Action>,
+) {
     for (label, for_everyone, enabled) in [
         (
-            "Delete for everyone",
+            crate::i18n::gettext(locale, "Delete for everyone"),
             true,
-            selection_can_revoke(messages, selected, view.now),
+            can_revoke,
         ),
-        ("Delete for me", false, !selected.is_empty()),
+        (
+            crate::i18n::gettext(locale, "Delete for me"),
+            false,
+            !selected.is_empty(),
+        ),
     ] {
-        if widgets::menu_item_enabled(ui, &view.palette, Some(Icon::Trash), label, enabled) {
+        if widgets::menu_item_enabled(ui, palette, Some(Icon::Trash), &label, enabled) {
             actions.push(Action::ShowDialog(Dialog::ConfirmDeleteSelection {
-                chat: view.chat.id.clone(),
+                chat: chat.to_owned(),
                 messages: selected.to_vec(),
                 for_everyone,
             }));
@@ -6405,7 +6447,9 @@ fn context_menu_contents(
                     line.paint(ui, rect.center() - line.size() / 2.0, palette.text);
                     let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
                     let response = if chosen {
-                        response.on_hover_text("Remove your reaction")
+                        response.on_hover_text(
+                            crate::i18n::gettext(view.locale, "Remove your reaction").into_owned(),
+                        )
                     } else {
                         response
                     };
@@ -6441,7 +6485,9 @@ fn context_menu_contents(
                 }
                 if response
                     .on_hover_cursor(egui::CursorIcon::PointingHand)
-                    .on_hover_text("React with any emoji")
+                    .on_hover_text(
+                        crate::i18n::gettext(view.locale, "React with any emoji").into_owned(),
+                    )
                     .clicked()
                 {
                     actions.push(Action::OpenReactionPicker {
@@ -6469,7 +6515,12 @@ fn context_menu_contents(
     }
     if !local
         && !matches!(message.content, Content::Revoked)
-        && widgets::menu_item(ui, &palette, Some(Icon::Reply), "Reply")
+        && widgets::menu_item(
+            ui,
+            &palette,
+            Some(Icon::Reply),
+            &crate::i18n::gettext(view.locale, "Reply"),
+        )
     {
         if matches!(origin, MenuOrigin::List) {
             actions.push(Action::OpenMessage {
@@ -6571,7 +6622,12 @@ fn context_menu_contents(
     }
     if !local
         && crate::app::can_select(&message.content)
-        && widgets::menu_item(ui, &palette, Some(Icon::Forward), "Forward")
+        && widgets::menu_item(
+            ui,
+            &palette,
+            Some(Icon::Forward),
+            &crate::i18n::gettext(view.locale, "Forward"),
+        )
     {
         actions.push(Action::ShowDialog(Dialog::Forward {
             chat: chat.clone(),
@@ -6579,7 +6635,12 @@ fn context_menu_contents(
         }));
     }
     if crate::app::can_select(&message.content)
-        && widgets::menu_item(ui, &palette, Some(Icon::Check), "Select")
+        && widgets::menu_item(
+            ui,
+            &palette,
+            Some(Icon::Check),
+            &crate::i18n::gettext(view.locale, "Select"),
+        )
     {
         if matches!(origin, MenuOrigin::List) {
             actions.push(Action::OpenMessage {
@@ -6608,7 +6669,12 @@ fn context_menu_contents(
         _ => None,
     };
     if let Some(text) = text
-        && widgets::menu_item(ui, &palette, Some(Icon::Copy), "Copy text")
+        && widgets::menu_item(
+            ui,
+            &palette,
+            Some(Icon::Copy),
+            &crate::i18n::gettext(view.locale, "Copy text"),
+        )
     {
         let mentions = mentions_of(view, message);
         actions.push(Action::CopyText(markup::plain(&text, &mentions)));
@@ -6619,7 +6685,14 @@ fn context_menu_contents(
         && message.from_me
         && !matches!(message.content, Content::Revoked)
         && age <= crate::app::REVOKE_WINDOW.as_secs() as i64;
-    if can_edit && widgets::menu_item(ui, &palette, Some(Icon::Pencil), "Edit") {
+    if can_edit
+        && widgets::menu_item(
+            ui,
+            &palette,
+            Some(Icon::Pencil),
+            &crate::i18n::gettext(view.locale, "Edit"),
+        )
+    {
         if matches!(origin, MenuOrigin::List) {
             actions.push(Action::OpenMessage {
                 chat: chat.clone(),
@@ -6628,7 +6701,14 @@ fn context_menu_contents(
         }
         actions.push(Action::Edit(message.id.clone()));
     }
-    if can_revoke && widgets::menu_item(ui, &palette, Some(Icon::Trash), "Delete for everyone") {
+    if can_revoke
+        && widgets::menu_item(
+            ui,
+            &palette,
+            Some(Icon::Trash),
+            &crate::i18n::gettext(view.locale, "Delete for everyone"),
+        )
+    {
         actions.push(Action::ShowDialog(Dialog::ConfirmDeleteMessage {
             chat: view.chat.id.clone(),
             message: message.id.clone(),
@@ -6636,7 +6716,12 @@ fn context_menu_contents(
         }));
     }
     if (!local || message.status == Delivery::Unconfirmed)
-        && widgets::menu_item(ui, &palette, Some(Icon::EyeOff), "Delete for me")
+        && widgets::menu_item(
+            ui,
+            &palette,
+            Some(Icon::EyeOff),
+            &crate::i18n::gettext(view.locale, "Delete for me"),
+        )
     {
         actions.push(Action::ShowDialog(Dialog::ConfirmDeleteMessage {
             chat: view.chat.id.clone(),
@@ -6661,7 +6746,7 @@ fn context_menu_contents(
                 let open = if matches!(message.content, Content::Video { gif: false, .. }) {
                     crate::i18n::gettext(view.locale, "Open in system player")
                 } else {
-                    "Open file".into()
+                    crate::i18n::gettext(view.locale, "Open file")
                 };
                 if widgets::menu_item(ui, &palette, Some(Icon::ExternalLink), &open) {
                     actions.push(Action::OpenFile(path.clone()));
@@ -6676,14 +6761,24 @@ fn context_menu_contents(
                 {
                     actions.push(Action::CopyImage(path.clone()));
                 }
-                if widgets::menu_item(ui, &palette, Some(Icon::Download), "Save as…") {
+                if widgets::menu_item(
+                    ui,
+                    &palette,
+                    Some(Icon::Download),
+                    &crate::i18n::gettext(view.locale, "Save as…"),
+                ) {
                     actions.push(Action::SaveAttachmentAs {
                         path: path.clone(),
                         name: attachment_name(&message.content, path),
                     });
                 }
                 if let Some(folder) = path.parent()
-                    && widgets::menu_item(ui, &palette, Some(Icon::FileText), "Show in folder")
+                    && widgets::menu_item(
+                        ui,
+                        &palette,
+                        Some(Icon::FileText),
+                        &crate::i18n::gettext(view.locale, "Show in folder"),
+                    )
                 {
                     actions.push(Action::OpenFolder(folder.to_path_buf()));
                 }
@@ -6697,10 +6792,10 @@ fn context_menu_contents(
                     ui,
                     &palette,
                     Some(Icon::Download),
-                    if downloading {
-                        "Downloading…"
+                    &if downloading {
+                        crate::i18n::gettext(view.locale, "Downloading…")
                     } else {
-                        "Download"
+                        crate::i18n::gettext(view.locale, "Download")
                     },
                     !downloading,
                 ) {
@@ -6749,7 +6844,12 @@ fn context_menu_contents(
         });
     }
     // The id helps when looking a message up for a bug report.
-    if widgets::menu_item(ui, &palette, Some(Icon::Copy), "Copy message ID") {
+    if widgets::menu_item(
+        ui,
+        &palette,
+        Some(Icon::Copy),
+        &crate::i18n::gettext(view.locale, "Copy message ID"),
+    ) {
         actions.push(Action::CopyText(message.id.clone()));
     }
 }
@@ -12200,6 +12300,228 @@ mod reaction_tests {
         assert_eq!(message.reactions[0].emoji, "🏆");
         assert!(!message.reactions[0].from_me);
         assert_eq!(quick_reactions(&message, &[]), QUICK_REACTIONS.to_vec());
+    }
+
+    /// A message as a list row draws its menu: starred or not, pinned or not.
+    struct MenuRow {
+        message: Message,
+        marks: Marks,
+        pinned: bool,
+    }
+
+    /// The accessible labels of the message menu for `row`, drawn in
+    /// `locale` the way a right-click draws it.
+    fn drawn_menu_labels(locale: crate::i18n::Locale, row: &MenuRow) -> Vec<String> {
+        let message = &row.message;
+        let directory = tempfile::tempdir().unwrap();
+        let (mut app, _) = App::headless(
+            crate::paths::AppDirs::under(directory.path()),
+            crate::settings::Settings::default(),
+        );
+        app.locale = locale;
+        if row.pinned {
+            app.pins
+                .insert(message.chat.clone(), HashSet::from([message.id.clone()]));
+        }
+        let chat = Chat::new(message.chat.clone(), "Ada".into());
+        let ctx = egui::Context::default();
+        ctx.enable_accesskit();
+        crate::theme::install(&ctx);
+        let mut actions = Vec::new();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            list_menu(&app, ui, &chat, message, row.marks, &mut actions);
+        });
+        output.textures_delta.clear();
+        let tree = output
+            .platform_output
+            .accesskit_update
+            .expect("accessibility tree");
+        tree.nodes
+            .iter()
+            .filter_map(|(_, node)| node.label().map(str::to_owned))
+            .collect()
+    }
+
+    /// The labels of the message menu made of words: quick reactions are emoji.
+    fn drawn_menu_words(locale: crate::i18n::Locale, row: &MenuRow) -> Vec<String> {
+        drawn_menu_labels(locale, row)
+            .into_iter()
+            .filter(|label| label.chars().any(|c| c.is_alphabetic()))
+            .collect()
+    }
+
+    /// Rows whose menus between them show every entry a list row can: our
+    /// own fresh delivered text, starred and pinned, photos with and without
+    /// their file and one downloading, a video and a sticker.
+    fn menu_fixtures(file: &Path) -> Vec<MenuRow> {
+        use MediaState::{Downloading, Idle};
+        let mut own = with_reactions(Vec::new());
+        own.from_me = true;
+        own.timestamp = crate::util::now();
+        own.status = Delivery::Delivered;
+        let path = Some(file.to_path_buf());
+        let media = |mime: &str, path: Option<PathBuf>, state| Media {
+            mime: mime.into(),
+            size: 1,
+            width: None,
+            height: None,
+            album: None,
+            path,
+            state,
+        };
+        let row = |content: Content| {
+            let mut message = with_reactions(Vec::new());
+            message.content = content;
+            MenuRow {
+                message,
+                marks: Marks { starred: false },
+                pinned: false,
+            }
+        };
+        let photo = |path: Option<PathBuf>, state| {
+            row(Content::Image {
+                caption: None,
+                media: media("image/jpeg", path, state),
+                motion: None,
+            })
+        };
+        vec![
+            MenuRow {
+                message: own,
+                marks: Marks { starred: true },
+                pinned: true,
+            },
+            photo(path.clone(), Idle),
+            photo(None, Idle),
+            photo(None, Downloading),
+            row(Content::Video {
+                caption: None,
+                media: media("video/mp4", path.clone(), Idle),
+                seconds: None,
+                gif: false,
+                note: false,
+            }),
+            row(Content::Sticker {
+                media: media("image/webp", path, Idle),
+                animated: false,
+            }),
+        ]
+    }
+
+    #[test]
+    fn the_message_menu_speaks_the_interface_language() {
+        // #552: the menu came out in English whatever the language.
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("photo.jpg");
+        std::fs::write(&file, b"jpeg").unwrap();
+        let mut labels = Vec::new();
+        for row in menu_fixtures(&file) {
+            // The fork's video speed pills stay in English on both sides.
+            let fast = |label: &String| label.starts_with("Playback speed ");
+            let spanish: Vec<String> = drawn_menu_words(crate::i18n::Locale::Spanish, &row)
+                .into_iter()
+                .filter(|label| !fast(label))
+                .collect();
+            for english in drawn_menu_words(crate::i18n::Locale::English, &row) {
+                if fast(&english) {
+                    continue;
+                }
+                assert!(!spanish.contains(&english), "{english} in {spanish:?}");
+            }
+            labels.extend(spanish);
+        }
+        for spanish in [
+            "Responder",
+            "Copiar texto",
+            "Eliminar para mí",
+            "Abrir archivo",
+            "Mostrar en la carpeta",
+            "Descargar",
+        ] {
+            assert!(
+                labels.iter().any(|label| label == spanish),
+                "{spanish} in {labels:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_message_menu_label_can_be_translated() {
+        const TEMPLATE: &str = include_str!("../../assets/i18n/zapfast.pot");
+        // Line by line: a Windows checkout may end the template's lines in CRLF.
+        let translatable = |text: &str| {
+            let msgid = format!("msgid \"{text}\"");
+            TEMPLATE.lines().any(|line| line == msgid)
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("photo.jpg");
+        std::fs::write(&file, b"jpeg").unwrap();
+        let mut labels: Vec<String> = menu_fixtures(&file)
+            .iter()
+            .flat_map(|row| drawn_menu_words(crate::i18n::Locale::English, row))
+            .collect();
+        // The fork also offers video playback speed in the menu, whose pills
+        // stay in English as upstream left them; the width never measured them.
+        labels.retain(|label| !label.starts_with("Playback speed "));
+        // The menu is as wide as the longest label it measures.
+        let measured = message_menu_labels(crate::i18n::Locale::English);
+        for label in &labels {
+            assert!(measured.contains(label), "menu width leaves out {label}");
+        }
+        // The fixtures reach every entry a list row's menu can show. A private
+        // reply starts from the group on screen, so only the chat offers it.
+        let undrawn: Vec<&str> = measured
+            .iter()
+            .map(String::as_str)
+            .filter(|label| !labels.iter().any(|drawn| drawn == label))
+            .collect();
+        assert_eq!(undrawn, ["Reply privately"]);
+        // Hover texts are not in the accessibility tree.
+        labels.extend(["React with any emoji".into(), "Remove your reaction".into()]);
+        labels.sort();
+        labels.dedup();
+        let untranslatable: Vec<_> = labels.iter().filter(|label| !translatable(label)).collect();
+        assert!(
+            untranslatable.is_empty(),
+            "not translatable: {untranslatable:?}"
+        );
+        for label in message_menu_labels(crate::i18n::Locale::English) {
+            assert!(
+                translatable(&label),
+                "menu width uses untranslatable {label}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_selection_delete_menu_speaks_the_interface_language() {
+        let ctx = egui::Context::default();
+        ctx.enable_accesskit();
+        crate::theme::install(&ctx);
+        let mut actions = Vec::new();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            selection_delete_items(
+                ui,
+                &crate::theme::Palette::dark(),
+                crate::i18n::Locale::Spanish,
+                "chat",
+                true,
+                &["message".to_owned()],
+                &mut actions,
+            );
+        });
+        output.textures_delta.clear();
+        let tree = output
+            .platform_output
+            .accesskit_update
+            .expect("accessibility tree");
+        let labels: Vec<_> = tree
+            .nodes
+            .iter()
+            .filter_map(|(_, node)| node.label())
+            .collect();
+        assert!(labels.contains(&"Eliminar para todos"), "{labels:?}");
+        assert!(labels.contains(&"Eliminar para mí"), "{labels:?}");
     }
 }
 

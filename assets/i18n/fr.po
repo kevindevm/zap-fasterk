@@ -3547,3 +3547,39 @@ msgstr "Appel vocal manqué"
 #: src/model.rs
 msgid "Missed video call"
 msgstr "Appel vidéo manqué"
+
+#: src/ui/conversation.rs
+msgid "Select"
+msgstr "Sélectionner"
+
+#: src/ui/conversation.rs
+msgid "Copy text"
+msgstr "Copier le texte"
+
+#: src/ui/conversation.rs
+msgid "Edit"
+msgstr "Modifier"
+
+#: src/ui/conversation.rs
+msgid "Delete for everyone"
+msgstr "Supprimer pour tout le monde"
+
+#: src/ui/conversation.rs
+msgid "Delete for me"
+msgstr "Supprimer pour moi"
+
+#: src/ui/conversation.rs
+msgid "Show in folder"
+msgstr "Afficher dans le dossier"
+
+#: src/ui/conversation.rs
+msgid "Copy message ID"
+msgstr "Copier l’ID du message"
+
+#: src/ui/conversation.rs
+msgid "Remove your reaction"
+msgstr "Retirer votre réaction"
+
+#: src/ui/conversation.rs
+msgid "React with any emoji"
+msgstr "Réagir avec n’importe quel emoji"
