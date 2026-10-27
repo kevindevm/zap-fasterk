@@ -537,7 +537,11 @@ Followed channels have their own **Channels** chip, and **Archived** opens the
 archived chats. A chip with unread chats shows how many it
 has. Click the active chip again, or **All**, to see every chat. The
 filter applies only to this list: search and the archive still show everything,
-and it resets when Zap Faster restarts.
+and it resets when Zap Faster restarts. As on the phone, the list leaves out
+people you have never exchanged a message or call with, though your phone sends
+their chats along with the others. One stays listed while it is pinned, a
+favorite, labeled, unread, locked, open, or holds an unsent draft. Search still
+finds them, and the first message or call brings one into the list.
 
 Right-click a chat to pin, favorite, archive, mark as unread, or mute it for
 eight hours, one week, or indefinitely. These changes also apply on your
