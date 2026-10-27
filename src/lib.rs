@@ -1,5 +1,6 @@
 //! Zap Faster internals exposed for diagnostics and tests.
 
+pub mod a11y;
 pub mod account;
 pub mod animation;
 pub mod app;

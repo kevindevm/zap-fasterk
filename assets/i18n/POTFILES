@@ -26,3 +26,4 @@ src/ui/login.rs
 src/ui/archive_backup.rs
 src/ui/call.rs
 src/ui/statuses.rs
+src/a11y.rs
