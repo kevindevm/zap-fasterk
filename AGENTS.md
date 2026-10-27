@@ -464,9 +464,12 @@ A release is not finished when the tag is pushed. Do these in order:
 
 ## Verification cadence
 
-- During development, run formatting, focused tests and compilation/lints
-  relevant to the change. Keep required hooks and per-commit checks intact.
-  Check on Windows early when platform code or dependencies change.
+- During development, batch verification: accumulate up to 4 changes, then
+  run formatting, focused tests and compilation/lints for the batch.
+  Do not verify after each single change; verify every 4th change and
+  commit the verified batch then (one topic per commit). Keep required
+  hooks and per-commit checks intact. Check on Windows early when
+  platform code or dependencies change.
 - Batch expensive installer builds, installation checks and broad visual
   checks at the final checkpoint. Freeze application,
   dependency and packaging inputs first; do not run the full matrix per edit.
