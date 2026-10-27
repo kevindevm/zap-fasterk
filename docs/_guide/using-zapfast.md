@@ -658,6 +658,8 @@ they announced when clicked. On Linux, a notification that arrives while the
 window is open behind others also highlights Zap Faster in the taskbar until you
 switch to it. Muted chats do not send notifications, and
 archived chats stay quiet while they remain archived. You can change both settings.
+On Windows, while every display is off, ZapFast leaves new-message notifications
+to the phone instead of queuing desktop banners to appear when the display turns on.
 On macOS, the Dock icon also shows the unread count and clears it while the app
 is locked. In **Settings > Notifications**, **Show notification sender** controls
 chat names, pictures and chat-specific sounds. Turning it off also hides message
