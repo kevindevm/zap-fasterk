@@ -219,6 +219,12 @@ are grouped. **Download all** uses the normal per-file download limit and
 shows individual failures; **Save all…** copies downloaded files to a folder
 without replacing existing files. Open an item to view it individually.
 
+Videos go as playable video messages only when they are MP4. WhatsApp does
+not deliver a video message in another format, and Zap Faster does not
+convert videos, so a QuickTime `.mov`, WebM, MKV, or AVI file goes as a
+document instead and arrives as the original file. Audio works the same way:
+MP3, M4A, AAC, AMR, and OGG go as audio messages, other formats as documents.
+
 Staged attachments, captions, selected mentions and reply quotes remain with
 their chat and account when you switch or close conversations. Text drafts
 persist in the encrypted archive; attachment drafts stay in memory until
