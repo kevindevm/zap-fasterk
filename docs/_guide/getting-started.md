@@ -56,6 +56,9 @@ The packaged desktop entry is `packaging/applications/zapfast.desktop`;
 
 ## Link with your phone
 
+On first launch, Zap Faster follows your system appearance. Choose another theme
+in **Settings > Appearance**; Zap Faster remembers your choice.
+
 Zap Faster links as a companion device, like WhatsApp Web. Start it and either:
 
 - scan the QR code with your phone (WhatsApp, **Settings**, **Linked
