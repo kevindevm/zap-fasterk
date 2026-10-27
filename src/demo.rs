@@ -2780,15 +2780,38 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
                     app.group_saving.insert(group.to_owned());
                 }
             }
-            "forward" | "forward-selected" | "forward-review" => {
+            "forward" | "forward-selected" | "forward-review" | "forward-full" | "forward-once" => {
                 app.dialog = app.open_chat.clone().map(|chat| Dialog::Forward {
                     chat,
                     messages: vec!["ada-format".to_owned()],
                 });
-                if part != "forward" {
-                    app.forward_recipients =
-                        vec![SAMPLES[0].id.to_owned(), SAMPLES[1].id.to_owned()];
-                    app.forward_reviewing = part == "forward-review";
+                app.forward_limit = crate::model::FORWARD_LIMIT;
+                match part {
+                    "forward-selected" | "forward-review" => {
+                        app.forward_recipients =
+                            vec![SAMPLES[0].id.to_owned(), SAMPLES[1].id.to_owned()];
+                        app.forward_reviewing = part == "forward-review";
+                    }
+                    // As many recipients as WhatsApp allows, with the note
+                    // saying so.
+                    "forward-full" => {
+                        let writable: Vec<_> = app
+                            .chats
+                            .iter()
+                            .filter(|chat| crate::ui::dialogs::forwardable(chat))
+                            .map(|chat| chat.id.clone())
+                            .collect();
+                        app.forward_recipients = writable
+                            .into_iter()
+                            .take(crate::model::FORWARD_LIMIT)
+                            .collect();
+                    }
+                    // A message forwarded many times, which goes to one chat.
+                    "forward-once" => {
+                        app.forward_limit = 1;
+                        app.forward_recipients = vec![SAMPLES[0].id.to_owned()];
+                    }
+                    _ => {}
                 }
             }
             "unlink" => app.dialog = Some(Dialog::ConfirmUnlink),
@@ -6334,6 +6357,8 @@ mod tests {
             "forward",
             "forward-selected",
             "forward-review",
+            "forward-full",
+            "forward-once",
             "unlink",
             "leave-group",
             "left-group",
@@ -6862,6 +6887,165 @@ mod tests {
                     "{labels:?}"
                 );
             }
+        }
+    }
+
+    #[test]
+    /// Measures actual modal, list, close and footer rectangles, without sending.
+    fn forward_layout_fits_small_viewports_and_preserves_profile_search() {
+        for size in [
+            egui::vec2(360.0, 240.0),
+            egui::vec2(360.0, 600.0),
+            egui::vec2(1180.0, 780.0),
+        ] {
+            for page in [
+                "forward",
+                "forward-selected",
+                "forward-once",
+                "forward-full",
+                "forward-review",
+            ] {
+                let mut app = app();
+                app.backend.record_demo_commands();
+                let ctx = egui::Context::default();
+                app.attach(&ctx);
+                app.locale = crate::i18n::Locale::PortugueseBrazil;
+                apply_flags(&mut app, Some(page));
+                let selected = app.forward_recipients.clone();
+                let limit = app.forward_limit;
+                for i in 0..12 {
+                    app.chats.push(Chat::new(
+                        format!("{}@s.whatsapp.net", 100 + i),
+                        "Fixture".into(),
+                    ));
+                }
+                render_sized(&mut app, &ctx, size);
+                let viewport = ctx.content_rect();
+                for part in ["modal", "footer", "list", "close"] {
+                    let rect = ctx
+                        .data(|data| {
+                            data.get_temp::<egui::Rect>(egui::Id::new(("forward-layout", part)))
+                        })
+                        .expect(part);
+                    assert!(
+                        rect.is_positive() && viewport.expand(1.0).contains_rect(rect),
+                        "{page} {size:?} {part}: {rect:?} outside {viewport:?}"
+                    );
+                }
+                let list = ctx
+                    .data(|data| {
+                        data.get_temp::<egui::Rect>(egui::Id::new(("forward-layout", "list")))
+                    })
+                    .unwrap();
+                let footer = ctx
+                    .data(|data| {
+                        data.get_temp::<egui::Rect>(egui::Id::new(("forward-layout", "footer")))
+                    })
+                    .unwrap();
+                assert!(
+                    list.bottom() <= footer.top() + 1.0,
+                    "list overlaps footer: {page} {size:?}"
+                );
+                assert!(
+                    list.height() >= 16.0,
+                    "recipient list collapsed: {page} {size:?}"
+                );
+                assert_eq!(app.forward_recipients, selected);
+                assert_eq!(app.forward_limit, limit);
+                assert!(
+                    !app.backend
+                        .take_demo_commands()
+                        .iter()
+                        .any(|command| matches!(command, crate::backend::Command::Forward { .. }))
+                );
+            }
+        }
+        let mut app = app();
+        let ctx = egui::Context::default();
+        app.attach(&ctx);
+        apply_flags(&mut app, Some("forward"));
+        let id = SAMPLES[0].id;
+        app.contacts.insert(
+            id.into(),
+            Contact {
+                id: id.into(),
+                push_name: Some("Profile Fixture".into()),
+                ..Contact::default()
+            },
+        );
+        app.forward_search = "profile fixture".into();
+        assert_eq!(app.chat_title(app.chat(id).unwrap()), "~Profile Fixture");
+        render_sized(&mut app, &ctx, egui::vec2(360.0, 240.0));
+        assert!(
+            ctx.data(|data| data.get_temp::<egui::Rect>(egui::Id::new(("forward-recipient", id))))
+                .is_some()
+        );
+    }
+
+    #[test]
+    /// The modal grows with large windows while search and selection keep the list filling it.
+    fn forward_uses_large_windows_and_keeps_room_when_search_changes() {
+        for size in [egui::vec2(1180.0, 780.0), egui::vec2(1920.0, 1080.0)] {
+            for page in [
+                "forward",
+                "forward-selected",
+                "forward-full",
+                "forward-review",
+            ] {
+                for search in ["", "Ada", "no-fixture-matches"] {
+                    let mut app = app();
+                    app.backend.record_demo_commands();
+                    let ctx = egui::Context::default();
+                    app.attach(&ctx);
+                    apply_flags(&mut app, Some(page));
+                    app.forward_search = search.into();
+                    let selected = app.forward_recipients.clone();
+                    render_sized(&mut app, &ctx, size);
+                    let part = |name| {
+                        ctx.data(|data| {
+                            data.get_temp::<egui::Rect>(egui::Id::new(("forward-layout", name)))
+                        })
+                        .unwrap()
+                    };
+                    let modal = part("modal");
+                    let list = part("list");
+                    let footer = part("footer");
+                    let viewport = ctx.content_rect();
+                    assert!(viewport.expand(1.0).contains_rect(modal));
+                    assert!(
+                        modal.width() >= (size.x * 0.55).min(700.0),
+                        "modal remains narrow on a large window: {size:?} {page} {search:?}: {modal:?}"
+                    );
+                    assert!(
+                        modal.height() >= (size.y * 0.75).min(760.0),
+                        "modal remains short on a large window: {size:?} {page}: {modal:?}"
+                    );
+                    assert!(
+                        (0.0..=12.0).contains(&(footer.top() - list.bottom())),
+                        "recipient list shrinks instead of filling the modal: {size:?} {page} {search:?}: {list:?} {footer:?}"
+                    );
+                    assert_eq!(app.forward_recipients, selected);
+                    assert!(!app.backend.take_demo_commands().iter().any(|command| {
+                        matches!(command, crate::backend::Command::Forward { .. })
+                    }));
+                }
+            }
+        }
+    }
+
+    /// Lays out frames sized `size` without a display to catch view panics.
+    fn render_sized(app: &mut App, ctx: &egui::Context, size: egui::Vec2) {
+        for _ in 0..3 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| {
+                let ctx = ui.ctx().clone();
+                app.background_frame(&ctx);
+                app.frame_ui(ui);
+            });
+            output.textures_delta.clear();
         }
     }
 
