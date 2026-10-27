@@ -6,6 +6,7 @@ use egui::{Context, FocusDirection, Id, Response};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Stop {
     Composer,
+    ViewOnce,
     Send,
     Attach,
     Emoji,
@@ -87,6 +88,7 @@ fn stop_section(stop: Stop) -> Section {
     match stop {
         Stop::NotificationOpen(_) | Stop::NotificationDismiss(_) => Section::Notifications,
         Stop::Composer
+        | Stop::ViewOnce
         | Stop::Send
         | Stop::Attach
         | Stop::Emoji
@@ -379,7 +381,12 @@ fn next(controls: &[(Stop, Id)], movement: Move) -> Option<Id> {
 
 fn toolbar_group(stop: Stop) -> Option<u8> {
     match stop {
-        Stop::Send | Stop::Attach | Stop::Emoji | Stop::RecordCancel | Stop::RecordSend => Some(0),
+        Stop::ViewOnce
+        | Stop::Send
+        | Stop::Attach
+        | Stop::Emoji
+        | Stop::RecordCancel
+        | Stop::RecordSend => Some(0),
         Stop::Back | Stop::Profile | Stop::ChatSearch => Some(1),
         Stop::Sidebar | Stop::NewChat | Stop::Settings => Some(2),
         Stop::All

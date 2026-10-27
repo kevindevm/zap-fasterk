@@ -971,6 +971,7 @@ fastframe_icons::icons! {
         Users => lucide "users",
         Video => "video",
         VideoOff => "video-off",
+        ViewOnce => "view-once",
         Volume2 => lucide "volume-2",
         VolumeX => lucide "volume-x",
         WifiOff => "wifi-off",

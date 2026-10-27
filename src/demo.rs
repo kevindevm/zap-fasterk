@@ -3492,6 +3492,12 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
                 }
                 app.composer = "Original document files and lossless clipboard pixels".into();
             }
+            "view-once" | "view-once-off" => {
+                let (photo, _) = sample_files(app);
+                app.pending.push(crate::app::Pending::File(photo));
+                app.pending_view_once = part == "view-once";
+                app.composer = "One moment, just for you.".into();
+            }
             "staged" => {
                 let (photo, _) = sample_files(app);
                 let side = 48usize;
@@ -6427,6 +6433,9 @@ mod tests {
             "delete-selected-two",
             "forward-portuguese",
             "staged",
+            "view-once-off",
+            "view-once",
+            "view-once,light",
             "original-documents",
             "international-sender",
             "attachment-draft-away",
@@ -7109,6 +7118,172 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    /// Clicks an accesskit-labelled control by the centre of its bounds.
+    fn click_labelled(
+        app: &mut App,
+        ctx: &egui::Context,
+        label: &str,
+        role: egui::accesskit::Role,
+    ) {
+        let (_, _, centre) = accessible_nodes(app, ctx, Vec::new())
+            .into_iter()
+            .find(|(node, node_role, _)| node == label && *node_role == role)
+            .unwrap_or_else(|| panic!("{label} control"));
+        for pressed in [true, false] {
+            frame_with(
+                app,
+                ctx,
+                vec![
+                    egui::Event::PointerMoved(centre),
+                    egui::Event::PointerButton {
+                        pos: centre,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+        }
+    }
+
+    #[test]
+    fn view_once_photo_toggle_supports_click_keyboard_and_send() {
+        use crate::ui::focus::Stop;
+        let mut app = app();
+        apply_flags(&mut app, Some("view-once-off"));
+        app.backend.record_demo_commands();
+        let ctx = egui::Context::default();
+        ctx.enable_accesskit();
+        app.attach(&ctx);
+        render(&mut app, &ctx);
+
+        click_labelled(&mut app, &ctx, "View once", egui::accesskit::Role::CheckBox);
+        assert!(app.pending_view_once);
+        ctx.memory_mut(|memory| memory.request_focus(egui::Id::new("composer-text")));
+        frame_with(&mut app, &ctx, tab());
+        assert_eq!(focused_stop(&ctx), Some(Stop::ViewOnce));
+        frame_with(
+            &mut app,
+            &ctx,
+            vec![key(egui::Key::Space, egui::Modifiers::NONE)],
+        );
+        render(&mut app, &ctx);
+        assert!(
+            !app.pending_view_once,
+            "Space switches the selected icon off"
+        );
+
+        click_labelled(&mut app, &ctx, "View once", egui::accesskit::Role::CheckBox);
+        app.backend.take_demo_commands();
+        click_labelled(&mut app, &ctx, "Send", egui::accesskit::Role::Button);
+        assert!(
+            app.backend
+                .take_demo_commands()
+                .iter()
+                .any(|command| matches!(command,
+            crate::backend::Command::SendFiles { view_once: true, caption: Some(caption), .. }
+                if caption == "One moment, just for you."))
+        );
+        assert!(app.pending.is_empty());
+        assert!(!app.pending_view_once);
+        render(&mut app, &ctx);
+        assert!(crate::ui::focus::control(&ctx, Stop::ViewOnce).is_none());
+    }
+
+    #[test]
+    fn view_once_photo_control_fits_the_caption_in_both_themes_and_narrow_windows() {
+        use crate::ui::focus::{Stop, control};
+        for page in ["view-once", "view-once,light"] {
+            for width in [380.0, 640.0, 1180.0] {
+                let mut app = app();
+                apply_flags(&mut app, Some(page));
+                apply_flags(&mut app, Some("nosidebar"));
+                let ctx = egui::Context::default();
+                ctx.enable_accesskit();
+                app.attach(&ctx);
+                for _ in 0..4 {
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(egui::Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                egui::vec2(width, 780.0),
+                            )),
+                            ..Default::default()
+                        },
+                        |ui| {
+                            let ctx = ui.ctx().clone();
+                            app.background_frame(&ctx);
+                            app.frame_ui(ui);
+                        },
+                    );
+                    let tree = output.platform_output.accesskit_update.as_ref().unwrap();
+                    let toggle = tree
+                        .nodes
+                        .iter()
+                        .map(|(_, node)| node)
+                        .find(|node| node.label() == Some("View once"))
+                        .expect("the icon has a readable name");
+                    assert_eq!(toggle.role(), egui::accesskit::Role::CheckBox);
+                    assert_eq!(toggle.toggled(), Some(egui::accesskit::Toggled::True));
+                    output.textures_delta.clear();
+                }
+                let toggle = ctx
+                    .read_response(control(&ctx, Stop::ViewOnce).unwrap())
+                    .unwrap()
+                    .rect;
+                let send = ctx
+                    .read_response(control(&ctx, Stop::Send).unwrap())
+                    .unwrap()
+                    .rect;
+                let caption = ctx
+                    .read_response(egui::Id::new("composer-text"))
+                    .unwrap()
+                    .rect;
+                let pill = ctx
+                    .data(|data| {
+                        data.get_temp::<egui::Rect>(crate::ui::conversation::composer_pill_id())
+                    })
+                    .unwrap();
+                assert!(caption.right() <= toggle.left(), "{page} {width}");
+                assert!(toggle.right() <= send.left(), "{page} {width}");
+                assert!(
+                    pill.contains_rect(toggle) && pill.contains_rect(send),
+                    "{page} {width}"
+                );
+                assert!((toggle.center().y - send.center().y).abs() < 1.0);
+            }
+        }
+    }
+
+    #[test]
+    fn view_once_toggle_is_hidden_for_documents_batches_and_edits() {
+        use crate::ui::focus::{Stop, control};
+        for kind in ["document", "batch", "video", "edit"] {
+            let mut app = app();
+            apply_flags(&mut app, Some("view-once-off"));
+            let path = match &app.pending[0] {
+                crate::app::Pending::File(path) => path.clone(),
+                _ => unreachable!(),
+            };
+            match kind {
+                "document" => {
+                    app.pending[0] =
+                        crate::app::Pending::Document(Box::new(crate::app::Pending::File(path)))
+                }
+                "video" => app.pending[0] = crate::app::Pending::File("/fixture/clip.mp4".into()),
+                "batch" => {
+                    app.pending.push(crate::app::Pending::File(path));
+                }
+                "edit" => apply_flags(&mut app, Some("edit")),
+                _ => unreachable!(),
+            }
+            let ctx = egui::Context::default();
+            app.attach(&ctx);
+            render(&mut app, &ctx);
+            assert!(control(&ctx, Stop::ViewOnce).is_none(), "{kind}");
         }
     }
 

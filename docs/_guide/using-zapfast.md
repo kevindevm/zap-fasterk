@@ -225,6 +225,16 @@ caption. To reply with an attachment, start a reply and then attach the file.
 When sending several files, the caption and reply quote belong to the first
 one. Press Escape or click a file's close button to remove it.
 
+With exactly one supported photo (JPEG, PNG, or WebP) staged, select
+the **View once** icon (a 1 inside a dashed circle) beside Send. It lights up
+when enabled, and sends the photo as a WhatsApp view-once message. You can still
+add a caption. The sent message appears as a view-once placeholder in ZapFast;
+the recipient opens it on their phone. This option is not available for
+documents or batches of attachments. If you add more attachments, or a refused
+send returns to a draft with other attachments, remove the extras or turn off
+**View once** before sending. ZapFast keeps this choice until you switch it off,
+send, or clear the draft.
+
 Pictures and videos sent as a WhatsApp album appear together in a grid. Only
 items with the same protocol album identity, sender and local calendar date
 are grouped. **Download all** uses the normal per-file download limit and
