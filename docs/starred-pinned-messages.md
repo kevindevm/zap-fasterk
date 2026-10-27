@@ -13,7 +13,9 @@ fork-specific account isolation, durable ordering, privacy and recovery checks.
 Choose **Star** in a message's menu to save it in your account's starred list.
 The star button above the chat list opens that list. **Load more** retrieves the
 next page, so the list is not restricted to its first 200 messages. Click a row
-to open its chat at that message. Choose **Unstar** to remove it from the list.
+to open its chat at that message. Choose **Unstar** to remove it from the list. Stars made before your copy of
+Zap Faster followed them are read from the phone once, the next time it
+connects.
 
 Star changes are saved locally before synchronization and survive restarts and
 connection failures. A pending change appears locally while Zap Faster waits to

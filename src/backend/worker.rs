@@ -60,6 +60,7 @@ mod link_watch;
 mod outgoing;
 mod poll_history;
 mod polls;
+mod star_recovery;
 mod statuses;
 mod sticker_pace;
 mod stickers;
@@ -633,6 +634,17 @@ pub async fn run(
             && archive
                 .set_meta(contact_names::FIRST_NAMES_RECOVERED, "complete")
                 .is_ok());
+    // Only stars synced before ZapFast followed them were consumed unseen.
+    let stars_recovered = archive
+        .meta(star_recovery::STARS_RECOVERED)
+        .ok()
+        .flatten()
+        .as_deref()
+        == Some("complete")
+        || (archive.chats().is_ok_and(|chats| chats.is_empty())
+            && archive
+                .set_meta(star_recovery::STARS_RECOVERED, "complete")
+                .is_ok());
     let account_settings = crate::settings::AccountSettings::load(&dirs.settings_file());
     let sync_mode = account_settings.sync_mode;
     let mut worker = Worker {
@@ -722,6 +734,8 @@ pub async fn run(
         favorites_recovering: false,
         first_names_recovered,
         first_names_recovering: false,
+        stars_recovered,
+        stars_recovering: false,
         downloads: HashSet::new(),
         transfer_controls: HashMap::new(),
         motion_controls: HashMap::new(),
@@ -1298,6 +1312,10 @@ struct Worker {
     first_names_recovered: bool,
     /// That replay is running.
     first_names_recovering: bool,
+    /// The phone's stars from before ZapFast followed them were replayed.
+    stars_recovered: bool,
+    /// That replay is running.
+    stars_recovering: bool,
     /// Active attachment downloads by chat, message id, and carousel card.
     downloads: HashSet<(ChatId, String, Option<usize>)>,
     transfer_controls: HashMap<(ChatId, String, Option<usize>), transfers::Control>,
@@ -3491,6 +3509,7 @@ impl Worker {
                 WorkerTiming::run("fetch-favorite-stickers", || self.fetch_missing_favorites());
                 WorkerTiming::run("recover-favorite-stickers", || self.recover_favorites());
                 WorkerTiming::run("recover-first-names", || self.recover_first_names());
+                WorkerTiming::run("recover-stars", || self.recover_stars());
                 let _ = WorkerTiming::run("retry-poll-votes", || self.archive.retry_poll_votes());
                 self.pump_poll_votes();
                 if let Some(client) = self.client.clone() {
@@ -6857,6 +6876,7 @@ impl Worker {
             Command::FavoriteFetched { hash, result } => self.favorite_fetched(&hash, result),
             Command::FavoritesRecovered { complete } => self.favorites_recovered(complete),
             Command::FirstNamesRecovered { complete } => self.first_names_recovered(complete),
+            Command::StarsRecovered { complete } => self.stars_recovered(complete),
             Command::ImportStickerUrl { url } => {
                 let commands = self.commands.clone();
                 let packs = self.packs_dir();
@@ -16570,6 +16590,8 @@ fn offline_worker(
         favorites_recovering: false,
         first_names_recovered: true,
         first_names_recovering: false,
+        stars_recovered: true,
+        stars_recovering: false,
         downloads: HashSet::new(),
         transfer_controls: HashMap::new(),
         motion_controls: HashMap::new(),
