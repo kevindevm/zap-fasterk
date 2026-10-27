@@ -65,7 +65,7 @@ impl Archive {
         job: &MediaJob,
         source: &Path,
         export: Option<(&Path, &Path)>,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let transaction = self.connection.unchecked_transaction()?;
         let saved = if job.card == -2 {
             if self.message(&job.chat, &job.id)?.is_some_and(|message| {
@@ -77,8 +77,7 @@ impl Archive {
                     }
                 )
             }) {
-                self.put_motion_path(&job.chat, &job.id, Some(source))?;
-                true
+                self.put_motion_path(&job.chat, &job.id, Some(source))?
             } else {
                 false
             }
@@ -90,7 +89,8 @@ impl Archive {
         if saved && let Some((root, destination)) = export {
             self.queue_managed_export(job, root, destination)?;
         }
-        transaction.commit()
+        transaction.commit()?;
+        Ok(saved)
     }
 
     pub(crate) fn queue_managed_export(
@@ -321,7 +321,7 @@ impl Archive {
     pub(crate) fn stage_media_job_fixture(&self, job: &MediaJob) {
         self.connection
             .execute(
-                "INSERT INTO media_jobs(chat,id,card) VALUES (?1,?2,?3)",
+                "INSERT OR IGNORE INTO media_jobs(chat,id,card) VALUES (?1,?2,?3)",
                 params![job.chat, job.id, job.card],
             )
             .unwrap();

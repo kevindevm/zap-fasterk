@@ -27,6 +27,9 @@ Back up the archive if you need its history. WhatsApp sends only recent
 history to a new device, although Zap Faster can request some older messages from
 the phone. Clearing the media cache makes Zap Faster download attachments again.
 Expired attachments may still be available through the phone.
+A download is reported as complete only after its local path is recorded in
+the archive. If that write fails, the attachment shows a failure instead;
+the downloaded file is kept in its destination.
 **Settings > Files > Change…** sends new downloads to another folder, leaving
 earlier ones in place.
 
