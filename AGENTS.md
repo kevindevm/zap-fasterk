@@ -1,8 +1,10 @@
-# Zap Faster agent guide
+# Zap Faster agent guide (Windows-only fork)
 
 Zap Faster is a small native WhatsApp client: Rust, egui, and the
 [whatsapp-rust](https://github.com/oxidezap/whatsapp-rust) library for the
 protocol. These notes are for coding agents and new contributors.
+This fork targets Windows only: do not add code, tests, packaging, or docs
+for Linux or macOS, and do not verify other platforms.
 
 ## Product boundaries
 
@@ -53,7 +55,7 @@ protocol. These notes are for coding agents and new contributors.
   updates). Each `Account` in `src/account.rs` owns a `Backend`/`Worker`.
   Views draw the active account through `App`'s `Deref` to `Account`.
   Our own avatar at the top of the chat list opens the account switcher
-  (`src/ui/accounts.rs`) on every platform: only the accounts (picture, name
+  (`src/ui/accounts.rs`): only the accounts (picture, name
   or number, unread chats, a check on the one on screen) and Add account; the
   settings keep their own button. A dot on the avatar means another account
   has unread chats. Events from an account that is not on screen are
@@ -149,12 +151,8 @@ protocol. These notes are for coding agents and new contributors.
 - Custom themes come from fastframe-theme (`theme::Catalog`, Zap Faster's
   `fastframe_theme::Palette` impl in `src/theme.rs`): it scans local JSON
   palettes off the UI thread, and the app caches the last usable choice in
-  settings, with the palettes shared with Spotifast embedded as defaults. On Linux filesystem notifications reload the catalog and the active
-  Omarchy palette without a repaint timer; following Omarchy does not require
-  packaged assets. Changing `contrib/omarchy/zap-faster.json.tpl` means saving the
-  old text in `contrib/omarchy/previous/` and listing it in
-  `omarchy_previous_templates`, so untouched installed copies are upgraded. Native packages ship optional hooks and templates, preserving
-  existing per-user files. `reload-themes` uses the single-instance channel
+  settings, with the palettes shared with Spotifast embedded as defaults.
+  `reload-themes` uses the single-instance channel
   without opening a window.
 - `src/theme.rs` owns colours, fonts, and icons; `src/ui/widgets.rs` the
   shared controls. New icons go in `assets/icons/` as 24px Lucide-style SVGs
@@ -162,12 +160,11 @@ protocol. These notes are for coding agents and new contributors.
   ships is named there as `lucide "name"` instead of copied.
 - `src/markup.rs` turns WhatsApp's text markup, links, and mentions into an
   egui `LayoutJob`; `src/emoji.rs` hands emoji to fastframe-emoji, which
-  swaps every emoji for a placeholder glyph at layout time and paints the
-  platform's picture over it afterwards (Apple Color Emoji, Segoe UI Emoji
-  through DirectWrite, or the desktop's bitmap emoji font, with the bundled
-  Noto behind them). New pictures are drawn on its worker thread; tests and
+  swaps every emoji for a placeholder glyph at layout time and paints
+  Segoe UI Emoji over it afterwards through DirectWrite, with the bundled
+  Noto behind it. New pictures are drawn on its worker thread; tests and
   demo builds draw them inside the frame. The interface font is the
-  platform's own (`fastframe_fonts::Primary::System`), and Inter in tests.
+  system font, and Inter in tests.
   fastframe-emoji's `EmojiPlugin` (added in `App::attach`) colours the
   emoji in every other egui text: labels, menus, tooltips, text fields. It
   leaves placeholders and `editor_job` glyphs alone, so the two never paint
@@ -179,9 +176,8 @@ protocol. These notes are for coding agents and new contributors.
   decode in-process, and so do MP4s (the `mp4` crate demuxes, `openh264`
   decodes the H.264 WhatsApp uses, samples converted from AVCC to Annex
   B); `ffmpeg` is only a fallback for other codecs. `openh264` compiles
-  its C++ from source with the C++ compiler of the host; `nasm` is
-  optional and only adds the SIMD paths (the AUR recipes leave it out,
-  the build works without it). Frames become textures on the interface
+  its C++ from source with the host C++ compiler; `nasm` is
+  optional and only adds the SIMD paths (the build works without it). Frames become textures on the interface
   thread and are dropped when unseen. A paused animation decodes only its
   first frame, the poster, and the rest once it plays: full decodes of a
   picker's paused stickers overran the frame budget and evicted each other.
@@ -259,17 +255,11 @@ protocol. These notes are for coding agents and new contributors.
   history request for such a chat is anchored at the present with an
   empty message id (`worker::fetch_older`), and the app asks the phone
   as soon as such a chat loads or opens, instead of never.
-- A Wayland compositor may stop sending frame callbacks to a window it isn't
-  showing without saying so (Hyprland does for a window covered by a
-  fullscreen or maximized one, #190), and a vsync swap there blocks the event
-  loop and its ping replies, so the compositor calls the app unresponsive.
-  The shared egui fork (crmne/egui apps-0.36, emilk/egui#8631) presents
-  without a blocking swap on Wayland, paces frames by frame callbacks, and
-  runs only `App::logic` when a redraw is 250 ms overdue; the winit fork
-  (apps-0.30, rust-windowing/winit#4709) reports `suspended` as `Occluded`.
-  Vsync stays on elsewhere. Spotifast, RekordFlash and TonePush pin the same
-  two revisions; move them together. Repaints are event-driven, so nothing
-  spins.
+- Frames come from the shared egui fork (crmne/egui apps-0.36,
+  emilk/egui#8631) and the winit fork (apps-0.30,
+  rust-windowing/winit#4709). Vsync stays on. Spotifast, RekordFlash and
+  TonePush pin the same two revisions; move them together. Repaints are
+  event-driven, so nothing spins.
 - `src/voice.rs` is the codec for voice messages: OGG/Opus in and out
   (the `ogg` crate for the container, `opus` with libopus bundled and
   built by cmake for the codec, so cmake is a build dependency), plus
@@ -279,8 +269,7 @@ protocol. These notes are for coding agents and new contributors.
   decoded on a thread, the device opened on demand and released when the
   clip ends) and `Recorder` reads the default microphone through rodio's
   `Microphone` on a thread, keeping a loudness per 50 ms for the live bars.
-  Linux needs ALSA headers to build (`libasound2-dev` on Debian,
-  `alsa-lib` on Arch). `Action::PlayVoice/SeekVoice` drive the player from
+  `Action::PlayVoice/SeekVoice` drive the player from
   the bubble, and a clip that ends hands its message back
   (`Player::take_finished`) so the app plays the next unheard voice message
   of the same run (`App::next_voice_after`), keeping other apps' media paused
@@ -312,16 +301,8 @@ protocol. These notes are for coding agents and new contributors.
   on sets `hide_intent`, the window is destroyed, and a headless loop keeps
   calling `App::background_frame` (the link, the archive, the tray) until
   the tray, a clicked notification, or another launch sets `wants_show`,
-  when a new window is made. The tray item is fastframe-tray (ksni on
-  Linux, tray-icon on Windows and macOS; on macOS made with the first window
-  and pumped by `fastframe_tray::idle` while none exists), and `src/macos.rs`
-  hands its menu events to `fastframe_tray::claim_menu_event` first.
-  Closing keeps Zap Faster running, and a hidden start stays hidden, only while
-  `Tray::is_shown`: on Linux the item exists before a panel shows it (a
-  start at login beats the panel) and registers once one appears. A
-  hidden start makes the macOS item with `Tray::create_item`, which does not
-  bring Zap Faster forward; a window's `attach` makes it otherwise.
-  `src/single_instance.rs` claims fastframe-instance's slot in the runtime
+  when a new window is made. The tray item is fastframe-tray (tray-icon
+  on Windows). `src/single_instance.rs` claims fastframe-instance's slot in the runtime
   directory (`Slot::at(runtime, "fastsapp")`, so requests and replies stay
   `fastsapp:show` and `fastsapp:ok` for older copies), and a second launch
   asks the first to surface over a private socket (a token-checked loopback
@@ -330,10 +311,7 @@ protocol. These notes are for coding agents and new contributors.
   answered once the slot is claimed. `src/notify.rs` sends desktop notifications
   for `Event::Incoming` (live messages from others, not history) when the
   reader is away from that chat; a click carries the chat and the message
-  id, so the reader lands on the announced message. macOS has no title bar:
-  the content runs to the top. `src/macos.rs` keeps native application menus alive across window
-  recreation; `fastframe_macos::align_traffic_lights` centres the traffic
-  lights on the chat header. Linking retains
+  id, so the reader lands on the announced message. Linking retains
   `ui::titlebar_strip`; other headers reserve horizontal space for the buttons.
 - Group delivery uses `archive::receipts`: save the recipients when filing an
   outgoing message, record each person's receipt, then take the least advanced
@@ -382,14 +360,13 @@ protocol. These notes are for coding agents and new contributors.
   one it cannot open is not filed.
   Count-only diagnostics can distinguish malformed snapshots from storage failures.
 - Scrolling comes from fastframe-scroll: `App::scrolling.apply` runs first
-  in each unlocked frame and sets the wheel step (120 points a notch), and on
-  Linux scales touchpad gestures, glides after the lift, and holds a gesture
-  to its axis (Shift turns it sideways). `App::route_scroll` then keeps a
-  gesture, glide included, with the pane it began over (`ScrollRoute`, #274),
-  asking `Scrolling::gliding`; the image preview pans with a touchpad and
-  zooms with a wheel by `Scrolling::from_trackpad`.
-- Platform-specific code belongs behind `cfg` blocks; a change for one
-  platform must keep the other two compiling.
+  in each unlocked frame and sets the wheel step (120 points a notch).
+  `App::route_scroll` then keeps a gesture, glide included, with the pane
+  it began over (`ScrollRoute`, #274), asking `Scrolling::gliding`; the image
+  preview pans with a touchpad and zooms with a wheel by
+  `Scrolling::from_trackpad`.
+- This fork targets Windows only: put Windows code behind `cfg` blocks and
+  do not add code or tests for other platforms.
 
 egui pitfalls this code has already hit:
 
@@ -450,8 +427,7 @@ Before writing release notes, read the previous two stable releases of
 and `Fixed` sections with bold user-facing results, a `Thanks` section, and
 a full-changelog link. Credit who did what on the relevant item, with issue
 or PR numbers, and acknowledge reporters separately from implementers.
-Include screenshots or short videos of the main features, especially Omarchy
-theme integration when relevant. Capture only synthetic offline demo content,
+Include screenshots or short videos of the main features. Capture only synthetic offline demo content,
 never real chats. Upload the media as assets of the GitHub release and link
 those URLs from the notes; never commit screenshots or recordings to the
 repository. Verify every media link and do not leave generated notes
@@ -465,8 +441,7 @@ released, which goes out as soon as it is fixed.
 
 A release is not finished when the tag is pushed. Do these in order:
 
-1. From a clean, up-to-date `main`, bump `version` in `Cargo.toml`, add the
-   release to the `<releases>` list in the Flatpak metainfo, and update
+1. From a clean, up-to-date `main`, bump `version` in `Cargo.toml`, and update
    `Cargo.lock` with a build. Write the release notes, in the style above, to
    `packaging/release-notes/vX.Y.Z.md`: the release workflow publishes that
    file as the release description, and a stable tag without it fails. Link
@@ -475,7 +450,7 @@ A release is not finished when the tag is pushed. Do these in order:
    Run the full checks, commit, and push `main`. Before tagging, verify the
    release commit is reachable from the fork's public main so the binaries report the
    right version and the release contains the canonical history.
-2. Tag `vX.Y.Z` and push the tag. Wait for every platform build, artifact,
+2. Tag `vX.Y.Z` and push the tag. Wait for the Windows build, artifacts,
    and `checksums.txt`.
 3. Upload the screenshots to the release as assets with the names the notes
    link, then open the published release and check the text, every image,
@@ -486,21 +461,14 @@ A release is not finished when the tag is pushed. Do these in order:
    and the Changelog link; do not add older versions to it. Never point the
    download page at files that do not exist yet. Set `release_asset_prefix` to
    `zap-faster` and `release_app_name` to `Zap Faster` only once those assets exist.
-5. Update the AUR packages from the templates in `packaging/arch/`. The shared
-   packaging workflow generates versions, hashes and `.SRCINFO` after the
-   release exists, and publishes when `PUBLISH_AUR` and the required secrets
-   are configured. Otherwise use `native-packages` to build, stage,
-   review and publish the generated recipes; see `PACKAGING.md`. Validate
-   native builds with `makepkg -f`. A recipe-only `zapfast-git` change does
-   not require an application release.
 
 ## Verification cadence
 
 - During development, run formatting, focused tests and compilation/lints
   relevant to the change. Keep required hooks and per-commit checks intact.
-  Check an affected platform early when platform code or dependencies change.
-- Batch expensive full-platform CI, Docker/Nix builds, package installation
-  matrices and broad visual checks at the final checkpoint. Freeze application,
+  Check on Windows early when platform code or dependencies change.
+- Batch expensive installer builds, installation checks and broad visual
+  checks at the final checkpoint. Freeze application,
   dependency and packaging inputs first; do not run the full matrix per edit.
 - Before expensive builds, validate cheap packaging prerequisites: metadata,
   executable permissions, LF shell text and generated shell-script syntax.
@@ -525,19 +493,18 @@ A release is not finished when the tag is pushed. Do these in order:
 - For code or build changes, run the full checks at the final checkpoint
   before finishing (matching successful CI receipts may supply coverage):
 
-  ```sh
+  ```powershell
   cargo fmt --all --check
   cargo clippy --locked --all-targets -- -D warnings
   cargo clippy --locked --all-targets --all-features -- -D warnings
   cargo test --locked --all-targets
   cargo test --locked --all-targets --all-features
-  RUSTDOCFLAGS='-D warnings' cargo doc --locked --all-features --no-deps
+  $env:RUSTDOCFLAGS = '-D warnings'; cargo doc --locked --all-features --no-deps
   ```
 
   Do not weaken a lint, delete a test, or add an `allow` merely to make
   them pass without explaining why the rule does not apply.
-- Report platform coverage honestly: say what was run and what was only
-  compiled.
+- Report what ran on Windows and what was only compiled.
 - Never log message contents, phone numbers, keys, or QR payloads at a
   level that ships. The log file is meant to be attached to bug reports.
 
@@ -562,8 +529,6 @@ mise or mbx.
   and `mbx gc` runs it now; `mbx cache stats` shows what is held.
 - When a build is colder than expected, `mbx explain --last` says what missed
   the cache and why.
-- Never put build output or large scratch files in `/tmp`. It is a small
-  in-memory filesystem with a per-user quota, and filling it breaks every
-  shell on the machine.
-- Delete one-off QA, packaging, and release-validation directories (under
-  `.cache/` or `~/.cache/`) once their result is recorded.
+- Never put build output or large scratch files in the system temp dir.
+  Keep one-off QA and release-validation directories under `.cache/` and
+  delete them once their result is recorded.
