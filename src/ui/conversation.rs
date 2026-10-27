@@ -2322,6 +2322,24 @@ fn album_id(message: &Message) -> Option<&str> {
     }
 }
 
+/// The index of the first message of each row the message list draws: the
+/// list's items, which its cursor steps through. Every message has its own
+/// row, except an album's items outside a selection, which share their
+/// first item's.
+pub fn row_starts(messages: &[Message], selecting: bool) -> Vec<usize> {
+    (0..messages.len())
+        .filter(|&index| selecting || !album_continuation(messages, index))
+        .collect()
+}
+
+/// Which of `starts`' rows draws the message at `index`.
+pub fn row_of(starts: &[usize], index: usize) -> usize {
+    match starts.binary_search(&index) {
+        Ok(row) => row,
+        Err(row) => row.saturating_sub(1),
+    }
+}
+
 /// The consecutive messages belonging to the album beginning at `start`.
 /// A single marked item is rendered normally because there is nothing to group.
 fn album_run(messages: &[Message], start: usize) -> Option<&[Message]> {
@@ -2474,6 +2492,50 @@ fn messages(app: &mut App, ui: &mut egui::Ui, chat: &Chat, under: f32) {
     // An explicit jump (Ctrl+End, or the return-to-bottom button) must reach
     // the bottom even while a message bubble retains keyboard focus.
     let scroll_forced = std::mem::take(&mut app.scroll_to_bottom_forced);
+    // The message list's one-shot requests, taken for the same reason.
+    let list_id = messages_list_id(&chat.id);
+    // Whether focus last moved by keyboard. The list's focus takeover, its
+    // reveal and its hold on the pin below all wait for it, so the pointer
+    // sees the chat exactly as before the list existed.
+    let keyboard = ui.ctx().data(|data| {
+        data.get_temp::<bool>(theme::keyboard_focus_id())
+            .unwrap_or(false)
+    });
+    // A chat that cannot send (a channel, a locked chat, a group we left)
+    // draws no message field, so `composer` above left its focus request
+    // pending. After keyboard navigation the list, all there is to read,
+    // takes that focus instead, in this pass, which draws it: a reader
+    // switching chats from the list would otherwise land on nothing. Opened
+    // with the pointer, focus stays where it was, so the page keys still
+    // scroll the view.
+    // Never under a dialog, whose own controls hold focus.
+    let composer_fallback = app.focus_composer
+        && keyboard
+        && !chat.can_send()
+        && app.selection.is_none()
+        && app.image_preview.is_none()
+        && app.dialog.is_none();
+    // Declined with the pointer, the request is dropped, not left pending:
+    // the field it names does not exist here, and a later Tab would
+    // otherwise take it up and scroll the view to the current message.
+    if composer_fallback || (!chat.can_send() && !keyboard) {
+        app.focus_composer = false;
+    }
+    // A pass that draws the list hidden (the first after a chat opens is)
+    // gives no widget focus: the request waits for the pass that shows it.
+    let focus_list = if ui.is_visible() {
+        let deferred = app
+            .list_focus_deferred
+            .take()
+            .is_some_and(|deferred| deferred == chat.id);
+        std::mem::take(&mut app.focus_messages) || composer_fallback || deferred
+    } else {
+        if composer_fallback {
+            app.list_focus_deferred = Some(chat.id.clone());
+        }
+        false
+    };
+    let mut reveal = std::mem::take(&mut app.reveal_cursor);
     // Check out the conversation while drawing rows and collecting actions.
     let mut conversation = app.conversations.remove(&chat.id).unwrap_or_default();
     let accessible_rows: Vec<usize> = (0..conversation.messages.len())
@@ -2496,6 +2558,24 @@ fn messages(app: &mut App, ui: &mut egui::Ui, chat: &Chat, under: f32) {
         }
     }
     let typing = app.typing_in(&chat.id);
+    // The list's items are its rows: an album is one.
+    let starts = row_starts(&conversation.messages, app.selecting_in(&chat.id));
+    let total = starts.len();
+    // The current message: the one the cursor names, or the newest when it
+    // names none, or a message that is gone. An album's item stands for its
+    // row, which its first item draws.
+    let cursor = app
+        .message_cursor
+        .get(&chat.id)
+        .and_then(|id| {
+            conversation
+                .messages
+                .iter()
+                .position(|message| &message.id == id)
+        })
+        .map(|index| starts[row_of(&starts, index)])
+        .or(starts.last().copied());
+    let cursor_id = cursor.map(|index| conversation.messages[index].id.clone());
     // Keep transcript state independently borrowable while row measurements
     // and paging state are updated on the checked-out conversation.
     let transcripts = conversation.transcripts.clone();
@@ -2524,6 +2604,10 @@ fn messages(app: &mut App, ui: &mut egui::Ui, chat: &Chat, under: f32) {
         && app.selection.is_none()
         && app.reaction_target.is_none();
     let keyboard_navigation = std::cell::Cell::new(false);
+    // The list's name says whose messages it holds. Built only while a screen
+    // reader is attached, like the rows' labels, once the list's node exists.
+    let list_label =
+        || crate::a11y::messages_list_label(app.locale, &app.chat_title(chat), chat.is_group());
     let view = View {
         palette,
         locale: app.locale,
@@ -2687,6 +2771,39 @@ fn messages(app: &mut App, ui: &mut egui::Ui, chat: &Chat, under: f32) {
     // turn over the message list, before it takes another step.
     let mut key_scroll = conversation.key_scroll.take();
     let list = ui.available_rect_before_wrap();
+    // The list itself: one Tab stop over the whole message view, created
+    // before the rows so their nodes can hang from its node. It senses no
+    // pointer input. Asked for by a shortcut, it takes focus here, while it
+    // is drawn, so focus never names a node missing from this frame's tree.
+    if focus_list {
+        ui.memory_mut(|memory| memory.request_focus(list_id));
+    }
+    let list_response =
+        super::list_nav::container(ui, list_id, list, list_label, total).tab_stop(Stop::Messages);
+    let list_focused = list_response.has_focus();
+    // Both below only after keyboard navigation, as for a focused bubble.
+    // Arriving in the list shows where its current message is.
+    if list_response.gained_focus() && keyboard {
+        reveal = true;
+    }
+    // A reader moving through the list keeps the view where they are: an
+    // automatic pin to the newest message must not pull it away.
+    if list_focused && keyboard {
+        keyboard_navigation.set(true);
+    }
+    // Except on the newest message the keys took the view to the true
+    // bottom (`App::cursor_followed`), or in a list with no cursor of its
+    // own, which stands on the newest: there the pin holds as it does after
+    // the return-to-bottom button, so new messages are followed.
+    let hold_bottom = list_focused
+        && keyboard
+        && app.message_cursor.get(&chat.id).is_none_or(|id| {
+            app.cursor_followed
+                .as_ref()
+                .is_some_and(|(followed_chat, followed)| {
+                    *followed_chat == chat.id && followed == id
+                })
+        });
     let wheel_over_list = ui.input(|input| {
         (input.smooth_scroll_delta.y != 0.0
             || input
@@ -3500,7 +3617,9 @@ fn messages(app: &mut App, ui: &mut egui::Ui, chat: &Chat, under: f32) {
     app.conversations
         .insert(chat.id.clone(), std::mem::take(&mut conversation));
     app.at_bottom = at_bottom;
-    if app.scroll_to_bottom && (reader_scrolled || (keyboard_navigation.get() && !scroll_forced)) {
+    if app.scroll_to_bottom
+        && (reader_scrolled || (keyboard_navigation.get() && !scroll_forced && !hold_bottom))
+    {
         app.scroll_to_bottom = false;
     }
     if divider_placed {
@@ -3550,6 +3669,34 @@ fn messages(app: &mut App, ui: &mut egui::Ui, chat: &Chat, under: f32) {
         // Keep the anchor when the first page is still loading. Event::Messages
         // will request it again.
         app.scroll_anchor = None;
+    }
+    // egui's focus, not the response's: that one also asks for the window's
+    // focus, and the list keeps its place while the window is away.
+    app.messages_focused = ui.memory(|memory| memory.has_focus(list_id));
+    // The list's focus ring goes around its current message, the bubble
+    // only, as a focused bubble's own ring does. With the row not laid out
+    // this frame there is nothing to ring, and never the whole list.
+    if list_focused && let Some(id) = &cursor_id {
+        if let Some(rect) = ui
+            .ctx()
+            .data(|data| data.get_temp::<Rect>(bubble_id(&chat.id, id).with("rect")))
+        {
+            theme::focus_outline(ui, list_id, rect, 10.0);
+        }
+    }
+    // A current message too far away to be laid out is reached as a jump is:
+    // the anchor lays out every row and centres it. Its node exists only
+    // from then on, so it becomes the active descendant then, not now. The
+    // pass is redone at once for it: a frame whose focused list names no
+    // active descendant has a screen reader announce the list itself, then
+    // the message.
+    if reveal
+        && app.scroll_anchor.is_none()
+        && let Some(id) = cursor_id
+    {
+        app.scroll_anchor = Some(id);
+        ui.ctx()
+            .request_discard("lay out the current message far from the view");
     }
     // At the top, load more from the archive and then the phone. Short chats
     // request more immediately.
@@ -4410,6 +4557,11 @@ fn reply_on_double_click(response: &egui::Response, message: &Message, actions: 
     {
         actions.push(Action::Reply(message.id.clone()));
     }
+}
+
+/// The open chat's message list: its one Tab stop and its ListBox node.
+pub fn messages_list_id(chat: &str) -> egui::Id {
+    egui::Id::new(("messages-list", chat))
 }
 
 /// Stable message-bubble id used by interaction tests.

@@ -680,6 +680,27 @@ pub struct App {
     /// A message reached from a quote or a search result, which flashes
     /// once it is in view so the eye finds it.
     pub jump_highlight: Option<JumpHighlight>,
+    /// The current message of each chat's message list, by id: where the
+    /// arrows move from and what a screen reader reads. A chat without one
+    /// starts on its newest message.
+    pub message_cursor: HashMap<ChatId, String>,
+    /// The newest message the keys took the list's cursor to, with its chat,
+    /// at the true bottom. While the cursor stays on it, the list holds the
+    /// view at the bottom as the return-to-bottom button does, so messages
+    /// arriving after it are followed.
+    pub cursor_followed: Option<(ChatId, String)>,
+    /// One-shot: scroll the open chat's current message into view.
+    pub reveal_cursor: bool,
+    /// Whether the open chat's message list had keyboard focus in the last
+    /// frame drawn. Actions cannot see egui focus, so the list records it.
+    pub messages_focused: bool,
+    /// One-shot: give the open chat's message list keyboard focus when it is
+    /// next drawn.
+    pub focus_messages: bool,
+    /// A read-only chat's message list asked for focus in a pass that drew
+    /// it hidden: the chat it was for, which a later visible pass of that
+    /// chat honours, and no other chat.
+    pub(crate) list_focus_deferred: Option<ChatId>,
     pub focus_composer: bool,
     pub focus_search: bool,
     /// What the Settings page is filtered by.
@@ -1332,6 +1353,12 @@ impl App {
             at_bottom: true,
             scroll_anchor: None,
             jump_highlight: None,
+            message_cursor: HashMap::new(),
+            cursor_followed: None,
+            reveal_cursor: false,
+            messages_focused: false,
+            focus_messages: false,
+            list_focus_deferred: None,
             focus_composer: false,
             focus_search: false,
             settings_search: String::new(),
@@ -1503,6 +1530,16 @@ impl App {
         self.park_composer();
         self.clear_account_ui();
         self.accessibility_announcements.clear();
+        // A request for the message list to take focus was for the
+        // previous account's chat.
+        self.focus_messages = false;
+        // So was a list focus waiting for a visible pass.
+        self.list_focus_deferred = None;
+        // Each chat's current message was the previous account's: accounts
+        // can share a chat, and a hidden account's deletions do not move it.
+        // The newest message the keys followed goes with it.
+        self.message_cursor.clear();
+        self.cursor_followed = None;
         self.active = index;
         self.adding_account = false;
         if let Some(abandoned) = abandoned {
@@ -2427,6 +2464,9 @@ impl App {
         self.hide_intent = false;
         self.wants_show = false;
         self.reopen = false;
+        // A new window starts with nothing focused: a message list that had
+        // focus in the last one does not hold it back from the composer.
+        self.messages_focused = false;
         self.refocus_composer(ctx);
         // Before the tray: muda keeps the first menu handler it is given, and
         // the tray installs one when it makes its item on the first window.
@@ -4020,6 +4060,37 @@ impl App {
                     })
                 {
                     self.sticker_view = None;
+                }
+                if let Some(neighbour) = self.conversations.get(&chat).and_then(|conversation| {
+                    conversation
+                        .messages
+                        .iter()
+                        .position(|message| message.id == id)
+                        .and_then(|at| {
+                            conversation
+                                .messages
+                                .get(at + 1)
+                                .or_else(|| {
+                                    at.checked_sub(1)
+                                        .and_then(|at| conversation.messages.get(at))
+                                })
+                                .map(|message| message.id.clone())
+                        })
+                }) && live
+                    && self.message_cursor.get(&chat) == Some(&id)
+                {
+                    // The followed message deleted, the cursor's new message
+                    // is followed in its place, so new messages still are.
+                    if self
+                        .cursor_followed
+                        .as_ref()
+                        .is_some_and(|(followed_chat, followed)| {
+                            *followed_chat == chat && *followed == id
+                        })
+                    {
+                        self.cursor_followed = Some((chat.clone(), neighbour.clone()));
+                    }
+                    self.message_cursor.insert(chat.clone(), neighbour);
                 }
                 if let Some(conversation) = self.conversations.get_mut(&chat) {
                     conversation.messages.retain(|message| message.id != id);
@@ -5969,6 +6040,54 @@ impl App {
         }
     }
 
+    /// Scrolls the open chat to its true bottom, below the newest message
+    /// and anything drawn under it, such as the typing bubble, exactly as
+    /// the return-to-bottom button's click does (`Action::ScrollToBottom`):
+    /// the button is out of reach of the keys and of a screen reader, so the
+    /// list's cursor landing on the newest message does it instead. Short of
+    /// it, the button would stay drawn over that message, and new messages
+    /// would not be followed.
+    fn scroll_to_newest(&mut self) {
+        self.scroll_to_bottom = true;
+        self.scroll_to_bottom_forced = true;
+        self.cursor_followed = self
+            .open_chat
+            .clone()
+            .and_then(|chat| Some((chat.clone(), self.message_cursor.get(&chat)?.clone())));
+    }
+
+    /// Whether the open chat's message list stands on its newest message,
+    /// as the list resolves its cursor: one naming no loaded message stands
+    /// there too.
+    fn cursor_on_newest(&self) -> bool {
+        let Some(chat) = self.open_chat.as_ref() else {
+            return false;
+        };
+        let Some(conversation) = self.conversations.get(chat) else {
+            return false;
+        };
+        let messages = &conversation.messages;
+        // The newest row, which may be an album of several messages.
+        let starts = crate::ui::conversation::row_starts(messages, self.selecting_in(chat));
+        let Some(&newest) = starts.last() else {
+            return false;
+        };
+        self.message_cursor.get(chat).is_none_or(|id| {
+            messages
+                .iter()
+                .position(|message| &message.id == id)
+                .is_none_or(|index| index >= newest)
+        })
+    }
+
+    /// Whether messages are being selected in `chat`, which draws an album's
+    /// items each in a row of its own.
+    pub fn selecting_in(&self, chat: &str) -> bool {
+        self.selection
+            .as_ref()
+            .is_some_and(|(selected, _)| selected == chat)
+    }
+
     /// Sends the spot the dialog read. A refusal brings the dialog back with
     /// the spot in it, since the composer cannot hold one.
     fn send_location(
@@ -6935,13 +7054,17 @@ impl App {
                 // the pane, so the arrows can walk on to the next one.
                 let from_pane =
                     self.chat_search_visible() && self.open_chat.as_deref() == Some(chat.as_str());
+                // So does a reader in this chat's message list: the list
+                // follows to the message instead (`follow_message` below).
+                let from_list =
+                    self.messages_focused && self.open_chat.as_deref() == Some(chat.as_str());
                 self.open_chat(chat.clone());
                 // A locked chat stays shut outside its folder, even for a
                 // notification clicked before the chat was locked.
                 if self.open_chat.as_deref() != Some(chat.as_str()) {
                     return;
                 }
-                if from_pane {
+                if from_pane || from_list {
                     self.focus_composer = false;
                 }
                 // Keep the search result, not the chat end, in view.
@@ -6949,6 +7072,7 @@ impl App {
                 self.at_bottom = false;
                 self.scroll_anchor = Some(message.clone());
                 self.jump_highlight = Some(JumpHighlight::new(chat.clone(), message.clone()));
+                self.follow_message(&chat, &message);
                 let load = {
                     let conversation = self.conversations.entry(chat.clone()).or_default();
                     if conversation.message(&message).is_none() && !conversation.loading_older {
@@ -8867,6 +8991,11 @@ impl App {
                 // Ctrl+End and the return-to-bottom button are explicit: they
                 // must win over a message bubble's retained keyboard focus.
                 self.scroll_to_bottom_forced = true;
+                // From the focused message list standing on the newest
+                // message, it then follows new messages, as End does.
+                if self.messages_focused && self.cursor_on_newest() {
+                    self.scroll_to_newest();
+                }
             }
             Action::ScrollPage(scroll) => {
                 // Reaching the top releases stick-to-bottom, as the wheel and
@@ -8876,6 +9005,66 @@ impl App {
                     self.scroll_to_bottom = false;
                 }
                 self.scroll_page = Some(scroll);
+            }
+            Action::MessageCursor(step) => {
+                use crate::ui::list_nav::Step;
+                let Some(chat) = self.open_chat.clone() else {
+                    return;
+                };
+                let Some(conversation) = self.conversations.get(&chat) else {
+                    return;
+                };
+                let messages = &conversation.messages;
+                // The cursor steps through the list's rows, an album being
+                // one, as the list resolves it: a cursor naming no loaded
+                // message stands on the newest.
+                let starts =
+                    crate::ui::conversation::row_starts(messages, self.selecting_in(&chat));
+                let current = self
+                    .message_cursor
+                    .get(&chat)
+                    .and_then(|id| messages.iter().position(|message| &message.id == id))
+                    .map(|index| crate::ui::conversation::row_of(&starts, index))
+                    .or(starts.len().checked_sub(1));
+                let Some(row) = crate::ui::list_nav::step(current, starts.len(), step) else {
+                    return;
+                };
+                let id = messages[starts[row]].id.clone();
+                let newest = row + 1 == starts.len();
+                self.message_cursor.insert(chat.clone(), id);
+                self.reveal_cursor = true;
+                // Home on the oldest loaded message asks for older ones, as
+                // scrolling to the top does.
+                if step == Step::First && current == Some(0) {
+                    self.load_older(&chat, true);
+                }
+                // However the keys reached the newest message (End, Down,
+                // PgDn), the view goes on to the true bottom below it.
+                if newest {
+                    self.scroll_to_newest();
+                } else {
+                    self.cursor_followed = None;
+                }
+            }
+            Action::FocusMessages => {
+                if self.current_chat().is_some() {
+                    self.focus_search = false;
+                    self.focus_composer = false;
+                    // The list takes focus when it is next drawn.
+                    self.focus_messages = true;
+                    // On the newest message, it shows the true bottom below
+                    // it, as End does.
+                    if self.cursor_on_newest() {
+                        self.scroll_to_newest();
+                    }
+                    // Shown as after Tab: the ring goes around the current
+                    // message.
+                    ctx.data_mut(|data| {
+                        data.insert_temp(crate::theme::keyboard_focus_id(), true);
+                    });
+                } else {
+                    self.announce_accessibility(&crate::i18n::gettext(self.locale, "No chat open"));
+                }
             }
             Action::ScrollTo(id) => {
                 self.scroll_to_bottom = false;
@@ -8900,6 +9089,7 @@ impl App {
                         before,
                     });
                 }
+                self.follow_message(&chat, &id);
                 self.jump_highlight = Some(JumpHighlight::new(chat, id.clone()));
                 self.scroll_anchor = Some(id);
             }
@@ -10331,6 +10521,7 @@ impl App {
         let Some(next) = self.next_voice_after(&chat, finished) else {
             return;
         };
+        self.follow_message(&chat, &next);
         match self
             .conversations
             .get(&chat)
@@ -10350,6 +10541,52 @@ impl App {
                     message: next,
                 });
             }
+        }
+    }
+
+    /// Makes `message` the current one in `chat`'s message list, where the
+    /// app just took the reader on its own (the next voice message, a quote,
+    /// a search result), so the list and the view agree. A focused list also
+    /// scrolls it into view.
+    pub fn follow_message(&mut self, chat: &str, message: &str) {
+        self.message_cursor
+            .insert(chat.to_owned(), message.to_owned());
+        if self.messages_focused && self.open_chat.as_deref() == Some(chat) {
+            self.reveal_cursor = true;
+        }
+    }
+
+    /// About how many messages fill the open chat's view: its height over the
+    /// median height of the rows laid out so far, at least one. PgUp and PgDn
+    /// move the message list's cursor by this many; 8 before the list
+    /// has been measured.
+    pub fn message_page_rows(&self, ctx: &egui::Context, chat: &str) -> usize {
+        let viewport = ctx
+            .data(|data| {
+                data.get_temp::<(f32, f32)>(crate::ui::conversation::scroll_metrics_id(
+                    &chat.to_owned(),
+                ))
+            })
+            .map(|(_, height)| height);
+        let mut heights: Vec<f32> = self
+            .conversations
+            .get(chat)
+            .map(|conversation| {
+                conversation
+                    .rows
+                    .values()
+                    // An album's later items take no height of their own.
+                    .filter(|row| row.pass.is_some() && row.height > 0.0)
+                    .map(|row| row.height)
+                    .collect()
+            })
+            .unwrap_or_default();
+        heights.sort_by(f32::total_cmp);
+        match (viewport, heights.get(heights.len() / 2)) {
+            (Some(viewport), Some(&median)) if median > 0.0 => {
+                ((viewport / median).floor() as usize).max(1)
+            }
+            _ => 8,
         }
     }
 
@@ -10511,7 +10748,16 @@ impl App {
         {
             self.mark_read(&open);
         }
-        if regained_focus {
+        // Coming back to the window (Alt+Tab, a screen reader dialog) leaves
+        // the reader on whatever had focus, in any section: egui keeps it
+        // while the window is away. Only with nothing focused does the
+        // message field take it. Unlocking counts as coming back, and the
+        // lock screen's field, gone now, is nothing to return to.
+        if regained_focus
+            && ctx
+                .memory(|memory| memory.focused())
+                .is_none_or(|id| id == egui::Id::new(crate::ui::lock::PASSWORD_ID))
+        {
             self.refocus_composer(ctx);
         }
         self.window_focused = focused;
@@ -13931,6 +14177,33 @@ mod tests {
             Some(second),
             "forward no longer reaches the chat the back step left"
         );
+    }
+
+    /// A pending request for the message list's focus ends with its account.
+    #[test]
+    fn switching_accounts_drops_a_message_list_focus_request() {
+        let directory = tempfile::tempdir().unwrap();
+        let (mut app, _commands) = two_accounts(directory.path());
+        let ctx = egui::Context::default();
+        app.focus_messages = true;
+        app.apply(Action::SwitchAccount(AccountId::parse("2").unwrap()), &ctx);
+        assert!(!app.focus_messages);
+    }
+
+    /// The current message of a chat is the account on screen's: another
+    /// account with the same chat starts from its own newest message.
+    #[test]
+    fn switching_accounts_forgets_the_current_messages() {
+        let directory = tempfile::tempdir().unwrap();
+        let (mut app, _commands) = two_accounts(directory.path());
+        let ctx = egui::Context::default();
+        app.message_cursor
+            .insert("1@s.whatsapp.net".into(), "m1".into());
+        app.cursor_followed = Some(("1@s.whatsapp.net".into(), "m1".into()));
+        app.apply(Action::SwitchAccount(AccountId::parse("2").unwrap()), &ctx);
+        assert_eq!(app.account().id.as_str(), "2");
+        assert!(app.message_cursor.is_empty());
+        assert_eq!(app.cursor_followed, None);
     }
 
     #[test]

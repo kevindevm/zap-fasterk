@@ -14,6 +14,7 @@ pub mod image_editor;
 pub mod image_preview;
 pub mod keys;
 pub mod labels;
+pub mod list_nav;
 pub mod locations;
 pub mod lock;
 pub mod login;
@@ -380,6 +381,11 @@ fn focus_ring(app: &App, ctx: &egui::Context) {
     let custom = ctx
         .data(|data| data.get_temp::<theme::FocusOutline>(response.id.with("focus-outline")))
         .filter(|outline| outline.frame == ctx.cumulative_frame_nr());
+    // A list rings its current item only. With that item not drawn this
+    // frame there is nothing to ring, and never the whole list.
+    if custom.is_none() && crate::ui::list_nav::is_outline_only(ctx, response.id) {
+        return;
+    }
     if !keyboard && !ctx.text_edit_focused() {
         return;
     }

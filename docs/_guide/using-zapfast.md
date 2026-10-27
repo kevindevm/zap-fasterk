@@ -705,6 +705,13 @@ open it. In a group, a mention of you or a reply to you always notifies.
 Press `Ctrl+/` or click the keyboard button under the composer to list all
 shortcuts.
 
+The open chat's messages form one list, a single Tab stop reached with
+`Alt+2` (`Control+2` on macOS). In the list, Up and Down move through messages,
+Home and End go to the oldest loaded and the newest message, and PgUp and PgDn
+move about a screen; Home on the oldest loaded message loads older history.
+The current message stays current while new messages arrive, and follows jumps
+the app makes on its own, such as opening a quoted message.
+
 Notification sounds use the native system notification output. Under Settings,
 **Microphone and sound output** chooses the account's devices for recording,
 voice/video playback and calls. A missing or failed chosen sound output falls

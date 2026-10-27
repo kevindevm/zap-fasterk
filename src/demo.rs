@@ -16406,6 +16406,7 @@ mod tests {
                 Stop::Emoji,
                 Stop::ChatSearch,
                 Stop::Profile,
+                Stop::Messages,
                 Stop::Sidebar,
                 Stop::NewChat,
                 Stop::Settings,
@@ -16490,13 +16491,14 @@ mod tests {
                 Stop::Composer,
                 Stop::Send,
                 Stop::ChatSearch,
+                Stop::Messages,
                 Stop::Sidebar,
                 Stop::Search,
                 Stop::All,
             ];
             let last = &app.conversations[&group].messages.last().unwrap().id;
             let bubble_rect = crate::ui::conversation::bubble_id(&group, last).with("rect");
-            let initial_rect = ctx
+            let mut baseline = ctx
                 .data(|data| data.get_temp::<egui::Rect>(bubble_rect))
                 .unwrap();
             for backwards in [false, true] {
@@ -16520,9 +16522,17 @@ mod tests {
                         "step {step}, backwards {backwards}"
                     );
                     assert_single_focus_border(&app, &ctx, &shapes);
+                    if expected[index] == Stop::Messages {
+                        // Arriving in the list shows its current message, so
+                        // the first arrival may settle the view there. After
+                        // that Tab holds still again.
+                        baseline = ctx
+                            .data(|data| data.get_temp::<egui::Rect>(bubble_rect))
+                            .unwrap();
+                    }
                     assert_eq!(
                         ctx.data(|data| data.get_temp::<egui::Rect>(bubble_rect)),
-                        Some(initial_rect),
+                        Some(baseline),
                         "Tab never scrolls the conversation: step {step}, backwards {backwards}"
                     );
                 }
@@ -16586,6 +16596,7 @@ mod tests {
                         Stop::Attach,
                         Stop::Emoji,
                         Stop::ChatSearch,
+                        Stop::Messages,
                         Stop::Sidebar
                     ]
                 );

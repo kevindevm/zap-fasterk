@@ -22,6 +22,8 @@ pub enum Stop {
     ChatSearchDay,
     Back,
     Profile,
+    /// The open chat's message list: one stop, the arrows walk its messages.
+    Messages,
     Sidebar,
     NewChat,
     Settings,
@@ -101,7 +103,8 @@ fn stop_section(stop: Stop) -> Section {
         | Stop::ChatSearchField
         | Stop::ChatSearchDay
         | Stop::Back
-        | Stop::Profile => Section::Messages,
+        | Stop::Profile
+        | Stop::Messages => Section::Messages,
         _ => Section::Sidebar,
     }
 }
