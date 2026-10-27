@@ -140,6 +140,13 @@ impl Worker {
             }
     }
 
+    /// A locked chat accepts messages written in it, but never a forward:
+    /// the picker does not list it, so one aimed there was locked meanwhile.
+    pub(super) fn forward_writable(&self, chat: &str) -> bool {
+        self.destination_writable(chat)
+            && !matches!(self.archive.chat(chat), Ok(Some(chat)) if chat.locked)
+    }
+
     pub(super) fn reserve_send_order(&mut self) -> crate::archive::Result<i64> {
         self.send_sequence = self
             .send_sequence
@@ -736,6 +743,23 @@ mod tests {
             .is_ok()
         );
         assert_eq!(calls, 1);
+    }
+
+    /// A locked chat takes what is written in it, but never a forward.
+    #[test]
+    fn locked_chats_accept_sends_but_not_forwards() {
+        let (mut worker, _events, _inbox, _wa) = worker();
+        worker.privacy_ready = true;
+        worker
+            .archive
+            .upsert_chat(&crate::model::Chat::new(
+                PEER.to_owned(),
+                "Fixture".to_owned(),
+            ))
+            .unwrap();
+        worker.archive.set_locked(PEER, true).unwrap();
+        assert!(worker.destination_writable(PEER));
+        assert!(!worker.forward_writable(PEER));
     }
 
     fn job(chat: &str, id: &str) -> Job {

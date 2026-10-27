@@ -7352,7 +7352,7 @@ impl App {
                 let writable: std::collections::HashSet<_> = self
                     .chats
                     .iter()
-                    .filter(|chat| chat.can_send())
+                    .filter(|chat| crate::ui::dialogs::forwardable(chat))
                     .map(|chat| chat.id.clone())
                     .collect();
                 let count = self.forward_recipients.len();

@@ -602,7 +602,6 @@ Choose **Locked** beside the chat filters and type your local code to open
 them; the first time, Zap Faster offers to set one up. The code is separate from
 your phone's and adds no encryption beyond the encrypted message archive.
 Leaving the tab, changing the code, or closing the window hides them again.
-Locked chats are read-only in Zap Faster for now.
 
 ## Labels
 

@@ -1322,12 +1322,6 @@ fn composer(app: &mut App, ui: &mut egui::Ui, chat: &Chat) {
                     });
                     return;
                 }
-                if chat.locked {
-                    ui.vertical_centered(|ui| {
-                        theme::text(ui, "Locked chats are read-only in Zap Faster", theme::regular(13.5), palette.secondary);
-                    });
-                    return;
-                }
                 ui.vertical_centered(|ui| {
                     ui.add_space(8.0);
                     // A group we left says so instead of blaming the admins:

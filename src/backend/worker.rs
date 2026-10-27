@@ -6372,8 +6372,12 @@ impl Worker {
             Command::Forward { to_chat, .. } => Some(to_chat),
             _ => None,
         };
+        let writable = |chat: &str| match &command {
+            Command::Forward { .. } => self.forward_writable(chat),
+            _ => self.destination_writable(chat),
+        };
         if let Some(chat) = destination
-            && !self.destination_writable(chat)
+            && !writable(chat)
         {
             let error = "This conversation is read-only in Zap Faster".to_owned();
             if matches!(&command, Command::CreatePoll { .. }) {
