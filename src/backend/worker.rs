@@ -242,6 +242,7 @@ async fn download_attachment(
         .await
         .map_err(|error| error.to_string())?;
     let (temporary, file) = temporary_attachment_file(path)?;
+    let _staged = Staged(temporary.clone());
     let result = client
         .download_to_writer(
             downloadable,
@@ -252,16 +253,13 @@ async fn download_attachment(
         Ok(writer) => {
             // Close the verified file before publishing it, including on Windows.
             drop(writer);
-            match publish_attachment(&temporary, path).await {
-                Ok(()) => Ok(path.to_path_buf()),
-                Err(error) => {
-                    let _ = tokio::fs::remove_file(&temporary).await;
-                    Err(error.to_string())
-                }
-            }
+            // The staging file is removed on the way out if it was not
+            // published.
+            publish_attachment(&temporary, path)
+                .await
+                .map(|()| path.to_path_buf())
         }
         Err(error) => {
-            let _ = tokio::fs::remove_file(&temporary).await;
             let error = error.to_string();
             if error.contains(ATTACHMENT_LIMIT_ERROR) {
                 Err(ATTACHMENT_LIMIT_ERROR.to_owned())
@@ -313,6 +311,19 @@ fn temporary_attachment_file(path: &Path) -> Result<(PathBuf, std::fs::File), St
         }
     }
     Err("Could not create a unique attachment staging file".to_owned())
+}
+
+/// Removes a download's staging file when it ends, whichever way that is:
+/// published away (the removal then finds nothing), failed, or cancelled by
+/// its deadline, which drops the download without running its error path.
+/// The download's writer is dropped first, closing the file, so the removal
+/// also works on Windows.
+struct Staged(PathBuf);
+
+impl Drop for Staged {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
 }
 
 /// Removes incomplete, unreferenced downloads left by an interrupted process.
@@ -855,6 +866,10 @@ pub async fn run(
     worker.relocate_media();
     discard_attachment_staging(&worker.dirs.media_cache_dir());
     discard_attachment_staging(&worker.dirs.sticker_cache_dir());
+    // Saved stickers are user data, but an interrupted download's staging
+    // file never is: a favourite fetched when the process died would
+    // otherwise stay there forever, this folder having no other sweep.
+    discard_attachment_staging(&worker.dirs.saved_sticker_dir());
     worker.start_bot().await;
     drop(startup_timing);
     let mut wa_events = wa_events;
@@ -14747,6 +14762,52 @@ mod tests {
             with_attachment_deadline(Duration::from_secs(1), async { Ok(42) }).await,
             Ok(42)
         );
+    }
+
+    #[test]
+    fn a_staging_file_is_removed_when_its_download_ends_unpublished() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("photo.jpg");
+        let (staging, mut file) = temporary_attachment_file(&path).unwrap();
+        // A download dropped between writing and publishing leaves nothing,
+        // however it ends; the guard removes the file even then.
+        file.write_all(b"half").unwrap();
+        drop(file);
+        assert!(staging.is_file());
+        drop(Staged(staging.clone()));
+        assert!(!staging.exists());
+    }
+
+    #[tokio::test]
+    async fn a_deadline_that_cancels_a_download_removes_its_staging_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("photo.jpg");
+        let (staging, file) = temporary_attachment_file(&path).unwrap();
+        drop(file);
+        let held = staging.clone();
+        let result: Result<(), String> =
+            with_attachment_deadline(Duration::from_millis(1), async move {
+                // As in `download_attachment`: the guard outlives the writer, and
+                // the deadline cancels the future while it is in flight.
+                let _staged = Staged(held);
+                std::future::pending::<()>().await;
+                unreachable!()
+            })
+            .await;
+        assert_eq!(result.unwrap_err(), "Download timed out");
+        assert!(!staging.exists());
+    }
+
+    #[tokio::test]
+    async fn a_published_file_survives_its_staging_removal() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("photo.jpg");
+        let (staging, file) = temporary_attachment_file(&path).unwrap();
+        drop(file);
+        publish_attachment(&staging, &path).await.unwrap();
+        drop(Staged(staging));
+        assert!(path.is_file());
     }
 
     /// Builds a synthetic message carrying protocol quote context for parser regression tests.
