@@ -433,7 +433,9 @@ speed. The first play sends
 a played receipt, so your phone marks the voice message as heard. With read
 receipts off in your account privacy, the receipt goes only to your own
 devices and the sender is not told. With **Send read receipts** off in
-Zap Faster's settings, no played receipt is sent. When the composer is empty, the send button becomes a
+Zap Faster's settings, no played receipt is sent. A voice message you have not
+heard yet shows a dot beside its length; it goes away once you play it here or
+on another device. When the composer is empty, the send button becomes a
 microphone. Press Enter or the send button to send the recording, or Escape or
 the delete button to discard it. Zap Faster raises the volume of quiet recordings.
 Starting a reply before recording includes the quoted message.
