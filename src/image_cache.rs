@@ -115,6 +115,18 @@ pub fn touch(ctx: &egui::Context, uri: &str) {
     }
 }
 
+/// Forgets one image, so the file at its URI is decoded afresh the next
+/// time it is drawn.
+pub fn forget(ctx: &egui::Context, uri: &str) {
+    let registry = registry(ctx);
+    registry
+        .0
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .remove(uri);
+    ctx.forget_image(uri);
+}
+
 /// Forgets the images that have not been drawn for the longest.
 ///
 /// Images the current frame drew are never forgotten, so a frame that shows
