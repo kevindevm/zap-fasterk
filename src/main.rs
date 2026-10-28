@@ -1224,13 +1224,9 @@ impl eframe::App for Shell {
             ctx.request_repaint_after(at.saturating_duration_since(std::time::Instant::now()));
         }
         // The chat header is 60 points and zooms; the linking screen keeps
-        // AppKit's own 28-point strip.
-        let title_bar = if app.is_linked() && !app.app_lock.is_locked() {
-            zapfast::theme::TOP_BAR_HEIGHT
-        } else {
-            28.0 / ctx.zoom_factor()
-        };
-        fastframe_macos::align_traffic_lights(frame, ctx, title_bar);
+        // AppKit's own 28-point strip. Traffic-light alignment lived in
+        // fastframe-macos, which is gone upstream; it was a no-op off
+        // macOS, and this fork builds for Windows only.
         zapfast::backdrop::apply(frame, &app.palette, self.transparent);
         #[cfg(feature = "demo")]
         {

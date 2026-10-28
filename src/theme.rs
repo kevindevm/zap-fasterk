@@ -1441,14 +1441,20 @@ pub fn preview_macos(ctx: &egui::Context) {
     ctx.data_mut(|data| data.insert_temp(egui::Id::new("macos-preview"), true));
 }
 
+/// Width the macOS traffic lights take at the start of the title bar, in
+/// AppKit points; kept here since fastframe-macos is gone upstream and only
+/// the demo's macOS preview on other platforms still needs it.
+const TRAFFIC_LIGHTS_WIDTH: f32 = 84.0;
+
 /// Horizontal clearance for native buttons; they do not scale with UI zoom.
 pub fn traffic_light_inset(ctx: &egui::Context) -> f32 {
-    if cfg!(target_os = "macos") {
-        fastframe_macos::traffic_light_inset(ctx)
+    if cfg!(target_os = "macos") && !ctx.input(|input| input.viewport().fullscreen.unwrap_or(false))
+    {
+        TRAFFIC_LIGHTS_WIDTH / ctx.zoom_factor()
     } else if macos_chrome(ctx) && !ctx.input(|input| input.viewport().fullscreen.unwrap_or(false))
     {
         // The demo's preview of the macOS layout on other platforms.
-        fastframe_macos::TRAFFIC_LIGHTS_WIDTH / ctx.zoom_factor()
+        TRAFFIC_LIGHTS_WIDTH / ctx.zoom_factor()
     } else {
         0.0
     }

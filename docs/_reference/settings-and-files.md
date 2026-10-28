@@ -21,6 +21,7 @@ On Linux:
 | Wallpaper image | `~/.local/state/zapfast/accounts/<id>/wallpaper.jpg` | Copy of the chosen picture (or `.png`, `.webp`, `.gif`) |
 | Attachments, avatars | `~/.cache/zapfast/accounts/<id>/` | Safe to delete; available files download again when viewed |
 | Last run's log | `~/.local/state/zapfast/zapfast.log` | `--verbose` for more |
+| The run before's log | `~/.local/state/zapfast/zapfast.previous.log` | Kept for one more start |
 | Crash log | `~/.local/state/zapfast/panic.log` | Safe to delete |
 
 Back up the archive if you need its history. WhatsApp sends only recent
@@ -276,9 +277,11 @@ the new one.
 
 ## The log
 
-Each run replaces `zapfast.log` and records warnings and errors, never
+Each run starts `zapfast.log` afresh and records warnings and errors, never
 message contents, phone numbers, or keys. Include the end of this file when
-reporting an issue. **Settings > Files > Log > Open** shows it.
+reporting an issue. **Settings > Files > Log > Open** shows it. The run before
+is kept beside it as `zapfast.previous.log`: if Zap Faster froze and you had
+to restart it, that file holds what happened.
 
 ## Zap Faster local transcripts
 

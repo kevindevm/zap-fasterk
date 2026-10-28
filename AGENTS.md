@@ -255,7 +255,7 @@ for Linux or macOS, and do not verify other platforms.
   history request for such a chat is anchored at the present with an
   empty message id (`worker::fetch_older`), and the app asks the phone
   as soon as such a chat loads or opens, instead of never.
-- Frames come from the shared egui fork (crmne/egui apps-0.36,
+- Frames come from the shared egui fork (crmne/egui apps-0.36.2,
   emilk/egui#8631) and the winit fork (apps-0.30,
   rust-windowing/winit#4709). Vsync stays on. Spotifast, RekordFlash and
   TonePush pin the same two revisions; move them together. Repaints are

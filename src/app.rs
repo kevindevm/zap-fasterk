@@ -997,8 +997,6 @@ fn tray_config(lockable: bool) -> fastframe_tray::Config {
         // change at runtime without recreating the tray.
         // Hosts prefer a named theme icon over pixels, which would hide unread badges.
         themed_icon: false,
-        // A left click on macOS toggles the window, as on Linux.
-        menu_on_click: false,
         menu: vec![
             MenuItem::action(TRAY_SHOW, "Show or hide Zap Faster"),
             MenuItem::action(TRAY_LOCK, "Lock Zap Faster").visible(lockable),
