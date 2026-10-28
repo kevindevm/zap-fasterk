@@ -12313,6 +12313,374 @@ mod tests {
         assert!(said[0].starts_with(&muted), "{said:?}");
     }
 
+    /// With our read receipts off, WhatsApp shows no read ticks in a
+    /// one-to-one chat (#458): the label reads the ticks the bubble shows,
+    /// delivered, not read.
+    #[test]
+    fn an_own_read_message_reads_delivered_while_receipts_are_off() {
+        let ctx = egui::Context::default();
+        ctx.enable_accesskit();
+        let mut app = app();
+        app.attach(&ctx);
+        let chat = app.open_chat.clone().unwrap();
+        let last = app
+            .conversations
+            .get_mut(&chat)
+            .unwrap()
+            .messages
+            .last_mut()
+            .unwrap();
+        last.from_me = true;
+        last.status = crate::model::Delivery::Read;
+        last.content = crate::model::Content::text("Receipts fixture");
+        render(&mut app, &ctx);
+        let label = |app: &mut App| {
+            accessible_nodes(app, &ctx, Vec::new())
+                .into_iter()
+                .map(|(text, _, _)| text)
+                .find(|text| text.starts_with("You, Receipts fixture"))
+                .expect("the message's label")
+        };
+        let read = label(&mut app);
+        assert!(read.contains(", read"), "{read}");
+        app.account_receipts_off = true;
+        let delivered = label(&mut app);
+        assert!(delivered.contains(", delivered"), "{delivered}");
+        assert!(!delivered.contains(", read"), "{delivered}");
+    }
+
+    #[test]
+    fn every_message_row_reads_as_one_labelled_node() {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        app.attach(&ctx);
+        render(&mut app, &ctx);
+        ctx.enable_accesskit();
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1180.0, 780.0),
+                )),
+                ..Default::default()
+            },
+            |ui| app.frame_ui(ui),
+        );
+        output.textures_delta.clear();
+        let tree = output
+            .platform_output
+            .accesskit_update
+            .expect("accessibility tree");
+        let chat = app.current_chat().unwrap().clone();
+        let last = app.conversations[&chat.id].messages.last().unwrap().clone();
+        let time = crate::util::clock(last.timestamp);
+        // The message list's items only: the chat list's row for the chat
+        // reads the same message and time.
+        let node = |id: egui::accesskit::NodeId| {
+            tree.nodes
+                .iter()
+                .find(|(found, _)| *found == id)
+                .map(|(_, node)| node)
+        };
+        let list = node(crate::ui::conversation::messages_list_id(&chat.id).accesskit_id())
+            .expect("the message list");
+        let labels: Vec<&str> = list
+            .children()
+            .iter()
+            .filter_map(|id| node(*id)?.label())
+            .collect();
+        let row = labels
+            .iter()
+            .find(|label| label.contains(&time) && label.contains(&last.summary()))
+            .unwrap_or_else(|| {
+                panic!("no row label with the last message's time and text: {labels:?}")
+            });
+        assert!(!last.from_me || row.starts_with("You, "), "{row}");
+    }
+
+    /// An album is one row (#286), and so one item: its label counts the
+    /// pictures, reads the caption and its last member's footer, star and
+    /// pin marks included, after the notice of the pin drawn above it.
+    #[test]
+    fn an_album_reads_as_one_row_with_its_notices_and_marks() {
+        let ctx = egui::Context::default();
+        ctx.enable_accesskit();
+        let mut app = app();
+        app.attach(&ctx);
+        let chat = app.open_chat.clone().unwrap();
+        let messages = &mut app.conversations.get_mut(&chat).unwrap().messages;
+        let count = messages.len();
+        let at = messages[count - 4].timestamp + 60;
+        for (index, message) in messages[count - 3..].iter_mut().enumerate() {
+            message.from_me = false;
+            message.sender = "album@s.whatsapp.net".into();
+            message.timestamp = at;
+            message.reactions.clear();
+            message.quoted = None;
+            message.edited = false;
+            message.forwarded = false;
+            message.content = crate::model::Content::Image {
+                motion: None,
+                caption: (index == 0).then(|| "Album fixture caption".to_owned()),
+                media: crate::model::Media {
+                    mime: "image/jpeg".into(),
+                    size: 1,
+                    width: Some(640),
+                    height: Some(480),
+                    album: Some("album-fixture".into()),
+                    path: None,
+                    state: crate::model::MediaState::Idle,
+                },
+            };
+        }
+        let last = messages[count - 1].id.clone();
+        app.stars
+            .entry(chat.clone())
+            .or_default()
+            .insert(last.clone());
+        app.pins
+            .entry(chat.clone())
+            .or_default()
+            .insert(last.clone());
+        let notice = crate::archive::Pinned {
+            chat: chat.clone(),
+            id: last,
+            pinned_at: at - 30,
+            expires_at: at + 7 * 24 * 60 * 60,
+            text: String::new(),
+            from_me: false,
+            sent_at: at,
+            pinner: crate::archive::Pinner {
+                by_me: true,
+                sender: String::new(),
+            },
+        };
+        app.chat_pins.insert(chat.clone(), vec![notice.clone()]);
+        // The transcript notices read the live pin rows, not the header line.
+        app.pin_notices.insert(chat.clone(), vec![notice]);
+        render(&mut app, &ctx);
+        let labels: Vec<String> = accessible_nodes(&mut app, &ctx, Vec::new())
+            .into_iter()
+            .map(|(text, _, _)| text)
+            .filter(|text| text.contains(", 3 photos, "))
+            .collect();
+        let [row] = labels.as_slice() else {
+            panic!("the album is not one labelled row: {labels:?}");
+        };
+        assert!(row.contains("You pinned a message, "), "{row}");
+        assert!(row.contains("3 photos, Album fixture caption, "), "{row}");
+        assert!(row.contains(", starred, pinned"), "{row}");
+    }
+
+    /// A reply reads the quoted sender's name as its quote block draws it:
+    /// "You" for our own message, a saved contact name before the name the
+    /// quote carries.
+    #[test]
+    fn a_reply_reads_the_quoted_sender_as_its_quote_draws_it() {
+        let ctx = egui::Context::default();
+        ctx.enable_accesskit();
+        let mut app = app();
+        app.attach(&ctx);
+        render(&mut app, &ctx);
+        let chat = app.open_chat.clone().unwrap();
+        let reply_of = |app: &mut App| -> String {
+            accessible_nodes(app, &ctx, Vec::new())
+                .into_iter()
+                .map(|(text, _, _)| text)
+                .find(|text| text.starts_with("You, Listened, agreed on all three points., "))
+                .expect("the reply's label")
+        };
+        fn quoted<'a>(app: &'a mut App, chat: &str) -> &'a mut crate::model::Quoted {
+            app.conversations
+                .get_mut(chat)
+                .unwrap()
+                .messages
+                .iter_mut()
+                .find(|message| message.id == "ada-reply")
+                .unwrap()
+                .quoted
+                .as_mut()
+                .unwrap()
+        }
+        let ada = quoted(&mut app, &chat).sender.clone();
+        app.contacts.insert(
+            ada.clone(),
+            Contact {
+                id: ada,
+                full_name: Some("Ada King".to_owned()),
+                first_name: None,
+                push_name: None,
+            },
+        );
+        let label = reply_of(&mut app);
+        assert!(label.contains(", replying to Ada King: "), "{label}");
+        let quote = quoted(&mut app, &chat);
+        quote.sender = ME.to_owned();
+        quote.sender_name = Some("Abdulaziz".to_owned());
+        let label = reply_of(&mut app);
+        assert!(label.contains(", replying to You: "), "{label}");
+    }
+
+    /// A reply reads the quoted summary in the interface language, as its
+    /// quote block draws it (#527): "Voice message" in a German interface
+    /// reads "Sprachnachricht".
+    #[test]
+    fn a_reply_reads_the_quoted_summary_in_the_interface_language() {
+        let ctx = egui::Context::default();
+        ctx.enable_accesskit();
+        let mut app = app();
+        app.locale = crate::i18n::Locale::German;
+        app.attach(&ctx);
+        render(&mut app, &ctx);
+        let chat = app.open_chat.clone().unwrap();
+        let quoted = app.conversations[&chat]
+            .message("ada-reply")
+            .and_then(|message| message.quoted.clone())
+            .expect("the demo's reply");
+        let english = quoted.summary.clone();
+        let german = quoted.summary_in(app.locale).into_owned();
+        assert_ne!(german, english, "the catalog translates the label");
+        let label = accessible_nodes(&mut app, &ctx, Vec::new())
+            .into_iter()
+            .map(|(text, _, _)| text)
+            .find(|text| {
+                text.contains("Listened, agreed on all three points.")
+                    && text.contains(", replying to ")
+            })
+            .expect("the reply's label");
+        assert!(label.contains(&format!(": {german}")), "{label}");
+        assert!(!label.contains(&english), "{label}");
+    }
+
+    fn focus_messages(app: &mut App, ctx: &egui::Context) {
+        let chat = app.open_chat.clone().unwrap();
+        ctx.memory_mut(|memory| {
+            memory.request_focus(crate::ui::conversation::messages_list_id(&chat))
+        });
+        render(app, ctx);
+    }
+
+    #[test]
+    fn message_list_is_a_labelled_listbox_with_an_active_item() {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        app.attach(&ctx);
+        render(&mut app, &ctx);
+        focus_messages(&mut app, &ctx);
+        ctx.enable_accesskit();
+        let mut output = ctx.run_ui(Default::default(), |ui| app.frame_ui(ui));
+        output.textures_delta.clear();
+        let tree = output.platform_output.accesskit_update.unwrap();
+        let chat = app.open_chat.clone().unwrap();
+        let list_id = crate::ui::conversation::messages_list_id(&chat).accesskit_id();
+        let list = tree
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == list_id)
+            .unwrap()
+            .1
+            .clone();
+        assert_eq!(list.role(), egui::accesskit::Role::ListBox);
+        assert_eq!(list.label(), Some("Messages with Ada Lovelace"));
+        let total = app.conversations[&chat].messages.len();
+        assert_eq!(list.size_of_set(), Some(total));
+        let active = list.active_descendant().expect("an active message");
+        let item = tree
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == active)
+            .unwrap()
+            .1
+            .clone();
+        assert_eq!(item.role(), egui::accesskit::Role::ListBoxOption);
+        assert_eq!(
+            item.position_in_set(),
+            Some(total - 1),
+            "starts on the newest"
+        );
+        assert_eq!(item.size_of_set(), Some(total));
+        assert_eq!(item.is_selected(), None, "messages never carry selected");
+        assert!(
+            list.children().contains(&active),
+            "rows are the list's items"
+        );
+        assert_eq!(tree.focus, list_id);
+    }
+
+    #[test]
+    fn a_group_message_list_is_named_after_the_group() {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        app.attach(&ctx);
+        app.open_chat = Some(SAMPLES[1].id.into());
+        render(&mut app, &ctx);
+        ctx.enable_accesskit();
+        let mut output = ctx.run_ui(Default::default(), |ui| app.frame_ui(ui));
+        output.textures_delta.clear();
+        let tree = output.platform_output.accesskit_update.unwrap();
+        let list_id = crate::ui::conversation::messages_list_id(SAMPLES[1].id).accesskit_id();
+        let list = &tree.nodes.iter().find(|(id, _)| *id == list_id).unwrap().1;
+        assert_eq!(list.label(), Some("Messages in Rust Berlin"));
+    }
+
+    /// A message whose file is not simply there ends its label with why: not
+    /// downloaded yet, downloading, or the error the bubble shows.
+    #[test]
+    fn a_message_label_ends_with_its_attachment_state() {
+        let ctx = egui::Context::default();
+        ctx.enable_accesskit();
+        let mut app = app();
+        app.attach(&ctx);
+        render(&mut app, &ctx);
+        let chat = app.open_chat.clone().unwrap();
+        let limit = "This attachment is larger than the 64 MiB download limit";
+        // Auto-download is off in the demo, so the document waits for a
+        // click and reads as not downloaded.
+        let label_of = |app: &mut App, start: &str| -> String {
+            let nodes = accessible_nodes(app, &ctx, Vec::new());
+            nodes
+                .into_iter()
+                .map(|(text, _, _)| text)
+                .find(|text| text.starts_with(start))
+                .unwrap_or_else(|| panic!("no message label starting {start}"))
+        };
+        let document = "You, Document, Notes on the Engine.pdf, ";
+        assert!(
+            label_of(&mut app, document).ends_with(", not downloaded"),
+            "{}",
+            label_of(&mut app, document)
+        );
+        for (state, ending) in [
+            (crate::model::MediaState::Downloading, ", downloading"),
+            (crate::model::MediaState::Failed(limit.into()), limit),
+        ] {
+            let message = app
+                .conversations
+                .get_mut(&chat)
+                .unwrap()
+                .messages
+                .iter_mut()
+                .find(|message| message.id == "ada-doc")
+                .unwrap();
+            message.content.media_mut().unwrap().state = state;
+            let label = label_of(&mut app, document);
+            assert!(label.ends_with(ending), "{label}");
+            assert!(!label.contains("Click to retry"), "{label}");
+        }
+        let message = app
+            .conversations
+            .get_mut(&chat)
+            .unwrap()
+            .messages
+            .iter_mut()
+            .find(|message| message.id == "ada-doc")
+            .unwrap();
+        message.content.media_mut().unwrap().path = Some("notes.pdf".into());
+        message.content.media_mut().unwrap().state = Default::default();
+        let label = label_of(&mut app, document);
+        assert!(!label.contains("download"), "{label}");
+    }
+
     #[test]
     fn account_privacy_fetch_fills_the_rows() {
         let mut app = app();
