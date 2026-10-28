@@ -88,6 +88,14 @@
     <ComponentGroup Id="Program" Directory="INSTALLFOLDER">
       <Component Id="Program" Guid="{4D12A07D-C2CD-54F1-9166-62FBA6F01681}">
         <File Id="ZapFasterkExe" Name="zap-fasterk.exe" Source="$(SourceDir)\zap-fasterk.exe" KeyPath="no" />
+        <!-- A GNU toolchain build links the MinGW runtime dynamically, so the
+          payload carries it next to the program. An MSVC build has no such
+          files and msi.rb leaves BundleMingwRuntime false. -->
+        <?if $(var.BundleMingwRuntime) = "true" ?>
+        <File Id="LibStdcpp" Name="libstdc++-6.dll" Source="$(SourceDir)\libstdc++-6.dll" KeyPath="no" />
+        <File Id="LibGcc" Name="libgcc_s_seh-1.dll" Source="$(SourceDir)\libgcc_s_seh-1.dll" KeyPath="no" />
+        <File Id="LibWinpthread" Name="libwinpthread-1.dll" Source="$(SourceDir)\libwinpthread-1.dll" KeyPath="no" />
+        <?endif?>
         <!-- The updater's sign that this copy came from an installer. -->
         <File Id="InstallerMarker" Name="zap-fasterk-installer.txt"
           Source="$(SourceDir)\zap-fasterk-installer.txt" KeyPath="no" />
