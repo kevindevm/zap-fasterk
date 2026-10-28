@@ -5,13 +5,22 @@ it pins the shared CLI and nFPM versions and declares Linux amd64/arm64 inputs,
 DEB/RPM/AppImage contents, dependencies, recipe templates and downstream repositories.
 Application assets and native recipes stay in `packaging/`.
 
-Windows releases carry both the existing Inno Setup installer and per-user MSI
-packages for x86_64 and ARM64. The MSI uses the fork's own upgrade identity and
-only takes over an Inno installation registered under the fork's AppId. It
-preserves the profile/keyring and refuses changes while Zap Faster is running.
-The updater verifies the selected release package before installation. Building
-MSI packages needs WiX 5.0.2 and `WixToolset.Util.wixext`; the disposable Windows
-CI runner exercises installation, takeover, update and removal. Never run
+Windows releases ship the portable zip and a per-user Windows Installer
+package, `zap-faster-vX.Y.Z-<target>.msi`, built by native-packages from
+`packaging/windows/zap-faster.wxs` (`packaging/windows/msi.rb`).
+Releases up to 0.30.0 also shipped an Inno Setup program (`-setup.exe`);
+it is gone, because the package is the one the updater prefers and the one
+tested. The MSI uses the fork's own upgrade identity and only takes over an
+Inno installation registered under the fork's AppId. It installs into that
+same folder, removes Inno's uninstaller and its Settings > Apps entry, and
+leaves the user's data (session, archive, settings) alone, as they live
+outside the program folder. It preserves the profile/keyring and refuses
+changes while Zap Faster is running. The updater verifies the selected
+release package before installation. `packaging/windows/zap-faster.iss`
+stays only so `test-installer.ps1` can make an Inno install for the package
+to take over. Building MSI packages needs WiX 5.0.2 and
+`WixToolset.Util.wixext`; the disposable Windows CI runner exercises
+installation, takeover, update and removal. Never run
 `packaging/windows/test-installer.ps1` against a personal Windows installation;
 it refuses non-GitHub-runner invocation and changes the runner's installation.
 

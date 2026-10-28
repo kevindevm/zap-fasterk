@@ -1,4 +1,8 @@
-﻿; Windows installer built from a release binary with Inno Setup 6.3 or newer:
+﻿; No longer shipped: releases ship only the Windows Installer package
+; (zap-faster.wxs), which takes over a copy this script installed.
+; test-installer.ps1 still builds it to make such a copy to take over.
+;
+; Windows installer built from a release binary with Inno Setup 6.3 or newer:
 ;
 ;   iscc /DVersion=0.1.0 /DArch=x86_64 /DBinary=...\zap-faster.exe ^
 ;        /DOutputDir=dist packaging\windows\zap-faster.iss

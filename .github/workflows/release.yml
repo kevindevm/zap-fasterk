@@ -116,26 +116,12 @@ jobs:
             tar czf "$name.tar.gz" "$name"
           fi
 
-      # Inno Setup ships with the runner image. PowerShell, because bash on
-      # Windows rewrites /D... arguments as paths.
-      - name: Installer
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $version = $env:GITHUB_REF_NAME.TrimStart("v")
-          $arch = "${{ matrix.target }}".Split("-")[0]
-          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
-          if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
-          $numericVersion = $version.Split("-")[0]
-          & $iscc "/DVersion=$version" "/DNumericVersion=$numericVersion" "/DArch=$arch" `
-            "/DBinary=$PWD\target\${{ matrix.target }}\release\zap-faster.exe" `
-            "/DOutputDir=$PWD\dist" packaging\windows\zap-faster.iss
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      # The Windows Installer package, which replaces the setup program
-      # above once every install has updated through one release carrying
-      # both.
-      - uses: ruby/setup-ruby@v1
+      # The Windows installer: a per-user Windows Installer package, which also
+      # takes over a copy the Inno Setup program of earlier releases installed
+      # (PACKAGING.md, "Windows installer"). The Inno script stays only so
+      # test-installer.ps1 can make an Inno install for the package to take
+      # over; releases no longer ship the setup program.
+      - uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
         if: runner.os == 'Windows'
         with:
           ruby-version: '4.0'
@@ -171,7 +157,6 @@ jobs:
           subject-path: |
             dist/*.tar.gz
             dist/*.zip
-            dist/*-setup.exe
             dist/*.msi
       - uses: actions/upload-artifact@v7
         with:
@@ -179,7 +164,6 @@ jobs:
           path: |
             dist/*.tar.gz
             dist/*.zip
-            dist/*-setup.exe
             dist/*.msi
           if-no-files-found: error
 
