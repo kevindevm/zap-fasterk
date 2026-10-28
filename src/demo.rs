@@ -12294,12 +12294,14 @@ mod tests {
                 .map(|(_, node)| node)
                 .collect();
         }
-        let bells: Vec<_> = nodes
+        let mut bells: Vec<_> = nodes
             .iter()
             .filter(|node| node.label() == Some("Mute notifications"))
             .map(|node| node.toggled() == Some(egui::accesskit::Toggled::True))
             .collect();
-        assert_eq!(bells, [false, true], "one bell per account, the second on");
+        // Node order is not account order: one bell per account, one on.
+        bells.sort_unstable();
+        assert_eq!(bells, [false, true], "one bell per account, one on");
         // Only the muted account's row says so, not the one on screen.
         let said: Vec<_> = nodes
             .iter()
