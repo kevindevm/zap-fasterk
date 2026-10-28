@@ -27,3 +27,5 @@ src/ui/archive_backup.rs
 src/ui/call.rs
 src/ui/statuses.rs
 src/a11y.rs
+src/ui/polls.rs
+src/ui/update.rs

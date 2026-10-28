@@ -443,12 +443,9 @@ fn drop_target(app: &mut App, ctx: &egui::Context) {
                 .show(ui, |ui| {
                     ui.vertical_centered(|ui| {
                         theme::icon(ui, Icon::Paperclip, 28.0, palette.accent);
-                        theme::text(
-                            ui,
-                            format!("Drop to send to {name}"),
-                            theme::semibold(15.0),
-                            palette.text,
-                        );
+                        let drop_text = crate::i18n::gettext(app.locale, "Drop to send to {name}")
+                            .replace("{name}", &name);
+                        theme::text(ui, drop_text, theme::semibold(15.0), palette.text);
                     });
                 });
         });
@@ -672,7 +669,7 @@ fn toasts(app: &mut App, ctx: &egui::Context) {
                                             14.0,
                                             palette.secondary,
                                             palette.text,
-                                            "Dismiss",
+                                            &crate::i18n::gettext(app.locale, "Dismiss"),
                                         );
                                         // Store the rect for interaction tests.
                                         ui.ctx().data_mut(|data| {
@@ -687,7 +684,7 @@ fn toasts(app: &mut App, ctx: &egui::Context) {
                                             14.0,
                                             palette.secondary,
                                             palette.text,
-                                            "Copy this message",
+                                            &crate::i18n::gettext(app.locale, "Copy this message"),
                                         )
                                         .clicked()
                                         {

@@ -3530,3 +3530,623 @@ msgstr "Tepkiyi kaldır"
 #: src/ui/conversation.rs
 msgid "React with any emoji"
 msgstr "Herhangi bir emojiyle tepki ver"
+
+#: src/ui/dialogs.rs
+msgid "Missed"
+msgstr "Cevapsız"
+
+#: src/ui/dialogs.rs
+msgid "{seconds} s"
+msgstr "{seconds} sn"
+
+#: src/ui/dialogs.rs
+msgid "Mark as read"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Mark as unread"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Unpin"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Pin to top"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Unarchive"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Archive"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Mute for 8 hours"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Mute for a week"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Mute indefinitely"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Unlock chat"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Lock chat"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Info"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Delete chat"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Default"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Custom"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Your chats appear on the left as they load."
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Select a chat on the left."
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "More"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Clear chat"
+msgstr "Sohbeti temizle"
+
+#: src/ui/dialogs.rs
+msgid "Close chat"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Cancel selection"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "{count} selected"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Forward…"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "View once"
+msgstr "Bir kez görüntüle"
+
+#: src/ui/dialogs.rs
+msgid "The recipient can open this photo only once, on their phone."
+msgstr "Alıcı bu fotoğrafı telefonunda yalnızca bir kez açabilir."
+
+#: src/ui/dialogs.rs
+msgid "Choose an option"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "This list is no longer available."
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "This list can no longer receive replies."
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Sending reply…"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Connect to WhatsApp to reply"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Set up locked chats"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Locked chats"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Choose a local code to open the Locked tab. It is separate from your phone's code. This hides chats in ZapFast, it does not add another encryption layer."
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Local code"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Confirm code"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "That code did not match. Try again."
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Set code and open"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Open locked chats"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Lock this chat?"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "This moves the chat to the Locked tab, hiding it from the normal chat list, search, unread badges, and notifications. The lock status also syncs to your phone. Open Locked with a separate local ZapFast code to read it. Sending from locked chats is not supported yet."
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "New chat"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Search contacts"
+msgstr "Kişilerde ara"
+
+#: src/ui/dialogs.rs
+msgid "Add contact"
+msgstr "Kişi ekle"
+
+#: src/ui/dialogs.rs
+msgid "No matching contacts"
+msgstr "Eşleşen kişi yok"
+
+#: src/ui/dialogs.rs
+msgid "Messages forwarded many times can be sent to one chat at a time"
+msgstr "Çok kez iletilen mesajlar tek seferde yalnızca bir sohbete gönderilebilir"
+
+#: src/ui/dialogs.rs
+msgid "You can forward to up to {count} chat"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Version {version}"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "This is an unofficial client. Using it may be against WhatsApp's terms of service and could get an account suspended."
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "this chat"
+msgstr "bu sohbet"
+
+#: src/ui/dialogs.rs
+msgid "This deletes your chat with {name}, including all messages, on this computer and on your phone. It cannot be undone."
+msgstr "Bu işlem {name} ile sohbetinizi, tüm mesajlarıyla birlikte bu bilgisayarda ve telefonunuzda siler. Geri alınamaz."
+
+#: src/ui/dialogs.rs
+msgid "Delete chat?"
+msgstr "Sohbet silinsin mi?"
+
+#: src/ui/dialogs.rs
+msgid "This clears every message in your chat with {name}, including downloaded media, on this computer and on your phone. The chat itself stays. It cannot be undone."
+msgstr "Bu işlem {name} ile sohbetinizdeki tüm mesajları, indirilen medya dahil, bu bilgisayarda ve telefonunuzda temizler. Sohbetin kendisi kalır. Geri alınamaz."
+
+#: src/ui/dialogs.rs
+msgid "Clear chat?"
+msgstr "Sohbet temizlensin mi?"
+
+#: src/ui/dialogs.rs
+msgid "Group invite"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Looking up the group…"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "An admin must approve your request before you join."
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Open chat"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Request to join"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Join group"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Joining…"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Start over?"
+msgstr "Baştan başlansın mı?"
+
+#: src/ui/dialogs.rs
+msgid "If you can restore the original keyring instead, choose Cancel and Try again: nothing is lost that way."
+msgstr "Bunun yerine özgün anahtarlığı geri yükleyebiliyorsanız İptal'i, ardından “Try again”i seçin: böylece hiçbir şey kaybolmaz."
+
+#: src/ui/dialogs.rs
+msgid "Start over"
+msgstr "Baştan başla"
+
+#: src/ui/dialogs.rs
+msgid "Remove sticker pack?"
+msgstr "Çıkartma paketi kaldırılsın mı?"
+
+#: src/ui/dialogs.rs
+msgid "This removes the device from WhatsApp and deletes the chats stored here. You can link again with a new code."
+msgstr "Bu işlem cihazı WhatsApp'tan kaldırır ve burada saklanan sohbetleri siler. Yeni bir kodla tekrar bağlayabilirsiniz."
+
+#: src/ui/dialogs.rs
+msgid "Link with a phone number"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Enter the WhatsApp phone number with its country code. Do not include a plus sign or leading zero. You will get a code to enter on the phone."
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Enter the whole number, starting with the country code"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Get a code"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "New contact"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "First name"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Surname"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Enter a phone number with its country code, using only digits, spaces, hyphens and brackets"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Save contact"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "You still choose when to restart. Package managers and Flatpak update ZapFast themselves."
+msgstr "Yeniden başlatma zamanını yine siz seçersiniz. Paket yöneticileri ve Flatpak, ZapFast'i kendileri günceller."
+
+#: src/ui/dialogs.rs
+msgid "Stickers"
+msgstr "Çıkartmalar"
+
+#: src/ui/dialogs.rs
+msgid "Open themes folder"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Could not connect"
+msgstr "Bağlanılamadı"
+
+#: src/ui/dialogs.rs
+msgid "Start video"
+msgstr "Görüntüyü başlat"
+
+#: src/ui/dialogs.rs
+msgid "Turn the camera off"
+msgstr "Kamerayı kapat"
+
+#: src/ui/dialogs.rs
+msgid "Devices"
+msgstr "Cihazlar"
+
+#: src/ui/dialogs.rs
+msgid "Accept"
+msgstr "Kabul et"
+
+#: src/ui/dialogs.rs
+msgid "Locked chat"
+msgstr "Kilitli sohbet"
+
+#: src/ui/dialogs.rs
+msgid "Loading chat history"
+msgstr "Sohbet geçmişi yükleniyor"
+
+#: src/ui/dialogs.rs
+msgid "Connecting"
+msgstr "Bağlanıyor"
+
+#: src/ui/dialogs.rs
+msgid "Not sent: view-once mode is available for one photo at a time."
+msgstr "Gönderilmedi: tek seferlik görüntüleme aynı anda yalnızca bir fotoğraf için kullanılabilir."
+
+#: src/ui/dialogs.rs
+msgid "Emoji"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "React to message"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Close reactions"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Search emoji"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Search GIFs via GIPHY"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Search for a GIF or browse trending results."
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Zoom in"
+msgstr "Yakınlaştır"
+
+#: src/ui/dialogs.rs
+msgid "Fit"
+msgstr "Sığdır"
+
+#: src/ui/dialogs.rs
+msgid "Show at original size"
+msgstr "Özgün boyutta göster"
+
+#: src/ui/dialogs.rs
+msgid "Fit to the window (0)"
+msgstr "Pencereye sığdır (0)"
+
+#: src/ui/dialogs.rs
+msgid "Zoom out"
+msgstr "Uzaklaştır"
+
+#: src/ui/dialogs.rs
+msgid "Play motion photo"
+msgstr "Hareketli fotoğrafı oynat"
+
+#: src/ui/dialogs.rs
+msgid "Open externally"
+msgstr "Harici olarak aç"
+
+#: src/ui/dialogs.rs
+msgid "{count} unread chats"
+msgstr "{count} okunmamış sohbet"
+
+#: src/ui/dialogs.rs
+msgid "Use another account"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "{} page"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Docs"
+msgstr "Belgeler"
+
+#: src/ui/dialogs.rs
+msgid "Drop to send to {name}"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Loading chat history… {percent}%"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Loading chat history…"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Offline ({reason}). Reconnecting…"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Not linked to a phone"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Update"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Retry"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Dismiss"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Copy this message"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Minimize"
+msgstr "Simge durumuna küçült"
+
+#: src/ui/dialogs.rs
+msgid "Maximize"
+msgstr "Ekranı kapla"
+
+#: src/ui/dialogs.rs
+msgid "Restore"
+msgstr "Önceki boyuta getir"
+
+#: src/ui/dialogs.rs
+msgid "Next"
+msgstr "İleri"
+
+#: src/ui/dialogs.rs
+msgid "Edit group settings"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Question"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Ask a question"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Answers"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Answer {index}"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Remove answer"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Add answer"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Allow multiple answers"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Sending…"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Send poll"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Select one answer"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Select answers"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Sending vote…"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Waiting for your phone · earlier votes may be missing"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Loading earlier votes from your phone…"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Earlier votes have not been loaded yet"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "{} voter"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Voting key unavailable · use your phone"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Reconnect to vote"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Show votes"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Poll results"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "This poll is no longer available."
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Earlier votes may still be missing. Results update as they arrive."
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "{} vote"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Participant details are not available yet"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Close update"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Release notes"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Checking download…"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Downloading update…"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "{received} of {total} MB"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Ready to install"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Finish any unsent messages or recordings before restarting. ZapFast will briefly disconnect, then reconnect automatically."
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Restart to update"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Preparing to restart…"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Download from GitHub"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Retry download"
+msgstr ""
+
+#: src/ui/dialogs.rs
+msgid "Download update"
+msgstr ""

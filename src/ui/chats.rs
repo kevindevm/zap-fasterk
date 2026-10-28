@@ -2313,21 +2313,37 @@ fn context_menu(app: &mut App, ui: &mut egui::Ui, chat: &Chat, palette: &Palette
 }
 
 fn context_menu_contents(app: &mut App, ui: &mut egui::Ui, chat: &Chat, palette: &Palette) {
+    let locale = app.locale;
     if chat.looks_unread()
-        && widgets::menu_item(ui, palette, Some(Icon::CheckCheck), "Mark as read")
+        && widgets::menu_item(
+            ui,
+            palette,
+            Some(Icon::CheckCheck),
+            &crate::i18n::gettext(locale, "Mark as read"),
+        )
     {
         app.actions.push(Action::MarkRead(chat.id.clone()));
     }
     if !chat.looks_unread()
-        && widgets::menu_item(ui, palette, Some(Icon::MessageCircle), "Mark as unread")
+        && widgets::menu_item(
+            ui,
+            palette,
+            Some(Icon::MessageCircle),
+            &crate::i18n::gettext(locale, "Mark as unread"),
+        )
     {
         app.actions.push(Action::MarkUnread(chat.id.clone()));
     }
+    let pin_label = if chat.pinned {
+        crate::i18n::gettext(locale, "Unpin")
+    } else {
+        crate::i18n::gettext(locale, "Pin to top")
+    };
     if widgets::menu_item(
         ui,
         palette,
         Some(if chat.pinned { Icon::PinOff } else { Icon::Pin }),
-        if chat.pinned { "Unpin" } else { "Pin to top" },
+        pin_label.as_ref(),
     ) {
         app.actions
             .push(Action::SetPinned(chat.id.clone(), !chat.pinned));
@@ -2336,33 +2352,29 @@ fn context_menu_contents(app: &mut App, ui: &mut egui::Ui, chat: &Chat, palette:
     if !chat.is_channel() {
         // Bound before the call so the translated text outlives the borrow.
         let favorite_label = if chat.favorite {
-            crate::i18n::gettext(app.locale, "Remove from favorites")
+            crate::i18n::gettext(locale, "Remove from favorites")
         } else {
-            crate::i18n::gettext(app.locale, "Add to favorites")
+            crate::i18n::gettext(locale, "Add to favorites")
         };
         if widgets::menu_item(ui, palette, Some(Icon::Heart), favorite_label.as_ref()) {
             app.actions
                 .push(Action::SetFavorite(chat.id.clone(), !chat.favorite));
         }
     }
-    if widgets::menu_item(
-        ui,
-        palette,
-        Some(Icon::Archive),
-        if chat.archived {
-            "Unarchive"
-        } else {
-            "Archive"
-        },
-    ) {
+    let archive_label = if chat.archived {
+        crate::i18n::gettext(locale, "Unarchive")
+    } else {
+        crate::i18n::gettext(locale, "Archive")
+    };
+    if widgets::menu_item(ui, palette, Some(Icon::Archive), archive_label.as_ref()) {
         app.actions
             .push(Action::SetArchived(chat.id.clone(), !chat.archived));
     }
     // Bound before the call so the translated text outlives the borrow.
     let leave_label = if chat.is_channel() {
-        crate::i18n::gettext(app.locale, "Leave channel")
+        crate::i18n::gettext(locale, "Leave channel")
     } else {
-        crate::i18n::gettext(app.locale, "Leave group")
+        crate::i18n::gettext(locale, "Leave group")
     };
     if chat.can_leave(&app.our_ids())
         && widgets::menu_item(ui, palette, Some(Icon::LogOut), leave_label.as_ref())
@@ -2374,7 +2386,12 @@ fn context_menu_contents(app: &mut App, ui: &mut egui::Ui, chat: &Chat, palette:
     }
     let now = crate::util::now();
     if chat.muted(now) {
-        if widgets::menu_item(ui, palette, Some(Icon::Bell), "Unmute") {
+        if widgets::menu_item(
+            ui,
+            palette,
+            Some(Icon::Bell),
+            &crate::i18n::gettext(locale, "Unmute"),
+        ) {
             app.actions.push(Action::SetMuted(chat.id.clone(), None));
         }
     } else {
@@ -2384,9 +2401,9 @@ fn context_menu_contents(app: &mut App, ui: &mut egui::Ui, chat: &Chat, palette:
     voice_speed_menu(app, ui, palette, chat);
     let vip = app.account().settings.vip_chats.contains(&chat.id);
     let vip_label = if vip {
-        crate::i18n::gettext(app.locale, "Remove VIP indicator")
+        crate::i18n::gettext(locale, "Remove VIP indicator")
     } else {
-        crate::i18n::gettext(app.locale, "Mark as VIP")
+        crate::i18n::gettext(locale, "Mark as VIP")
     };
     if widgets::menu_item(ui, palette, Some(Icon::Star), &vip_label) {
         app.actions.push(Action::SetVipChat {
@@ -2395,6 +2412,11 @@ fn context_menu_contents(app: &mut App, ui: &mut egui::Ui, chat: &Chat, palette:
         });
     }
     labels::chat_menu(app, ui, chat, palette);
+    let lock_label = if chat.locked {
+        crate::i18n::gettext(locale, "Unlock chat")
+    } else {
+        crate::i18n::gettext(locale, "Lock chat")
+    };
     if widgets::menu_item(
         ui,
         palette,
@@ -2403,11 +2425,7 @@ fn context_menu_contents(app: &mut App, ui: &mut egui::Ui, chat: &Chat, palette:
         } else {
             Icon::Lock
         }),
-        if chat.locked {
-            "Unlock chat"
-        } else {
-            "Lock chat"
-        },
+        lock_label.as_ref(),
     ) {
         app.actions.push(if chat.locked {
             Action::SetLocked(chat.id.clone(), false)
@@ -2417,11 +2435,21 @@ fn context_menu_contents(app: &mut App, ui: &mut egui::Ui, chat: &Chat, palette:
     }
     widgets::menu_separator(ui, palette);
     if let Some(phone) = chat.phone()
-        && widgets::menu_item(ui, palette, Some(Icon::Copy), "Copy number")
+        && widgets::menu_item(
+            ui,
+            palette,
+            Some(Icon::Copy),
+            &crate::i18n::gettext(locale, "Copy number"),
+        )
     {
         app.actions.push(Action::CopyText(format!("+{phone}")));
     }
-    if widgets::menu_item(ui, palette, Some(Icon::Info), "Info") {
+    if widgets::menu_item(
+        ui,
+        palette,
+        Some(Icon::Info),
+        &crate::i18n::gettext(locale, "Info"),
+    ) {
         app.actions
             .push(Action::ShowDialog(Dialog::ChatInfo(chat.id.clone())));
     }
@@ -2439,7 +2467,13 @@ fn context_menu_contents(app: &mut App, ui: &mut egui::Ui, chat: &Chat, palette:
                 chat.id.clone(),
             )));
     }
-    if widgets::menu_item_enabled(ui, palette, Some(Icon::Trash), "Delete chat", connected) {
+    if widgets::menu_item_enabled(
+        ui,
+        palette,
+        Some(Icon::Trash),
+        &crate::i18n::gettext(locale, "Delete chat"),
+        connected,
+    ) {
         app.actions
             .push(Action::ShowDialog(Dialog::ConfirmDeleteChat(
                 chat.id.clone(),
