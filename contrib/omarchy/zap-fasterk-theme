@@ -1,11 +1,11 @@
 #!/bin/bash
-# Install with: omarchy hook install theme-set contrib/omarchy/zap-faster-theme
+# Install with: omarchy hook install theme-set contrib/omarchy/zap-fasterk-theme
 set -euo pipefail
 
 # These overrides also let the hook be tested without changing the desktop.
-theme_dir=${ZAP_FASTER_OMARCHY_THEME_DIR:-$HOME/.local/state/omarchy/current/theme}
-themes_dir=${ZAP_FASTER_THEMES_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/zapfast/themes}
-source_file=$theme_dir/zap-faster.json
+theme_dir=${ZAP_FASTERK_OMARCHY_THEME_DIR:-$HOME/.local/state/omarchy/current/theme}
+themes_dir=${ZAP_FASTERK_THEMES_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/zapfasterk/themes}
+source_file=$theme_dir/zap-fasterk.json
 
 # A theme without a generated palette leaves the last accepted colors alone.
 [[ -f $source_file && ! -L $source_file ]] || exit 0
@@ -18,4 +18,4 @@ mv -f -- "$temporary" "$themes_dir/omarchy.json"
 
 # This command only contacts an existing instance. A stopped app stays stopped.
 # The next launch reads the file if no instance is running or predates reload.
-zap-faster reload-themes >/dev/null 2>&1 || true
+zap-fasterk reload-themes >/dev/null 2>&1 || true

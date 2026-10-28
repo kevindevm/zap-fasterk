@@ -24,7 +24,7 @@ impl SyntheticLink {
         let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         // An in-memory store: the client only names messages. Never run it.
         let store = format!(
-            "file:zapfast_synthetic_{}_{n}?mode=memory&cache=shared",
+            "file:zapfasterk_synthetic_{}_{n}?mode=memory&cache=shared",
             std::process::id()
         );
         worker.client = Some(runtime.block_on(async {

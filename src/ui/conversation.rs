@@ -37,7 +37,7 @@ const SELECT_GUTTER: f32 = SELECT_BOX + 14.0;
 /// Footer label on an outgoing message that failed to send.
 const NOT_SENT: &str = "Not sent";
 const NOT_SENT_HINT: &str =
-    "This message could not be sent, and Zap Faster will not retry it. Send it again yourself.";
+    "This message could not be sent, and Zap Fasterk will not retry it. Send it again yourself.";
 
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let Some(chat) = app.current_chat().cloned() else {
@@ -267,7 +267,7 @@ fn empty(app: &mut App, ui: &mut egui::Ui) {
     ui.painter().text(
         center,
         Align2::CENTER_CENTER,
-        "Zap Faster",
+        "Zap Fasterk",
         theme::bold(24.0),
         palette.text,
     );
@@ -1333,7 +1333,7 @@ fn composer(app: &mut App, ui: &mut egui::Ui, chat: &Chat) {
                             } else {
                                 crate::i18n::gettext(
                                     app.locale,
-                                    "Channels are read-only in Zap Faster",
+                                    "Channels are read-only in Zap Fasterk",
                                 )
                             }
                             .as_ref(),
@@ -4540,7 +4540,7 @@ impl SelectionLeash {
 
 impl egui::plugin::Plugin for SelectionLeash {
     fn debug_name(&self) -> &'static str {
-        "zapfast-selection-leash"
+        "zapfasterk-selection-leash"
     }
 
     fn input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
@@ -9770,7 +9770,7 @@ fn video(
 ) -> f32 {
     use crate::video::State;
     let palette = view.palette;
-    // A video sent before Zap Faster made thumbnails has none; its file is
+    // A video sent before Zap Fasterk made thumbnails has none; its file is
     // here, so its first frame stands in. Without either, it is a file card.
     let thumbnail = message.thumbnail.as_deref();
     if thumbnail.is_none() && media.path.is_none() {
@@ -12724,7 +12724,7 @@ mod reaction_tests {
 
     #[test]
     fn every_message_menu_label_can_be_translated() {
-        const TEMPLATE: &str = include_str!("../../assets/i18n/zapfast.pot");
+        const TEMPLATE: &str = include_str!("../../assets/i18n/zapfasterk.pot");
         // Line by line: a Windows checkout may end the template's lines in CRLF.
         let translatable = |text: &str| {
             let msgid = format!("msgid \"{text}\"");

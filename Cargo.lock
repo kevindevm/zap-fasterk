@@ -8961,7 +8961,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "zap-faster"
+name = "zap-fasterk"
 version = "0.30.0"
 dependencies = [
  "accesskit_consumer 0.35.0",

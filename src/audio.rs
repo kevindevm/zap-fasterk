@@ -29,8 +29,8 @@ fn rate() -> NonZero<u32> {
 /// Opens the default output device for playback.
 ///
 /// rodio reports the sink's drop through `stderr` by default. A desktop launch
-/// can have that closed: Zap Faster inherits `stderr` from whatever started it,
-/// and that process can exit while Zap Faster runs on. Rust ignores `SIGPIPE`, so
+/// can have that closed: Zap Fasterk inherits `stderr` from whatever started it,
+/// and that process can exit while Zap Fasterk runs on. Rust ignores `SIGPIPE`, so
 /// the next write there fails with `Broken pipe` and the print macro panics,
 /// which aborts the whole app in a release build. Keep it off, and report
 /// failures of our own through the log instead.
@@ -1371,7 +1371,7 @@ mod tests {
     #[ignore = "makes a sound on this machine"]
     fn plays_a_clip_on_this_machine() {
         let dir = std::env::temp_dir();
-        let path = dir.join("zapfast-audio-test.ogg");
+        let path = dir.join("zapfasterk-audio-test.ogg");
         let tone: Vec<f32> = (0..voice::RATE)
             .map(|i| (i as f32 * 330.0 * std::f32::consts::TAU / voice::RATE as f32).sin() * 0.3)
             .collect();
@@ -1406,7 +1406,7 @@ mod tests {
     #[ignore = "makes a sound on this machine"]
     fn doubles_the_position_rate_on_this_machine() {
         let dir = std::env::temp_dir();
-        let path = dir.join("zapfast-audio-speed-test.ogg");
+        let path = dir.join("zapfasterk-audio-speed-test.ogg");
         let tone: Vec<f32> = (0..voice::RATE * 2)
             .map(|i| (i as f32 * 330.0 * std::f32::consts::TAU / voice::RATE as f32).sin() * 0.3)
             .collect();

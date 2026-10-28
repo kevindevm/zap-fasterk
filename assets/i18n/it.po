@@ -3,8 +3,8 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: Zap Faster 0.20.0\n"
-"Report-Msgid-Bugs-To: https://github.com/eternalwaitt/zap-faster/issues/new?"
+"Project-Id-Version: Zap Fasterk 0.20.0\n"
+"Report-Msgid-Bugs-To: https://github.com/kevindevm/zap-fasterk/issues/new?"
 "template=translation.yml\n"
 "POT-Creation-Date: 2026-10-11 14:31-0300\n"
 "PO-Revision-Date: 2026-09-22 00:00-0300\n"
@@ -390,8 +390,8 @@ msgid "You left this channel"
 msgstr "Hai lasciato questo canale"
 
 #: src/ui/conversation.rs:1315
-msgid "Channels are read-only in Zap Faster"
-msgstr "I canali sono di sola lettura in Zap Faster"
+msgid "Channels are read-only in Zap Fasterk"
+msgstr "I canali sono di sola lettura in Zap Fasterk"
 
 #: src/ui/conversation.rs:1344
 msgid "You left this group"
@@ -893,13 +893,13 @@ msgstr "Riprendere questo account ripristinato?"
 
 #: src/ui/dialogs.rs:1638
 msgid ""
-"Close Zap Faster on the original installation before continuing. Both "
+"Close Zap Fasterk on the original installation before continuing. Both "
 "installations share the same linked-device identity and must not connect at "
 "the same time. Resuming reconnects to WhatsApp and may send pending messages "
 "or account changes from the backup. If the phone has invalidated the "
 "session, you will need to link again."
 msgstr ""
-"Chiudi Zap Faster nell’installazione originale prima di continuare. Le due "
+"Chiudi Zap Fasterk nell’installazione originale prima di continuare. Le due "
 "installazioni condividono la stessa identità del dispositivo collegato e non "
 "devono connettersi contemporaneamente. La ripresa riconnette WhatsApp e può "
 "inviare messaggi in attesa o modifiche all’account dal backup. Se il "
@@ -1108,12 +1108,12 @@ msgstr "Stile delle emoji"
 msgid ""
 "System uses platform emoji with Noto fallback. Noto uses bundled emoji only. "
 "You can import a CBDT or sbix colour emoji font you are allowed to use (up "
-"to 256 MiB). Custom fonts have no Noto fallback. Restart Zap Faster to apply."
+"to 256 MiB). Custom fonts have no Noto fallback. Restart Zap Fasterk to apply."
 msgstr ""
 "Sistema usa le emoji della piattaforma con Noto come alternativa. Noto usa "
 "solo le emoji incluse. Puoi importare un font di emoji a colori CBDT o sbix "
 "che sei autorizzato a usare (fino a 256 MiB). I font personalizzati non "
-"hanno Noto come alternativa. Riavvia Zap Faster per applicare la modifica."
+"hanno Noto come alternativa. Riavvia Zap Fasterk per applicare la modifica."
 
 #: src/ui/settings.rs:349
 msgid "Wallpaper"
@@ -1437,7 +1437,7 @@ msgstr ""
 
 #: src/ui/settings.rs:692
 msgid ""
-"Could not load your account privacy. Trying again when Zap Faster reconnects."
+"Could not load your account privacy. Trying again when Zap Fasterk reconnects."
 msgstr ""
 "Impossibile caricare la privacy del tuo account. Nuovo tentativo quando Zap "
 "Faster si riconnette."
@@ -1519,9 +1519,9 @@ msgid "Check for updates"
 msgstr "Controlla gli aggiornamenti"
 
 #: src/ui/settings.rs:800
-msgid "Asks GitHub once a day, sending only the Zap Faster version."
+msgid "Asks GitHub once a day, sending only the Zap Fasterk version."
 msgstr ""
-"Chiede a GitHub una volta al giorno, inviando solo la versione di Zap Faster."
+"Chiede a GitHub una volta al giorno, inviando solo la versione di Zap Fasterk."
 
 #: src/ui/settings.rs:805
 msgid "Download updates automatically"
@@ -1931,10 +1931,10 @@ msgstr "Bloccati"
 
 #: src/ui/settings.rs:1256
 msgid ""
-"Time without using Zap Faster, also counted while it is in the tray. "
+"Time without using Zap Fasterk, also counted while it is in the tray. "
 "Ctrl+Shift+L locks it at once."
 msgstr ""
-"Tempo senza usare Zap Faster, anche nell’area di notifica. Ctrl+Maiusc+L "
+"Tempo senza usare Zap Fasterk, anche nell’area di notifica. Ctrl+Maiusc+L "
 "blocca subito."
 
 #: src/ui/settings.rs:1298
@@ -2026,11 +2026,11 @@ msgstr "Tema"
 
 #: src/ui/settings.rs:1848
 msgid ""
-"Space taken by the pictures, videos, stickers, and GIFs Zap Faster has "
+"Space taken by the pictures, videos, stickers, and GIFs Zap Fasterk has "
 "downloaded. The size is the one WhatsApp declared. Documents and audio count "
 "under Other."
 msgstr ""
-"Spazio occupato da immagini, video, sticker e GIF scaricati da Zap Faster. "
+"Spazio occupato da immagini, video, sticker e GIF scaricati da Zap Fasterk. "
 "La dimensione è quella dichiarata da WhatsApp. I documenti e l'audio contano "
 "in Altro."
 
@@ -2296,8 +2296,8 @@ msgstr ""
 "telefono prima di riprovare"
 
 #: src/app.rs:5130
-msgid "Not sent: Zap Faster is not connected to WhatsApp."
-msgstr "Non inviato: Zap Faster non è connesso a WhatsApp."
+msgid "Not sent: Zap Fasterk is not connected to WhatsApp."
+msgstr "Non inviato: Zap Fasterk non è connesso a WhatsApp."
 
 #: src/app.rs:5134
 msgid ""
@@ -2329,8 +2329,8 @@ msgstr "Invio del pacchetto di sticker…"
 
 #: src/app.rs:8529 src/ui/labels.rs:292
 #, rust-format
-msgid "You have {limit} labels, the most Zap Faster keeps."
-msgstr "Hai {limit} etichette, il massimo che Zap Faster conserva."
+msgid "You have {limit} labels, the most Zap Fasterk keeps."
+msgstr "Hai {limit} etichette, il massimo che Zap Fasterk conserva."
 
 #: src/app.rs:8711
 msgid "Font files"
@@ -2823,8 +2823,8 @@ msgid "Play video"
 msgstr "Riproduci video"
 
 #: src/ui/lock.rs:17
-msgid "Zap Faster is locked"
-msgstr "Zap Faster è bloccato"
+msgid "Zap Fasterk is locked"
+msgstr "Zap Fasterk è bloccato"
 
 #: src/ui/lock.rs:23
 msgid "Unlinking this computer…"
@@ -3388,10 +3388,10 @@ msgstr ""
 
 #: src/ui/statuses.rs:21
 msgid ""
-"Statuses received while Zap Faster is running. They expire after 24 hours. "
+"Statuses received while Zap Fasterk is running. They expire after 24 hours. "
 "Viewing does not send a read receipt."
 msgstr ""
-"Stati ricevuti mentre Zap Faster è in esecuzione. Scadono dopo 24 ore. La "
+"Stati ricevuti mentre Zap Fasterk è in esecuzione. Scadono dopo 24 ore. La "
 "visualizzazione non invia una conferma di lettura."
 
 #: src/ui/statuses.rs:38

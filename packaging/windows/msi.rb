@@ -1,10 +1,10 @@
-# Builds Zap Faster's Windows Installer package: native-packages' recipe for
+# Builds Zap Fasterk's Windows Installer package: native-packages' recipe for
 # the windows-amd64 and windows-arm64 targets.
 #
 #   ruby packaging/windows/msi.rb PAYLOAD PACKAGE VERSION [ARCH]
 #
-# PAYLOAD holds zap-faster.exe, README.md, LICENSE, THIRD-PARTY-NOTICES.md and
-# zap-faster-installer.txt. ARCH is x64 or arm64; without it, it comes from
+# PAYLOAD holds zap-fasterk.exe, README.md, LICENSE, THIRD-PARTY-NOTICES.md and
+# zap-fasterk-installer.txt. ARCH is x64 or arm64; without it, it comes from
 # NATIVE_PACKAGES_TARGET. Needs WiX 5 and its Util extension:
 #
 #   dotnet tool install --global wix --version 5.0.2
@@ -19,7 +19,7 @@ abort "#{package} already exists" if File.exist?(package)
 # Windows Installer versions are numeric: 1.2.3-beta.1 installs as 1.2.3.
 numeric = version.split("-").first
 success = system(
-  "wix", "build", File.join(__dir__, "zap-faster.wxs"),
+  "wix", "build", File.join(__dir__, "zap-fasterk.wxs"),
   "-arch", arch,
   "-ext", "WixToolset.Util.wixext",
   "-d", "Version=#{numeric}",

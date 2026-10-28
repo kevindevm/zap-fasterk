@@ -1,6 +1,6 @@
 ---
 title: Getting Started
-description: Install Zap Faster, link your phone, and load chat history.
+description: Install Zap Fasterk, link your phone, and load chat history.
 nav_order: 2
 ---
 
@@ -12,14 +12,14 @@ macOS, and Windows.
 Or build from source with a recent stable [Rust](https://rustup.rs):
 
 ```sh
-git clone https://github.com/eternalwaitt/zap-faster zapfast
-cd zapfast
+git clone https://github.com/kevindevm/zap-fasterk zapfasterk
+cd zapfasterk
 cargo install --path .
-zapfast
+zapfasterk
 ```
 
 On Linux, `cargo install` puts the binary on your `PATH` but does not add a
-launcher entry. To get one (Zap Faster under your application launcher, with its
+launcher entry. To get one (Zap Fasterk under your application launcher, with its
 own icon and no terminal), install a release build instead:
 
 ```sh
@@ -49,17 +49,17 @@ sudo apt install build-essential cmake perl libasound2-dev libxkbcommon-dev libw
 ```
 
 With Nix, `nix develop` provides the toolchain and every native dependency,
-and `nix run .#zapfast` builds and runs it.
+and `nix run .#zapfasterk` builds and runs it.
 
-The packaged desktop entry is `packaging/applications/zapfast.desktop`;
+The packaged desktop entry is `packaging/applications/zapfasterk.desktop`;
 `packaging/install-user.sh` derives the user copy above from it.
 
 ## Link with your phone
 
-On first launch, Zap Faster follows your system appearance. Choose another theme
-in **Settings > Appearance**; Zap Faster remembers your choice.
+On first launch, Zap Fasterk follows your system appearance. Choose another theme
+in **Settings > Appearance**; Zap Fasterk remembers your choice.
 
-Zap Faster links as a companion device, like WhatsApp Web. Start it and either:
+Zap Fasterk links as a companion device, like WhatsApp Web. Start it and either:
 
 - scan the QR code with your phone (WhatsApp, **Settings**, **Linked
   devices**, **Link a device**), or
@@ -67,7 +67,7 @@ Zap Faster links as a companion device, like WhatsApp Web. Start it and either:
   phone.
 
 The link survives restarts. Your phone does not need to stay on the same
-network or be online to read messages already stored in Zap Faster.
+network or be online to read messages already stored in Zap Fasterk.
 
 Several numbers can stay linked in one window. Click your own picture at the
 top of the chat list to switch between them or to add another (**Settings >
@@ -83,9 +83,9 @@ and its unread chats count toward neither the dot nor the taskbar badge.
 ## Message history
 
 After linking, the phone sends recent history. The chat list appears within
-seconds, and messages can take a few minutes to finish loading. Zap Faster stores
+seconds, and messages can take a few minutes to finish loading. Zap Fasterk stores
 new messages in its own archive. When you scroll past the stored history,
-Zap Faster asks your phone for older messages. The phone must be online.
+Zap Fasterk asks your phone for older messages. The phone must be online.
 
 ## Try it in your own chat
 

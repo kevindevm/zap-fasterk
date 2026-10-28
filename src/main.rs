@@ -2,13 +2,13 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use zapfast::{app, backend, paths, settings, single_instance};
+use zapfasterk::{app, backend, paths, settings, single_instance};
 
 use clap::Parser;
 
 /// A fast, native WhatsApp client.
 #[derive(Debug, Parser)]
-#[command(name = "zap-faster", version, about)]
+#[command(name = "zap-fasterk", version, about)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Control>,
@@ -16,7 +16,7 @@ struct Cli {
     #[arg(short, long)]
     verbose: bool,
     /// Start in the tray without opening a window, when the tray is available
-    /// and Zap Faster keeps running in the background. For login autostart.
+    /// and Zap Fasterk keeps running in the background. For login autostart.
     #[arg(long)]
     start_hidden: bool,
 
@@ -52,7 +52,7 @@ struct Cli {
         requires = "demo_tour",
         value_name = "NAME",
         default_value = "launch",
-        value_parser = clap::builder::PossibleValuesParser::new(zapfast::demo::tour::Script::NAMES),
+        value_parser = clap::builder::PossibleValuesParser::new(zapfasterk::demo::tour::Script::NAMES),
     )]
     demo_tour_script: String,
 
@@ -113,9 +113,9 @@ enum Control {
         #[command(subcommand)]
         operation: Automation,
     },
-    /// Reload palettes in an already-running Zap Faster without showing its window.
+    /// Reload palettes in an already-running Zap Fasterk without showing its window.
     ReloadThemes,
-    /// Quit an already-running Zap Faster, which closing its window leaves in the tray.
+    /// Quit an already-running Zap Fasterk, which closing its window leaves in the tray.
     Quit,
 }
 
@@ -222,7 +222,7 @@ enum Automation {
 }
 fn automation_command(operation: &Automation, runtime: &std::path::Path) -> Result<(), String> {
     use std::io::Read;
-    use zapfast::automation::{Attachment, Request};
+    use zapfasterk::automation::{Attachment, Request};
     let mut cursor = None;
     let mut row_cursor = None;
     let mut collection_cursor = None;
@@ -392,10 +392,10 @@ fn automation_command(operation: &Automation, runtime: &std::path::Path) -> Resu
                     let metadata = source
                         .metadata()
                         .map_err(|_| "Could not inspect attachment")?;
-                    if !metadata.is_file() || metadata.len() > zapfast::automation::FILE_LIMIT {
+                    if !metadata.is_file() || metadata.len() > zapfasterk::automation::FILE_LIMIT {
                         return Err("Attachments must be files of at most 64 MiB".into());
                     }
-                    let mut source = source.take(zapfast::automation::FILE_LIMIT + 1);
+                    let mut source = source.take(zapfasterk::automation::FILE_LIMIT + 1);
                     let mut hash = Sha256::new();
                     let mut buffer = [0u8; 65536];
                     let mut size = 0u64;
@@ -515,7 +515,7 @@ fn automation_command(operation: &Automation, runtime: &std::path::Path) -> Resu
             _ => request.clone(),
         };
         // Reassemble authorized byte fragments before printing any row from this page.
-        let reply=zapfast::automation::send(runtime,&current).map_err(|_|"Could not reach opted-in local automation. A send may be Unconfirmed; query the same request id".to_owned())?;
+        let reply=zapfasterk::automation::send(runtime,&current).map_err(|_|"Could not reach opted-in local automation. A send may be Unconfirmed; query the same request id".to_owned())?;
         let value: serde_json::Value =
             serde_json::from_str(&reply).map_err(|_| "Invalid automation reply")?;
         if let Some(error) = value.get("error") {
@@ -624,12 +624,12 @@ fn automation_command(operation: &Automation, runtime: &std::path::Path) -> Resu
 /// hiding real clipboard failures (`arboard=error`) or any other warning.
 fn default_log_filter(verbose: bool) -> &'static str {
     if verbose {
-        "info,zapfast=debug,whatsapp_rust=debug,wacore=debug"
+        "info,zapfasterk=debug,whatsapp_rust=debug,wacore=debug"
     } else {
         // env_logger treats '/' as a message-regex separator, so it cannot
         // select the literal target Client/AppState here. Enable Client INFO;
         // the protocol redactor reduces every such line to a fixed category.
-        "warn,zapfast=info,fastframe_fonts=info,Client=info,arboard=error"
+        "warn,zapfasterk=info,fastframe_fonts=info,Client=info,arboard=error"
     }
 }
 
@@ -649,13 +649,13 @@ fn run() -> eframe::Result<()> {
     // First, before parsing the command line or touching any state: run the
     // update helper when asked (`--apply-update <job>`, then exit), and take
     // `--update-receipt` and `--update-error` off the command line.
-    let launch = fastframe_update::intercept(&zapfast::updates::CONFIG);
+    let launch = fastframe_update::intercept(&zapfasterk::updates::CONFIG);
     if launch
         .arguments
         .iter()
         .any(|argument| argument == "--camera-list-helper")
     {
-        zapfast::camera::run_list_helper();
+        zapfasterk::camera::run_list_helper();
         return Ok(());
     }
     if launch
@@ -663,19 +663,19 @@ fn run() -> eframe::Result<()> {
         .iter()
         .any(|argument| argument == "--camera-helper")
     {
-        zapfast::camera::run_helper();
+        zapfasterk::camera::run_helper();
         return Ok(());
     }
     let cli = Cli::parse_from(&launch.arguments);
     let group_invite = cli
         .whatsapp_url
         .as_deref()
-        .and_then(zapfast::chat_link::GroupInviteLink::parse);
+        .and_then(zapfasterk::chat_link::GroupInviteLink::parse);
     let chat_link = cli
         .whatsapp_url
         .as_deref()
         .filter(|_| group_invite.is_none())
-        .map(zapfast::chat_link::ChatLink::parse)
+        .map(zapfasterk::chat_link::ChatLink::parse)
         .transpose()
         .map_err(|error| {
             eframe::Error::AppCreation(
@@ -694,9 +694,9 @@ fn run() -> eframe::Result<()> {
         let (verb, not_running) = match command {
             Control::ReloadThemes => (
                 "reload-themes",
-                "Zap Faster is not running, so there are no themes to reload.",
+                "Zap Fasterk is not running, so there are no themes to reload.",
             ),
-            Control::Quit => ("quit", "Zap Faster is not running."),
+            Control::Quit => ("quit", "Zap Fasterk is not running."),
             Control::Automation { .. } | Control::Access(_) => unreachable!("handled above"),
         };
         if let Err(error) = single_instance::send(&discovered.runtime, verb) {
@@ -711,7 +711,7 @@ fn run() -> eframe::Result<()> {
                     return Ok(());
                 }
             } else {
-                eprintln!("Could not reach the running Zap Faster: {error}");
+                eprintln!("Could not reach the running Zap Fasterk: {error}");
             }
             std::process::exit(1);
         }
@@ -729,11 +729,11 @@ fn run() -> eframe::Result<()> {
         // A hidden start must not surface a copy that is already running.
         let request = chat_link
             .as_ref()
-            .map(zapfast::chat_link::ChatLink::request)
+            .map(zapfasterk::chat_link::ChatLink::request)
             .or_else(|| {
                 group_invite
                     .as_ref()
-                    .map(zapfast::chat_link::GroupInviteLink::request)
+                    .map(zapfasterk::chat_link::GroupInviteLink::request)
             });
         let verb = request
             .as_deref()
@@ -741,31 +741,33 @@ fn run() -> eframe::Result<()> {
         match single_instance::acquire(&discovered.runtime, &waker, verb) {
             single_instance::Outcome::Only(guard) => Some(guard),
             single_instance::Outcome::Surfaced if cli.start_hidden => {
-                eprintln!("Zap Faster is already running");
+                eprintln!("Zap Fasterk is already running");
                 return Ok(());
             }
             single_instance::Outcome::Surfaced => {
-                eprintln!("Zap Faster or FastsApp is already running; asked it to show its window");
+                eprintln!(
+                    "Zap Fasterk or FastsApp is already running; asked it to show its window"
+                );
                 return Ok(());
             }
             single_instance::Outcome::Unanswered => {
                 if chat_link.is_some() || group_invite.is_some() {
                     eprintln!(
-                        "The running Zap Faster cannot open this link. Quit it and open the link again."
+                        "The running Zap Fasterk cannot open this link. Quit it and open the link again."
                     );
                 } else {
-                    eprintln!("Zap Faster is already running but did not answer");
+                    eprintln!("Zap Fasterk is already running but did not answer");
                 }
                 return Ok(());
             }
         }
     };
     let default_filter = default_log_filter(cli.verbose);
-    // A demo must not create empty Zap Faster directories that would prevent a
+    // A demo must not create empty Zap Fasterk directories that would prevent a
     // later real launch from adopting the existing FastsApp session.
     let dirs = if demo {
         paths::AppDirs::under(&std::env::temp_dir().join(format!(
-            "zapfast-demo-{}-{}",
+            "zapfasterk-demo-{}-{}",
             std::process::id(),
             jiff::Timestamp::now().as_millisecond(),
         )))
@@ -780,7 +782,7 @@ fn run() -> eframe::Result<()> {
     // directories have been created and secured successfully.
     dirs.ensure()
         .map_err(|error| eframe::Error::AppCreation(error.into()))?;
-    let logging = fastframe_log::Logging::new("zapfast", env!("CARGO_PKG_VERSION"))
+    let logging = fastframe_log::Logging::new("zapfasterk", env!("CARGO_PKG_VERSION"))
         .filter(default_filter)
         .panic_log(dirs.panic_log())
         .redact(redact_protocol);
@@ -802,7 +804,7 @@ fn run() -> eframe::Result<()> {
     }
     let settings = settings::Settings::load(&dirs.settings_file());
     // Configure fastframe-emoji before any renderer wrapper can initialize it.
-    zapfast::emoji::setup_with_font(
+    zapfasterk::emoji::setup_with_font(
         settings.emoji_renderer,
         settings.custom_emoji_font.as_deref(),
     );
@@ -832,8 +834,8 @@ fn run() -> eframe::Result<()> {
     }
     #[cfg(feature = "demo")]
     if demo {
-        zapfast::demo::populate(&mut app);
-        zapfast::demo::apply_flags(&mut app, cli.demo_page.as_deref());
+        zapfasterk::demo::populate(&mut app);
+        zapfasterk::demo::apply_flags(&mut app, cli.demo_page.as_deref());
         if cli.demo_tour {
             tour_script(&cli.demo_tour_script).prepare(&mut app);
         }
@@ -876,12 +878,12 @@ fn run() -> eframe::Result<()> {
             // Decided as each window is made: it cannot become transparent
             // later.
             let transparent = lease.peek(|app: &app::App| {
-                zapfast::backdrop::transparent_window(
-                    app.settings.theme == zapfast::settings::ThemeChoice::Messages,
+                zapfasterk::backdrop::transparent_window(
+                    app.settings.theme == zapfasterk::settings::ThemeChoice::Messages,
                     app.palette.window.a() < 255,
                 )
             });
-            zapfast::backdrop::set_window_transparent(transparent);
+            zapfasterk::backdrop::set_window_transparent(transparent);
             let geometry = if demo_persistence.is_some() {
                 fastframe_shell::window::Geometry::default()
             } else {
@@ -891,13 +893,13 @@ fn run() -> eframe::Result<()> {
             let shot = shot.clone();
             #[cfg(feature = "demo")]
             let tour = cli.demo_tour.then(|| {
-                zapfast::demo::tour::Tour::scripted(
+                zapfasterk::demo::tour::Tour::scripted(
                     tour_script(&cli.demo_tour_script),
                     cli.demo_tour_delay.map(std::time::Duration::from_millis),
                     cli.demo_tour_events.clone(),
                     cli.demo_tour_frames
                         .clone()
-                        .map(|dir| zapfast::demo::tour::Capture {
+                        .map(|dir| zapfasterk::demo::tour::Capture {
                             dir,
                             fps: cli.demo_fps.unwrap_or(30),
                         }),
@@ -920,7 +922,7 @@ fn run() -> eframe::Result<()> {
                 .as_deref()
                 .is_some_and(|page| page.split(',').any(|part| part == "call-minimized"));
             eframe::run_native(
-                "Zap Faster",
+                "Zap Fasterk",
                 options,
                 Box::new(move |cc| {
                     let mut app = lease.take(&cc.egui_ctx);
@@ -929,7 +931,7 @@ fn run() -> eframe::Result<()> {
                     if demo_minimized && let Some(call) = &app.call {
                         cc.egui_ctx.data_mut(|data| {
                             data.insert_temp(
-                                zapfast::ui::call::minimized_id(
+                                zapfasterk::ui::call::minimized_id(
                                     app.account().id.as_str(),
                                     call.generation,
                                 ),
@@ -939,7 +941,7 @@ fn run() -> eframe::Result<()> {
                     }
                     #[cfg(feature = "demo")]
                     if cli.demo_macos {
-                        zapfast::theme::preview_macos(&cc.egui_ctx);
+                        zapfasterk::theme::preview_macos(&cc.egui_ctx);
                     }
                     Ok(Box::new(Shell {
                         app,
@@ -977,19 +979,19 @@ fn is_graphics_failure(error: &eframe::Error) -> bool {
     )
 }
 
-/// The text of the dialog shown when Zap Faster cannot start, kept apart from
+/// The text of the dialog shown when Zap Fasterk cannot start, kept apart from
 /// the dialog so it is tested on every platform.
 #[cfg(any(windows, test))]
 fn startup_failure_text(graphics: bool, details: &str, log: &std::path::Path) -> String {
     let summary = if graphics {
-        "Zap Faster could not start because the graphics driver does not offer \
-         OpenGL 2.1 or newer, which Zap Faster needs to draw its window.\n\n\
+        "Zap Fasterk could not start because the graphics driver does not offer \
+         OpenGL 2.1 or newer, which Zap Fasterk needs to draw its window.\n\n\
          Install the current driver from the maker of the graphics chip \
          (Intel, AMD or NVIDIA). The Microsoft Basic Display Adapter, some \
          virtual machines and some remote desktop sessions offer no usable \
          OpenGL."
     } else {
-        "Zap Faster could not start."
+        "Zap Fasterk could not start."
     };
     format!(
         "{summary}\n\nDetails: {details}\n\nThe log may say more: {}",
@@ -1012,7 +1014,7 @@ fn startup_failure_dialog(error: &eframe::Error) {
         &paths::AppDirs::discover().log_file(),
     );
     let wide = |text: &str| text.encode_utf16().chain([0]).collect::<Vec<u16>>();
-    let (text, caption) = (wide(&text), wide("Zap Faster"));
+    let (text, caption) = (wide(&text), wide("Zap Fasterk"));
     // SAFETY: both strings are NUL-terminated and outlive the call.
     unsafe {
         MessageBoxW(
@@ -1030,7 +1032,7 @@ fn redact_protocol(
     record: &log::Record<'_>,
     message: &str,
 ) -> Option<std::borrow::Cow<'static, str>> {
-    use zapfast::diagnostics::{is_protocol_target, protocol_summary};
+    use zapfasterk::diagnostics::{is_protocol_target, protocol_summary};
     (is_protocol_target(record.target())
         || is_protocol_target(record.module_path().unwrap_or_default()))
     .then(|| protocol_summary(message))
@@ -1047,8 +1049,8 @@ fn demo_size_arg() -> Option<[f32; 2]> {
 
 /// The tour `--demo-tour-script` names; clap has already checked the name.
 #[cfg(feature = "demo")]
-fn tour_script(name: &str) -> zapfast::demo::tour::Script {
-    zapfast::demo::tour::Script::from_name(name).unwrap_or_default()
+fn tour_script(name: &str) -> zapfasterk::demo::tour::Script {
+    zapfasterk::demo::tour::Script::from_name(name).unwrap_or_default()
 }
 
 fn native_options(
@@ -1060,14 +1062,14 @@ fn native_options(
     let demo = demo_persistence.is_some();
     let viewport = egui::ViewportBuilder::default()
         .with_title(if demo {
-            "Zap Faster Demo"
+            "Zap Fasterk Demo"
         } else {
-            "Zap Faster"
+            "Zap Fasterk"
         })
         .with_app_id(if demo {
-            "zap-faster-demo".to_owned()
+            "zap-fasterk-demo".to_owned()
         } else {
-            fastframe_desktop::desktop_entry("zap-faster")
+            fastframe_desktop::desktop_entry("zap-fasterk")
         });
     // The remembered size and position, from the settings, over the default
     // size. Demo runs keep their fixed screenshot size.
@@ -1092,7 +1094,7 @@ fn native_options(
         .with_title_shown(false);
     eframe::NativeOptions {
         viewport,
-        persistence_path: demo_persistence.or_else(|| eframe::storage_dir("zapfast")),
+        persistence_path: demo_persistence.or_else(|| eframe::storage_dir("zapfasterk")),
         // The settings remember the window (fastframe_shell::window::Geometry),
         // in logical pixels. eframe's own copy is in points at the zoom of the
         // time, and opened smaller at every launch with the interface zoomed,
@@ -1113,11 +1115,11 @@ struct Shell {
     app: fastframe_shell::Held<app::App>,
     /// This window's unread overlay on its taskbar button.
     #[cfg(target_os = "windows")]
-    taskbar: zapfast::notify::Taskbar,
+    taskbar: zapfasterk::notify::Taskbar,
     #[cfg(feature = "demo")]
     shot: Option<Shot>,
     #[cfg(feature = "demo")]
-    tour: Option<zapfast::demo::tour::Tour>,
+    tour: Option<zapfasterk::demo::tour::Tour>,
     #[cfg(feature = "demo")]
     hover: Option<egui::Pos2>,
     #[cfg(feature = "demo")]
@@ -1177,10 +1179,10 @@ impl eframe::App for Shell {
     /// What shows where the interface paints nothing: the window colour, or
     /// nothing while the window has a material, so it shows.
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        if zapfast::backdrop::active() {
+        if zapfasterk::backdrop::active() {
             [0.0; 4]
         } else {
-            zapfast::backdrop::clear_color(self.app.palette.window).to_normalized_gamma_f32()
+            zapfasterk::backdrop::clear_color(self.app.palette.window).to_normalized_gamma_f32()
         }
     }
 
@@ -1227,7 +1229,7 @@ impl eframe::App for Shell {
         // AppKit's own 28-point strip. Traffic-light alignment lived in
         // fastframe-macos, which is gone upstream; it was a no-op off
         // macOS, and this fork builds for Windows only.
-        zapfast::backdrop::apply(frame, &app.palette, self.transparent);
+        zapfasterk::backdrop::apply(frame, &app.palette, self.transparent);
         #[cfg(feature = "demo")]
         {
             // Keep requesting the configured screenshot size until it is applied.
@@ -1247,11 +1249,11 @@ impl eframe::App for Shell {
         let app = &mut *self.app;
         #[cfg(feature = "demo")]
         if std::mem::take(&mut self.open_phone_menu) {
-            egui::Popup::open_id(ui.ctx(), zapfast::demo::phone_menu_popup_id());
+            egui::Popup::open_id(ui.ctx(), zapfasterk::demo::phone_menu_popup_id());
         }
         #[cfg(feature = "demo")]
         if std::mem::take(&mut self.open_call_devices) {
-            zapfast::demo::open_call_devices(app, ui.ctx());
+            zapfasterk::demo::open_call_devices(app, ui.ctx());
         }
         app.frame_ui(ui);
         let startups: Vec<_> = app
@@ -1279,7 +1281,7 @@ impl eframe::App for Shell {
             Some(tour) => tour.observe(app, ui.ctx()),
             // A demo without a tour still answers the interface's commands
             // itself, since there is no backend to answer them.
-            None => zapfast::demo::tour::respond(app),
+            None => zapfasterk::demo::tour::respond(app),
         }
     }
 
@@ -1306,7 +1308,7 @@ fn app_icon() -> egui::IconData {
     {
         const SIZE: usize = 128;
         egui::IconData {
-            rgba: zapfast::util::app_icon_rgba(SIZE),
+            rgba: zapfasterk::util::app_icon_rgba(SIZE),
             width: SIZE as u32,
             height: SIZE as u32,
         }
@@ -1325,7 +1327,7 @@ mod chat_link_cli_tests {
             vec!["search", "synthetic phrase"],
             vec!["watch", "--since", "100", "--interval", "2"],
         ] {
-            let mut command = vec!["zap-faster"];
+            let mut command = vec!["zap-fasterk"];
             command.extend(args);
             command.extend(["--account", "2"]);
             assert!(matches!(
@@ -1334,7 +1336,7 @@ mod chat_link_cli_tests {
             ));
         }
         let cli = Cli::try_parse_from([
-            "zap-faster",
+            "zap-fasterk",
             "send",
             "fixture",
             "-",
@@ -1356,7 +1358,7 @@ mod chat_link_cli_tests {
     #[test]
     fn automation_cli_is_explicit_and_send_requires_a_file_and_request_id() {
         let cli = Cli::try_parse_from([
-            "zap-faster",
+            "zap-fasterk",
             "automation",
             "read",
             "--account",
@@ -1373,7 +1375,7 @@ mod chat_link_cli_tests {
         ));
         assert!(
             Cli::try_parse_from([
-                "zap-faster",
+                "zap-fasterk",
                 "automation",
                 "send",
                 "--account",
@@ -1385,7 +1387,7 @@ mod chat_link_cli_tests {
         );
         assert!(
             Cli::try_parse_from([
-                "zap-faster",
+                "zap-fasterk",
                 "automation",
                 "read",
                 "--account",
@@ -1402,22 +1404,23 @@ mod chat_link_cli_tests {
     #[test]
     fn browser_urls_are_positional_and_control_commands_still_work() {
         let uri = "whatsapp://send?phone=15550100123&text=Hello";
-        let cli = Cli::try_parse_from(["zapfast", uri]).unwrap();
+        let cli = Cli::try_parse_from(["zapfasterk", uri]).unwrap();
         assert_eq!(cli.whatsapp_url.as_deref(), Some(uri));
         assert!(cli.command.is_none());
-        let cli = Cli::try_parse_from(["zapfast", "reload-themes"]).unwrap();
+        let cli = Cli::try_parse_from(["zapfasterk", "reload-themes"]).unwrap();
         assert!(matches!(cli.command, Some(Control::ReloadThemes)));
         assert!(cli.whatsapp_url.is_none());
-        assert!(Cli::try_parse_from(["zapfast", "--start-hidden", uri]).is_err());
+        assert!(Cli::try_parse_from(["zapfasterk", "--start-hidden", uri]).is_err());
         for target in [
             "15550100123",
             "+1 (555) 010-0123",
             "https://wa.me/15550100123",
         ] {
-            let cli = Cli::try_parse_from(["zap-faster", target]).unwrap();
+            let cli = Cli::try_parse_from(["zap-fasterk", target]).unwrap();
             assert!(cli.command.is_none());
             assert!(
-                zapfast::chat_link::ChatLink::parse(cli.whatsapp_url.as_deref().unwrap()).is_ok()
+                zapfasterk::chat_link::ChatLink::parse(cli.whatsapp_url.as_deref().unwrap())
+                    .is_ok()
             );
         }
     }
@@ -1429,25 +1432,27 @@ mod tests {
 
     #[test]
     fn tour_cli_accepts_manual_and_delayed_starts() {
-        let cli = Cli::try_parse_from(["zapfast", "--demo-tour"]).unwrap();
+        let cli = Cli::try_parse_from(["zapfasterk", "--demo-tour"]).unwrap();
         assert!(cli.demo_tour);
         assert!(cli.demo_tour_delay.is_none());
-        let cli =
-            Cli::try_parse_from(["zapfast", "--demo-tour", "--demo-tour-delay", "5000"]).unwrap();
+        let cli = Cli::try_parse_from(["zapfasterk", "--demo-tour", "--demo-tour-delay", "5000"])
+            .unwrap();
         assert_eq!(cli.demo_tour_delay, Some(5000));
-        assert!(Cli::try_parse_from(["zapfast", "--demo-tour-delay", "5000"]).is_err());
-        assert!(Cli::try_parse_from(["zapfast", "--demo-tour", "--demo-page", "login",]).is_err());
+        assert!(Cli::try_parse_from(["zapfasterk", "--demo-tour-delay", "5000"]).is_err());
+        assert!(
+            Cli::try_parse_from(["zapfasterk", "--demo-tour", "--demo-page", "login",]).is_err()
+        );
     }
 
     #[test]
     fn tour_cli_picks_a_script_and_a_frame_capture() {
-        let cli = Cli::try_parse_from(["zapfast", "--demo-tour"]).unwrap();
+        let cli = Cli::try_parse_from(["zapfasterk", "--demo-tour"]).unwrap();
         assert_eq!(
             tour_script(&cli.demo_tour_script),
-            zapfast::demo::tour::Script::Launch
+            zapfasterk::demo::tour::Script::Launch
         );
         let cli = Cli::try_parse_from([
-            "zapfast",
+            "zapfasterk",
             "--demo-tour",
             "--demo-tour-script",
             "whats-new",
@@ -1459,7 +1464,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             tour_script(&cli.demo_tour_script),
-            zapfast::demo::tour::Script::WhatsNew
+            zapfasterk::demo::tour::Script::WhatsNew
         );
         assert_eq!(
             cli.demo_tour_frames.as_deref(),
@@ -1467,13 +1472,14 @@ mod tests {
         );
         assert_eq!(cli.demo_fps, Some(60));
         assert!(
-            Cli::try_parse_from(["zapfast", "--demo-tour", "--demo-tour-script", "other"]).is_err()
+            Cli::try_parse_from(["zapfasterk", "--demo-tour", "--demo-tour-script", "other"])
+                .is_err()
         );
-        assert!(Cli::try_parse_from(["zapfast", "--demo-tour-script", "whats-new"]).is_err());
-        assert!(Cli::try_parse_from(["zapfast", "--demo-tour", "--demo-fps", "30"]).is_err());
+        assert!(Cli::try_parse_from(["zapfasterk", "--demo-tour-script", "whats-new"]).is_err());
+        assert!(Cli::try_parse_from(["zapfasterk", "--demo-tour", "--demo-fps", "30"]).is_err());
         assert!(
             Cli::try_parse_from([
-                "zapfast",
+                "zapfasterk",
                 "--demo-tour",
                 "--demo-tour-frames",
                 "frames",
@@ -1491,7 +1497,7 @@ mod startup_failure_tests {
 
     #[test]
     fn a_graphics_failure_names_the_driver_requirement_and_the_details() {
-        let log = std::path::Path::new("C:/zapfast/zapfast.log");
+        let log = std::path::Path::new("C:/zapfasterk/zapfasterk.log");
         let text = startup_failure_text(
             true,
             "glutin error: extension to create ES context with wgl is not present",
@@ -1508,9 +1514,9 @@ mod startup_failure_tests {
         let text = startup_failure_text(
             false,
             "The directory is not writable",
-            std::path::Path::new("zapfast.log"),
+            std::path::Path::new("zapfasterk.log"),
         );
-        assert!(text.starts_with("Zap Faster could not start."));
+        assert!(text.starts_with("Zap Fasterk could not start."));
         assert!(!text.contains("OpenGL"));
         assert!(text.contains("The directory is not writable"));
     }
@@ -1550,7 +1556,7 @@ mod log_filter_tests {
         assert!(matches(
             filter,
             log::Level::Warn,
-            "zapfast::backend::worker"
+            "zapfasterk::backend::worker"
         ));
     }
 

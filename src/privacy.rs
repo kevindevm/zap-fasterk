@@ -1,6 +1,6 @@
 //! WhatsApp account privacy: last seen, online, profile photo, About, groups,
 //! read receipts, and calls. The values live on the phone, not in
-//! `settings.json`; Zap Faster reads them on connect and writes one category at a
+//! `settings.json`; Zap Fasterk reads them on connect and writes one category at a
 //! time.
 //!
 //! "My contacts except…" is shown when the account holds it, but not offered:
@@ -265,7 +265,7 @@ impl Snapshot {
     }
 }
 
-/// The categories and values the phone reported that Zap Faster shows. A value
+/// The categories and values the phone reported that Zap Fasterk shows. A value
 /// the library does not consider valid for its category is left out.
 pub fn values_from_response(
     settings: &PrivacySettingsResponse,

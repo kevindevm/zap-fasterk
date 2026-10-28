@@ -714,7 +714,7 @@ pub struct App {
     /// A notification went out this frame: highlight the taskbar entry of a
     /// window that is open but not focused.
     wants_attention: bool,
-    /// Whether Zap Faster starts at login, when this installation supports it.
+    /// Whether Zap Fasterk starts at login, when this installation supports it.
     pub start_with_system: Option<bool>,
     /// Cross-thread window repaint handle.
     waker: Waker,
@@ -726,7 +726,7 @@ pub struct App {
     /// spawn.
     #[cfg(test)]
     test_tray_shown: Option<bool>,
-    /// Whether the tray menu offers "Lock Zap Faster": whether an app lock
+    /// Whether the tray menu offers "Lock Zap Fasterk": whether an app lock
     /// password was set when it last changed.
     tray_lockable: bool,
     /// Whether the app is running without a window.
@@ -908,7 +908,7 @@ fn wayland_session() -> bool {
 }
 
 /// The app outlives its window: closing it with "keep running" on hides
-/// Zap Faster, and the tray, a notification or another launch brings it back.
+/// Zap Fasterk, and the tray, a notification or another launch brings it back.
 impl fastframe_shell::Resident for App {
     fn closed(&self) -> fastframe_shell::Closed {
         if self.quit_requested {
@@ -980,17 +980,17 @@ fn tray_action(event: fastframe_tray::Event, window_hidden: bool) -> Option<Acti
     })
 }
 
-/// The tray item: Zap Faster's icon, and a menu to show or hide the window,
+/// The tray item: Zap Fasterk's icon, and a menu to show or hide the window,
 /// to lock it while an app lock password is set, and to quit. The title and
 /// the menu never name a chat, so they are safe while locked.
 ///
-/// "Lock Zap Faster" is always in the menu, hidden without a password;
+/// "Lock Zap Fasterk" is always in the menu, hidden without a password;
 /// `App::sync_tray` shows or hides it as the password is set or removed.
 fn tray_config(lockable: bool) -> fastframe_tray::Config {
     use fastframe_tray::MenuItem;
     fastframe_tray::Config {
-        id: "zapfast",
-        title: "Zap Faster".into(),
+        id: "zapfasterk",
+        title: "Zap Fasterk".into(),
         icon: crate::util::app_icon_rgba,
         template_icon: Some(crate::util::tray_template_rgba),
         // Use the app's pixel icon consistently so optional unread indicators can
@@ -998,8 +998,8 @@ fn tray_config(lockable: bool) -> fastframe_tray::Config {
         // Hosts prefer a named theme icon over pixels, which would hide unread badges.
         themed_icon: false,
         menu: vec![
-            MenuItem::action(TRAY_SHOW, "Show or hide Zap Faster"),
-            MenuItem::action(TRAY_LOCK, "Lock Zap Faster").visible(lockable),
+            MenuItem::action(TRAY_SHOW, "Show or hide Zap Fasterk"),
+            MenuItem::action(TRAY_LOCK, "Lock Zap Fasterk").visible(lockable),
             MenuItem::Separator,
             MenuItem::action(TRAY_QUIT, "Quit"),
         ],
@@ -1139,7 +1139,7 @@ impl App {
     pub fn start_hidden(&mut self) {
         self.hide_intent = true;
         // No window will attach the tray, which makes the macOS item; make
-        // it now without bringing Zap Faster forward.
+        // it now without bringing Zap Fasterk forward.
         if let Some(tray) = &mut self.tray {
             tray.create_item();
         }
@@ -1195,7 +1195,7 @@ impl App {
                 _ => Palette::dark(),
             });
         let locale = crate::i18n::resolve(settings.interface_language);
-        // With a password set, Zap Faster starts locked.
+        // With a password set, Zap Fasterk starts locked.
         let app_lock = crate::app_lock::AppLock::new(settings.app_lock_hash.is_some());
         let tray_lockable = settings.app_lock_hash.is_some();
         let mut app = Self {
@@ -1632,7 +1632,7 @@ impl App {
         let spawned = std::thread::Builder::new().name("archive-restore".into()).spawn(move || {
             let result = (|| -> anyhow::Result<Option<crate::archive::backup::BackupSummary>> {
                 let Some(source) = rfd::FileDialog::new()
-                    .add_filter("Encrypted Zap Faster archive", &["zfbackup"])
+                    .add_filter("Encrypted Zap Fasterk archive", &["zfbackup"])
                     .pick_file() else { return Ok(None); };
                 let prepared = crate::archive::backup::prepare_restore(&source, passphrase.expose(), &staging)?;
                 let has_session = prepared.has_session();
@@ -1949,7 +1949,7 @@ impl App {
 
     /// Whether a panel shows the tray item now, so a hidden window can be
     /// brought back from it. On Linux the item exists before a panel shows
-    /// it (Zap Faster started at login before the panel), and on a desktop
+    /// it (Zap Fasterk started at login before the panel), and on a desktop
     /// without one it never is.
     fn tray_shown(&self) -> bool {
         #[cfg(test)]
@@ -1974,7 +1974,7 @@ impl App {
         );
     }
 
-    /// Offers "Lock Zap Faster" in the tray exactly while an app lock password
+    /// Offers "Lock Zap Fasterk" in the tray exactly while an app lock password
     /// is set, so setting or removing one changes the menu at once.
     fn sync_tray(&mut self) {
         let lockable = self.settings.app_lock_hash.is_some();
@@ -2362,11 +2362,11 @@ impl App {
     }
 
     /// Announces a message while the app lock is on: "New message" from
-    /// Zap Faster, without the chat, the sender, the text or a picture, so the
+    /// Zap Fasterk, without the chat, the sender, the text or a picture, so the
     /// desktop shows nothing the lock screen hides. A chat's own sound and
     /// the mention sound would tell who wrote, so only the message sound
     /// plays, still silent for groups when group sounds are off. The click
-    /// target stays inside Zap Faster: it opens the message once unlocked.
+    /// target stays inside Zap Fasterk: it opens the message once unlocked.
     fn notify_while_locked(&mut self, chat_id: &str, is_group: bool, message: &str, limited: bool) {
         self.wants_attention = true;
         let (title, body) = crate::notify::locked_lines(self.locale);
@@ -3573,9 +3573,9 @@ impl App {
                     let title = if self.account().settings.notification_sender {
                         self.chat(&chat)
                             .map(|chat| self.chat_title(chat))
-                            .unwrap_or_else(|| "Zap Faster".into())
+                            .unwrap_or_else(|| "Zap Fasterk".into())
                     } else {
-                        "Zap Faster".into()
+                        "Zap Fasterk".into()
                     };
                     let account = self.account().id.clone();
                     let waker = self.waker.clone();
@@ -4593,7 +4593,7 @@ impl App {
             Event::UpdateAvailable { version, url } => {
                 let notice = crate::updates::Release { version, url };
                 if self.update.as_ref() != Some(&notice) {
-                    self.toast(format!("Zap Faster {} is available", notice.version));
+                    self.toast(format!("Zap Fasterk {} is available", notice.version));
                 }
                 self.update = Some(notice);
             }
@@ -5339,7 +5339,7 @@ impl App {
         let message = match reason {
             Refusal::Offline => crate::i18n::gettext(
                 self.locale,
-                "Not sent: Zap Faster is not connected to WhatsApp.",
+                "Not sent: Zap Fasterk is not connected to WhatsApp.",
             ),
             Refusal::QuoteUnavailable => crate::i18n::gettext(
                 self.locale,
@@ -7359,7 +7359,7 @@ impl App {
                     // the bubble offers the retry, as a failed download does.
                     log::warn!("a downloaded attachment could not be displayed");
                     media.state =
-                        MediaState::Failed("Zap Faster could not display this file".into());
+                        MediaState::Failed("Zap Fasterk could not display this file".into());
                 } else if !matches!(media.state, MediaState::Downloading) {
                     // Gone from the disk: it downloads again like any
                     // attachment that was never downloaded.
@@ -7578,7 +7578,7 @@ impl App {
                 } else if let Some(url) = crate::safety::external_url(&url) {
                     ctx.open_url(egui::OpenUrl::new_tab(url));
                 } else {
-                    self.toast_error("This link type cannot be opened from Zap Faster");
+                    self.toast_error("This link type cannot be opened from Zap Fasterk");
                 }
             }
             Action::CopyText(text) => {
@@ -8935,7 +8935,7 @@ impl App {
                     self.toast_error(
                         crate::i18n::gettext(
                             self.locale,
-                            "You have {limit} labels, the most Zap Faster keeps.",
+                            "You have {limit} labels, the most Zap Fasterk keeps.",
                         )
                         .replace("{limit}", &crate::archive::LABEL_LIMIT.to_string()),
                     );
@@ -10181,7 +10181,7 @@ impl App {
         }
     }
 
-    /// Collects a finished password check, and locks once Zap Faster has gone
+    /// Collects a finished password check, and locks once Zap Fasterk has gone
     /// unused for the chosen time. Inactivity counts while the window is
     /// hidden too: only input in the window restarts it.
     fn tick_app_lock(&mut self, ctx: &egui::Context) {
@@ -10198,7 +10198,7 @@ impl App {
         if self.app_lock.is_locked() {
             return;
         }
-        // Recording a voice message is using Zap Faster, keys or not.
+        // Recording a voice message is using Zap Fasterk, keys or not.
         if self.recording.is_some() {
             self.app_lock.note_input();
         }
@@ -10848,10 +10848,10 @@ impl App {
                 .hides(crate::settings::ScreenPrivacyWhat::Name, false)
             || self.page != Page::Chats
         {
-            return "Zap Faster".into();
+            return "Zap Fasterk".into();
         }
         self.current_chat().filter(|chat| !chat.locked).map_or_else(
-            || "Zap Faster".into(),
+            || "Zap Fasterk".into(),
             |chat| {
                 let name: String = self
                     .chat_title(chat)
@@ -10859,7 +10859,7 @@ impl App {
                     .filter(|character| !character.is_control())
                     .take(120)
                     .collect();
-                format!("{name}, Zap Faster")
+                format!("{name}, Zap Fasterk")
             },
         )
     }
@@ -11863,7 +11863,7 @@ mod tests {
     }
 
     fn app() -> App {
-        let root = std::env::temp_dir().join(format!("zapfast-app-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("zapfasterk-app-{}", std::process::id()));
         App::headless(AppDirs::under(&root), Settings::default()).0
     }
 
@@ -11978,16 +11978,16 @@ mod tests {
         app.chats
             .push(Chat::new(id.clone(), "Synthetic\nname".into()));
         app.open_chat = Some(id);
-        assert_eq!(app.accessible_window_title(), "Syntheticname, Zap Faster");
+        assert_eq!(app.accessible_window_title(), "Syntheticname, Zap Fasterk");
         app.chats[0].locked = true;
-        assert_eq!(app.accessible_window_title(), "Zap Faster");
+        assert_eq!(app.accessible_window_title(), "Zap Fasterk");
         app.chats[0].locked = false;
         app.settings.screen_privacy.enabled = true;
         app.settings.screen_privacy.blur_names = true;
-        assert_eq!(app.accessible_window_title(), "Zap Faster");
+        assert_eq!(app.accessible_window_title(), "Zap Fasterk");
         app.settings.screen_privacy.enabled = false;
         app.page = Page::Settings;
-        assert_eq!(app.accessible_window_title(), "Zap Faster");
+        assert_eq!(app.accessible_window_title(), "Zap Fasterk");
     }
 
     #[test]
@@ -12119,7 +12119,7 @@ mod tests {
             .unwrap();
         app.handle_events();
         let masked = app.notifications.shown.last().unwrap();
-        assert_eq!(masked.title, "Zap Faster");
+        assert_eq!(masked.title, "Zap Fasterk");
         assert_eq!(masked.body, "New message");
         assert!(masked.picture.is_none());
         assert_eq!(masked.sound, app.settings.message_sound);
@@ -14887,7 +14887,7 @@ mod tests {
         );
     }
 
-    /// Demo and test runs share the machine with a linked Zap Faster, whose real
+    /// Demo and test runs share the machine with a linked Zap Fasterk, whose real
     /// taskbar badge they must not overwrite.
     #[test]
     fn demo_and_test_runs_do_not_publish_a_taskbar_badge() {
@@ -16208,7 +16208,7 @@ mod tests {
         assert!(!app.hide_intent);
     }
 
-    /// On Linux the tray item exists before a panel shows it (Zap Faster started
+    /// On Linux the tray item exists before a panel shows it (Zap Fasterk started
     /// at login before the panel, or a desktop without one). Until a panel
     /// shows it, closing quits, a hidden start opens the window, and the
     /// window is not hidden, since nothing could bring it back.
@@ -16681,7 +16681,7 @@ mod tests {
 
     #[test]
     fn a_gone_label_leaves_the_list_showing_all_chats() {
-        let root = std::env::temp_dir().join(format!("zapfast-labels-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("zapfasterk-labels-{}", std::process::id()));
         let (mut app, events) = App::headless(AppDirs::under(&root), Settings::default());
         let ctx = egui::Context::default();
         app.labels = vec![label("label-1", "Work"), label("label-2", "Home")];
@@ -16749,8 +16749,8 @@ mod tests {
             assert_eq!(
                 super::tray_config(lockable).menu,
                 [
-                    fastframe_tray::MenuItem::action(super::TRAY_SHOW, "Show or hide Zap Faster"),
-                    fastframe_tray::MenuItem::action(super::TRAY_LOCK, "Lock Zap Faster")
+                    fastframe_tray::MenuItem::action(super::TRAY_SHOW, "Show or hide Zap Fasterk"),
+                    fastframe_tray::MenuItem::action(super::TRAY_LOCK, "Lock Zap Fasterk")
                         .visible(lockable),
                     fastframe_tray::MenuItem::Separator,
                     fastframe_tray::MenuItem::action(super::TRAY_QUIT, "Quit"),
@@ -16759,7 +16759,7 @@ mod tests {
         }
     }
 
-    /// The tray offers "Lock Zap Faster" as soon as a password is set and stops
+    /// The tray offers "Lock Zap Fasterk" as soon as a password is set and stops
     /// as soon as it is removed, not at the next start.
     #[test]
     fn the_tray_offers_the_lock_while_a_password_is_set() {
@@ -16864,7 +16864,7 @@ mod tests {
         app.maybe_download_update();
         assert!(matches!(app.update_download, DownloadState::Idle));
         let installation = Installation {
-            executable: PathBuf::from("/fixture/zapfast"),
+            executable: PathBuf::from("/fixture/zapfasterk"),
             kind: Kind::Portable,
         };
         app.update_support = Some(Ok(installation.clone()));
@@ -16909,7 +16909,7 @@ mod tests {
 
     #[test]
     fn losing_focus_takes_effect_before_processing_an_incoming_chat_update() {
-        let root = std::env::temp_dir().join("zapfast-focus-test");
+        let root = std::env::temp_dir().join("zapfasterk-focus-test");
         let (mut app, events) = App::headless(AppDirs::under(&root), Settings::default());
         let mut chat = Chat::new("peer@s.whatsapp.net".into(), "Peer".into());
         chat.unread = 1;
@@ -19136,7 +19136,7 @@ mod tests {
             .unwrap();
         app.handle_events();
         assert_eq!(states(&app), [MediaState::Idle, MediaState::Downloading]);
-        let path = PathBuf::from("/cache/zapfast/media/carousel-card-1.jpg");
+        let path = PathBuf::from("/cache/zapfasterk/media/carousel-card-1.jpg");
         events
             .send(Event::Media {
                 card: Some(1),
@@ -21520,7 +21520,7 @@ mod tests {
 
     #[test]
     fn a_saved_speed_between_choices_snaps_to_one() {
-        let root = std::env::temp_dir().join(format!("zapfast-speed-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("zapfasterk-speed-{}", std::process::id()));
         let settings = Settings {
             voice_speed: 1.3,
             ..Settings::default()
@@ -22000,7 +22000,7 @@ mod name_tests {
     use crate::model::{Contact, Content, Delivery, MentionRef};
 
     fn app() -> App {
-        let root = std::env::temp_dir().join(format!("zapfast-names-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("zapfasterk-names-{}", std::process::id()));
         let (mut app, _events) = App::headless(AppDirs::under(&root), Settings::default());
         app.me = Some("15550001111@s.whatsapp.net".into());
         app.me_name = Some("Carmine".into());
@@ -22279,7 +22279,7 @@ mod app_lock_tests {
 
     fn app_with(settings: Settings) -> App {
         let root = std::env::temp_dir().join(format!(
-            "zapfast-app-lock-{}-{:?}",
+            "zapfasterk-app-lock-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));
@@ -22661,7 +22661,7 @@ mod app_lock_tests {
         app.lock_app();
         app.maybe_notify(CHAT, &message);
         let shown = app.notifications.shown.last().unwrap();
-        assert_eq!(shown.title, "Zap Faster");
+        assert_eq!(shown.title, "Zap Fasterk");
         assert_eq!(shown.body, "New message");
         assert_eq!(shown.picture, None);
         assert_eq!(

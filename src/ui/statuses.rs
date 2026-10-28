@@ -17,7 +17,7 @@ pub(crate) fn show(app: &mut App, ui: &mut egui::Ui) {
     ui.add(egui::Label::new(
         egui::RichText::new(crate::i18n::gettext(
             app.locale,
-            "Statuses received while Zap Faster is running. They expire after 24 hours. Viewing does not send a read receipt.",
+            "Statuses received while Zap Fasterk is running. They expire after 24 hours. Viewing does not send a read receipt.",
         ))
         .font(theme::regular(12.0))
         .color(palette.secondary),

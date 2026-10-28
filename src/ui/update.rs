@@ -22,8 +22,8 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         .corner_radius(CornerRadius::same(theme::RADIUS + 4))
         .inner_margin(Margin::same(22))
         .shadow(palette.modal_shadow());
-    egui::Window::new(crate::i18n::gettext(locale, "Update Zap Faster"))
-        .id(egui::Id::new("zapfast-update"))
+    egui::Window::new(crate::i18n::gettext(locale, "Update Zap Fasterk"))
+        .id(egui::Id::new("zapfasterk-update"))
         .title_bar(false)
         .resizable(false)
         .auto_sized()
@@ -35,7 +35,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             ui.horizontal(|ui| {
                 theme::text(
                     ui,
-                    crate::i18n::gettext(locale, "Update Zap Faster"),
+                    crate::i18n::gettext(locale, "Update Zap Fasterk"),
                     theme::bold(20.0),
                     palette.text,
                 );
@@ -110,7 +110,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                         egui::Label::new(
                             RichText::new(crate::i18n::gettext(
                                 locale,
-                                "Finish any unsent messages or recordings before restarting. Zap Faster will briefly disconnect, then reconnect automatically.",
+                                "Finish any unsent messages or recordings before restarting. Zap Fasterk will briefly disconnect, then reconnect automatically.",
                             ))
                             .font(theme::regular(14.0))
                             .color(palette.secondary),

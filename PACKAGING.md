@@ -6,8 +6,8 @@ DEB/RPM/AppImage contents, dependencies, recipe templates and downstream reposit
 Application assets and native recipes stay in `packaging/`.
 
 Windows releases ship the portable zip and a per-user Windows Installer
-package, `zap-faster-vX.Y.Z-<target>.msi`, built by native-packages from
-`packaging/windows/zap-faster.wxs` (`packaging/windows/msi.rb`).
+package, `zap-fasterk-vX.Y.Z-<target>.msi`, built by native-packages from
+`packaging/windows/zap-fasterk.wxs` (`packaging/windows/msi.rb`).
 Releases up to 0.30.0 also shipped an Inno Setup program (`-setup.exe`);
 it is gone, because the package is the one the updater prefers and the one
 tested. The MSI uses the fork's own upgrade identity and only takes over an
@@ -15,8 +15,8 @@ Inno installation registered under the fork's AppId. It installs into that
 same folder, removes Inno's uninstaller and its Settings > Apps entry, and
 leaves the user's data (session, archive, settings) alone, as they live
 outside the program folder. It preserves the profile/keyring and refuses
-changes while Zap Faster is running. The updater verifies the selected
-release package before installation. `packaging/windows/zap-faster.iss`
+changes while Zap Fasterk is running. The updater verifies the selected
+release package before installation. `packaging/windows/zap-fasterk.iss`
 stays only so `test-installer.ps1` can make an Inno install for the package
 to take over. Building MSI packages needs WiX 5.0.2 and
 `WixToolset.Util.wixext`; the disposable Windows CI runner exercises
@@ -24,9 +24,9 @@ installation, takeover, update and removal. Never run
 `packaging/windows/test-installer.ps1` against a personal Windows installation;
 it refuses non-GitHub-runner invocation and changes the runner's installation.
 
-Version 0.20.0 introduces the Zap Faster fork and `zap-faster` binary. The GitHub
-repository is `eternalwaitt/zap-faster`, so source archives extract into
-`zap-faster-VERSION`. Recipes belong to this fork and do not replace upstream
+Version 0.20.0 introduces the Zap Fasterk fork and `zap-fasterk` binary. The GitHub
+repository is `kevindevm/zap-fasterk`, so source archives extract into
+`zap-fasterk-VERSION`. Recipes belong to this fork and do not replace upstream
 packages automatically. AUR and Homebrew publication destinations are not configured.
 
 ```sh
@@ -58,7 +58,7 @@ runtime's reserved ELF section before package checksums are recorded. It keeps
 the appended filesystem and offsets intact. Packaging CI generates an
 architecture-specific `.zsync` sidecar and separate sidecar checksums for external
 AppImage updaters. This metadata does not enable automatic updates or change
-Zap Faster's built-in signature verification. Local package builds need the CI
+Zap Fasterk's built-in signature verification. Local package builds need the CI
 sidecar step before external update metadata can resolve successfully.
 
 Review or publish an existing build with the same installed CLI:
@@ -135,7 +135,7 @@ recipe generation to the Linux packaging job after release assets exist.
 
 ## Flatpak
 
-`packaging/flatpak/io.github.eternalwaitt.ZapFaster.yml` builds from source, with offline Cargo
+`packaging/flatpak/io.github.kevindevm.ZapFasterk.yml` builds from source, with offline Cargo
 sources generated from the selected revision's lockfile. The adjacent bundle
 manifest reuses the Linux release binary, as in Spotifast. Both grant Wayland/X11,
 GPU, audio, network, keyring and tray access; attachments chosen by the user use
@@ -146,11 +146,11 @@ Generate a pinned Flathub checkout (Python needs `aiohttp`, `tomlkit` and `PyYAM
 
 ```sh
 packaging/flatpak/flathub.sh vX.Y.Z /path/to/flathub-checkout
-flatpak-builder --user --install --force-clean build-dir /path/to/flathub-checkout/io.github.eternalwaitt.ZapFaster.yml
+flatpak-builder --user --install --force-clean build-dir /path/to/flathub-checkout/io.github.kevindevm.ZapFasterk.yml
 ```
 
 Flathub submission/review is a separate publication step; the manifest alone does
-not make Zap Faster available in Flathub. A maintainer must submit it manually:
+not make Zap Fasterk available in Flathub. A maintainer must submit it manually:
 [Flathub's requirements](https://docs.flathub.org/docs/for-app-authors/requirements#generative-ai-policy)
 prohibit AI agents from submitting or writing submission interactions and require
 disclosure of generated material. Review the manifests and these changes before

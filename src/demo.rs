@@ -2713,7 +2713,7 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
                 });
                 app.show_update = true;
                 let installation = Installation {
-                    executable: "/demo/zapfast".into(),
+                    executable: "/demo/zapfasterk".into(),
                     kind: Kind::Portable,
                 };
                 app.update_support = Some(Ok(installation.clone()));
@@ -3866,7 +3866,7 @@ mod tests {
 
     pub(super) fn app() -> App {
         let root = std::env::temp_dir().join(format!(
-            "zapfast-demo-{}-{:?}",
+            "zapfasterk-demo-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));
@@ -5633,7 +5633,7 @@ mod tests {
             .filter_map(|(_, node)| node.label().or_else(|| node.value()))
             .collect();
         assert!(
-            !labels.contains(&"Locked chats are read-only in Zap Faster"),
+            !labels.contains(&"Locked chats are read-only in Zap Fasterk"),
             "{labels:?}"
         );
         assert!(!labels.contains(&"admins"));
@@ -6616,7 +6616,7 @@ mod tests {
         std::path::PathBuf,
     ) {
         let root = std::env::temp_dir().join(format!(
-            "zapfast-demo-{}-{:?}",
+            "zapfasterk-demo-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));
@@ -16305,7 +16305,7 @@ mod tests {
         }
         assert_eq!(
             opened,
-            ["https://github.com/eternalwaitt/zap-faster/blob/main/docs/_reference/themes.md"]
+            ["https://github.com/kevindevm/zap-fasterk/blob/main/docs/_reference/themes.md"]
         );
     }
 
@@ -17275,7 +17275,7 @@ mod tests {
         render(&mut app, &ctx);
         let texture = ctx
             .data_mut(|data| {
-                data.get_temp::<egui::TextureHandle>(egui::Id::new(("zapfast-mark", 44_usize)))
+                data.get_temp::<egui::TextureHandle>(egui::Id::new(("zapfasterk-mark", 44_usize)))
             })
             .expect("the mark was drawn at 44 pixels");
         assert_eq!(texture.size(), [44, 44]);
@@ -17456,7 +17456,7 @@ mod tests {
 
     impl egui::load::ImageLoader for CountingImages {
         fn id(&self) -> &str {
-            "zapfast::demo::tests::CountingImages"
+            "zapfasterk::demo::tests::CountingImages"
         }
 
         fn load(
@@ -17582,7 +17582,7 @@ mod tests {
         );
     }
 
-    /// A video sent before Zap Faster made thumbnails has none. With its file
+    /// A video sent before Zap Fasterk made thumbnails has none. With its file
     /// here it still shows as a video; only without either is it a file card.
     #[test]
     fn a_video_without_a_thumbnail_shows_from_its_file() {

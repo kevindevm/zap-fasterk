@@ -9,7 +9,7 @@ import statistics
 
 import matplotlib
 matplotlib.use('Agg')
-matplotlib.rcParams['svg.hashsalt'] = 'zapfast-benchmark-2026-09-15'
+matplotlib.rcParams['svg.hashsalt'] = 'zapfasterk-benchmark-2026-09-15'
 import matplotlib.pyplot as plt
 
 
@@ -39,7 +39,7 @@ def canvas(title, subtitle):
 
 def bars(fig, bounds, field, unit, label):
     ax = fig.add_axes(bounds, facecolor=BACKGROUND)
-    samples = [values(app, field) for app in ['zapfast', 'whatsapp_web']]
+    samples = [values(app, field) for app in ['zapfasterk', 'whatsapp_web']]
     medians = [statistics.median(v) for v in samples]
     ax.barh([1, 0], medians, height=.35, color=[GREEN, GRAY])
     ax.set_yticks([1, 0], ['ZapFast', 'WhatsApp Web\n+ Chromium'], color=TEXT, fontsize=12)
@@ -68,7 +68,7 @@ def save(fig, stem, description):
 
 
 def main():
-    native = statistics.median(values('zapfast', 'pss_mb'))
+    native = statistics.median(values('zapfasterk', 'pss_mb'))
     web = statistics.median(values('whatsapp_web', 'pss_mb'))
     saved = 100 * (1 - native / web)
     fig = canvas(f'{saved:.0f}% less idle RAM in our Linux test', 'ZapFast 0.13.1 vs WhatsApp Web + Chromium 152')
@@ -76,7 +76,7 @@ def main():
     fig.text(.07, .20, 'Same account · 4 paired runs · median of 5 idle samples per run', fontsize=12, color=TEXT)
     fig.text(.07, .145, 'Includes Chromium’s full process tree; shared memory counted proportionally.', fontsize=11, color=MUTED)
     fig.text(.07, .10, 'One Linux desktop. Browser overhead included; an empty-browser baseline was not measured.', fontsize=10, color=MUTED)
-    fig.text(.07, .04, 'zapfast.rocks/benchmarks', fontsize=12, weight='bold', color=GREEN)
+    fig.text(.07, .04, 'zapfasterk.rocks/benchmarks', fontsize=12, weight='bold', color=GREEN)
     fig.text(.93, .04, '15 September 2026', fontsize=10, color=MUTED, ha='right')
     save(fig, 'memory', 'Four paired Linux runs. ZapFast 150 MB PSS; WhatsApp Web and Chromium 1128 MB PSS. Full browser process tree included.')
 
@@ -85,7 +85,7 @@ def main():
     bars(fig, [.22, .17, .68, .25], 'chat_ui_observed_ms', 's', 'Chat UI observed · approximate, different detectors*')
     fig.text(.07, .085, '*Native: “Chats” header via OCR. Web: chat pane + a row via DOM. Includes detection overhead.', fontsize=9.5, color=MUTED)
     fig.text(.07, .055, 'These observations do not measure full synchronization or establish an exact chat-readiness speedup.', fontsize=9.5, color=MUTED)
-    fig.text(.07, .015, 'zapfast.rocks/benchmarks', fontsize=11, weight='bold', color=GREEN)
+    fig.text(.07, .015, 'zapfasterk.rocks/benchmarks', fontsize=11, weight='bold', color=GREEN)
     save(fig, 'startup', 'Window appearance: ZapFast 152 ms, Chromium 528 ms. Chat UI observations: 0.69 s and 4.13 s, using different detectors.')
 
 

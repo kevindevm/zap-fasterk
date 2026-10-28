@@ -290,7 +290,7 @@ pub fn manager(app: &mut App, ui: &mut egui::Ui, palette: &Palette) {
             ui,
             gettext(
                 locale,
-                "You have {limit} labels, the most Zap Faster keeps.",
+                "You have {limit} labels, the most Zap Fasterk keeps.",
             )
             .replace("{limit}", &crate::archive::LABEL_LIMIT.to_string()),
             theme::regular(12.5),

@@ -232,7 +232,7 @@ impl Face {
                 lead_family(
                     fonts,
                     weight,
-                    format!("zapfast-custom-{}", weight.name()),
+                    format!("zapfasterk-custom-{}", weight.name()),
                     data,
                 );
             }
@@ -249,7 +249,7 @@ impl Face {
 }
 
 /// Key of a static font's data, shared by all four weights.
-const CUSTOM_KEY: &str = "zapfast-custom";
+const CUSTOM_KEY: &str = "zapfasterk-custom";
 
 fn lead_family(
     fonts: &mut egui::FontDefinitions,
@@ -353,7 +353,7 @@ mod tests {
             fonts
                 .font_data
                 .keys()
-                .filter(|key| key.starts_with("zapfast-custom"))
+                .filter(|key| key.starts_with("zapfasterk-custom"))
                 .count(),
             1
         );
@@ -370,7 +370,7 @@ mod tests {
             .unwrap()
             .lead(&mut fonts);
         for weight in Weight::ALL {
-            let key = format!("zapfast-custom-{}", weight.name());
+            let key = format!("zapfasterk-custom-{}", weight.name());
             assert_eq!(fonts.families[&weight.family()][0], key);
             assert_eq!(
                 fonts.font_data[&key].tweak.coords,

@@ -1,4 +1,4 @@
-//! Starting Zap Faster in the tray when the person logs in.
+//! Starting Zap Fasterk in the tray when the person logs in.
 //!
 //! The platform's own login-item entry is the only record: Settings reads it
 //! back rather than keeping a copy that could disagree with it.
@@ -6,7 +6,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// Argument that starts Zap Faster without a window.
+/// Argument that starts Zap Fasterk without a window.
 pub const HIDDEN: &str = "--start-hidden";
 
 /// Whether this installation can register itself to start at login.
@@ -16,7 +16,7 @@ pub fn supported() -> bool {
     std::env::var_os("FLATPAK_ID").is_none() && executable().is_some()
 }
 
-/// Whether Zap Faster is registered to start at login.
+/// Whether Zap Fasterk is registered to start at login.
 pub fn enabled() -> bool {
     platform::enabled()
 }
@@ -27,7 +27,7 @@ pub fn set(enabled: bool) -> io::Result<()> {
         return platform::remove();
     }
     let executable = executable()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "cannot locate Zap Faster"))?;
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "cannot locate Zap Fasterk"))?;
     platform::install(&executable)
 }
 
@@ -48,7 +48,7 @@ mod platform {
             .map(PathBuf::from)
             .filter(|path| path.is_absolute())
             .or_else(|| std::env::var_os("HOME").map(|home| Path::new(&home).join(".config")))?;
-        Some(config.join("autostart").join("zapfast.desktop"))
+        Some(config.join("autostart").join("zapfasterk.desktop"))
     }
 
     pub fn enabled() -> bool {
@@ -72,10 +72,10 @@ mod platform {
         format!(
             "[Desktop Entry]\n\
              Type=Application\n\
-             Name=Zap Faster\n\
-             Comment=Start Zap Faster in the tray\n\
+             Name=Zap Fasterk\n\
+             Comment=Start Zap Fasterk in the tray\n\
              Exec={} {HIDDEN}\n\
-             Icon=zap-faster\n\
+             Icon=zap-fasterk\n\
              Terminal=false\n\
              X-GNOME-Autostart-enabled=true\n",
             exec_quote(&executable.to_string_lossy())
@@ -103,7 +103,7 @@ mod platform {
 mod platform {
     use super::*;
 
-    const LABEL: &str = "me.paolino.zapfast";
+    const LABEL: &str = "me.paolino.zapfasterk";
 
     fn entry() -> Option<PathBuf> {
         let home = std::env::var_os("HOME")?;
@@ -265,10 +265,10 @@ mod tests {
     #[test]
     fn the_launch_agent_starts_hidden_and_escapes_the_path() {
         let plist = super::platform::launch_agent(std::path::Path::new(
-            "/Applications/A&B.app/Contents/MacOS/zapfast",
+            "/Applications/A&B.app/Contents/MacOS/zapfasterk",
         ));
         assert!(
-            plist.contains("<string>/Applications/A&amp;B.app/Contents/MacOS/zapfast</string>")
+            plist.contains("<string>/Applications/A&amp;B.app/Contents/MacOS/zapfasterk</string>")
         );
         assert!(plist.contains("<string>--start-hidden</string>"));
     }

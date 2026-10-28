@@ -94,22 +94,22 @@ jobs:
         if: runner.os == 'macOS'
         timeout-minutes: 3
         run: |
-          target/debug/zap-faster --demo --demo-shot "$RUNNER_TEMP/zap-faster-content.png" --demo-shot-delay 8000 &
+          target/debug/zap-fasterk --demo --demo-shot "$RUNNER_TEMP/zap-fasterk-content.png" --demo-shot-delay 8000 &
           demo_pid=$!
           sleep 6
-          screencapture -x "$RUNNER_TEMP/zap-faster-window.png" || true
+          screencapture -x "$RUNNER_TEMP/zap-fasterk-window.png" || true
           wait "$demo_pid"
-          test -s "$RUNNER_TEMP/zap-faster-content.png"
+          test -s "$RUNNER_TEMP/zap-fasterk-content.png"
           for page in media-album forward-review voice-transcript starred star-menu pinned background-history original-documents international-sender; do
-            target/debug/zap-faster --demo --demo-page "$page" --demo-shot "$RUNNER_TEMP/zap-faster-$page.png" --demo-shot-delay 1200
-            test -s "$RUNNER_TEMP/zap-faster-$page.png"
+            target/debug/zap-fasterk --demo --demo-page "$page" --demo-shot "$RUNNER_TEMP/zap-fasterk-$page.png" --demo-shot-delay 1200
+            test -s "$RUNNER_TEMP/zap-fasterk-$page.png"
           done
       - name: macOS preview
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v7
         with:
           name: macos-preview
-          path: ${{ runner.temp }}/zap-faster-*.png
+          path: ${{ runner.temp }}/zap-fasterk-*.png
       - name: Build Linux demo
         if: runner.os == 'Linux'
         run: mbx build --locked --features demo
@@ -119,17 +119,17 @@ jobs:
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
           GALLIUM_DRIVER: llvmpipe
-          XDG_RUNTIME_DIR: ${{ runner.temp }}/zap-faster-demo-runtime
+          XDG_RUNTIME_DIR: ${{ runner.temp }}/zap-fasterk-demo-runtime
         run: |
           mkdir -p "$XDG_RUNTIME_DIR"
           chmod 700 "$XDG_RUNTIME_DIR"
           for page in media-album forward-review voice-transcript starred star-menu pinned background-history original-documents international-sender; do
             timeout 45s xvfb-run -a -s "-screen 0 1600x1200x24" \
               env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET \
-              target/debug/zap-faster --demo --demo-page "$page" \
-              --demo-shot "$RUNNER_TEMP/zap-faster-$page.png" --demo-shot-delay 2500 \
-              > "$RUNNER_TEMP/zap-faster-$page.log" 2>&1
-            test -s "$RUNNER_TEMP/zap-faster-$page.png"
+              target/debug/zap-fasterk --demo --demo-page "$page" \
+              --demo-shot "$RUNNER_TEMP/zap-fasterk-$page.png" --demo-shot-delay 2500 \
+              > "$RUNNER_TEMP/zap-fasterk-$page.log" 2>&1
+            test -s "$RUNNER_TEMP/zap-fasterk-$page.png"
           done
       - name: Linux preview
         if: always() && runner.os == 'Linux'
@@ -137,8 +137,8 @@ jobs:
         with:
           name: linux-preview
           path: |
-            ${{ runner.temp }}/zap-faster-*.png
-            ${{ runner.temp }}/zap-faster-*.log
+            ${{ runner.temp }}/zap-fasterk-*.png
+            ${{ runner.temp }}/zap-fasterk-*.log
 
   windows-arm64:
     name: compile (Windows arm64)

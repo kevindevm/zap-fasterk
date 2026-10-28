@@ -42,8 +42,8 @@ def update_section(data):
 def finalize(package, architecture):
     architecture = {"amd64": "x86_64", "arm64": "aarch64"}[architecture]
     # Update metadata is passive. The app's verified built-in updater is unchanged.
-    text = (f"gh-releases-zsync|eternalwaitt|zap-faster|latest|"
-            f"zap-faster-*-{architecture}.AppImage.zsync").encode("ascii")
+    text = (f"gh-releases-zsync|kevindevm|zap-fasterk|latest|"
+            f"zap-fasterk-*-{architecture}.AppImage.zsync").encode("ascii")
     data = package.read_bytes()
     start, size = update_section(data)
     if len(text) >= size:

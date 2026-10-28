@@ -1,5 +1,5 @@
 ---
-title: Using Zap Faster
+title: Using Zap Fasterk
 description: Send messages and use attachments, interactive messages, voice messages, and keyboard shortcuts.
 redirect_from:
   - /using-fastsapp/
@@ -39,14 +39,14 @@ Forwarding opens a recipient picker. Select up to five writable chats, as on
 WhatsApp; a message labelled as forwarded many times goes to one chat at a
 time, replacing the previous pick. **Review recipients** lists the selection
 for you to confirm, and **Back** returns to the picker without losing it. If a
-destination becomes locked or read-only, Zap Faster returns to selection
+destination becomes locked or read-only, Zap Fasterk returns to selection
 instead of sending a partial batch. Switching accounts discards the open
 forwarding selection. In a large window the dialog takes more of the window, so
 more recipients fit at once; it still stays inside a narrow or short one, and
 searching or changing the selection does not collapse the list.
 
 Outgoing text can be edited for 15 minutes after its original send time.
-Zap Faster validates that limit again before sending and keeps the original
+Zap Fasterk validates that limit again before sending and keeps the original
 message until WhatsApp accepts the edit. Failed corrections return to the
 originating account without replacing a newer draft or reply. Expired
 corrections become ordinary unsent drafts and require an explicit send.
@@ -71,13 +71,13 @@ the archive, and locked-chat privacy.
 Attachments, captions, selected mentions, and reply quotes stay with their
 chat when you switch chats, close a conversation, or switch accounts.
 Return to that chat in that account to resume. Text is saved in the encrypted
-archive and survives restarting Zap Faster. Attachment drafts stay in memory
-while Zap Faster runs and are discarded when you quit. Clearing or deleting
+archive and survives restarting Zap Fasterk. Attachment drafts stay in memory
+while Zap Fasterk runs and are discarded when you quit. Clearing or deleting
 a chat, or unlinking its account, discards its attachment drafts. A refused
 attachment send returns its files, caption and reply quote to the originating
 account's chat draft, even if another account is on screen.
 
-Zap Faster also shows when your message was delivered and read when
+Zap Fasterk also shows when your message was delivered and read when
 you click its time or ticks, as on WhatsApp.
 
 Double-click beside a message, or on its edge, to reply to it. A double-click
@@ -87,7 +87,7 @@ Deleting a message asks which copies to remove. **Delete for everyone**
 revokes it through WhatsApp. In **0.19.0**, **Delete for me** removes only this
 computer's copy, and individual deletions do not sync to or from your phone.
 
-Zap Faster syncs **Delete for me** with your phone and linked
+Zap Fasterk syncs **Delete for me** with your phone and linked
 devices; other people keep their copy. This needs a connection, and the local
 copy disappears only after WhatsApp accepts the deletion. Phone deletions sync
 here too, and history replay cannot restore deleted messages. Interrupted
@@ -108,7 +108,7 @@ A message you send is placed at the time WhatsApp's server acknowledged it, so
 a reply no longer sorts above it when this computer's clock runs ahead. Until
 the server answers, and for a poll, the message keeps this computer's time.
 
-Zap Faster preserves edited replies and the phone's order for
+Zap Fasterk preserves edited replies and the phone's order for
 messages sent within the same second when loading history. If an earlier
 build missed a message or put nearby messages in the wrong order, right-click
 a message just after the affected area and choose **Reload earlier messages**.
@@ -157,7 +157,7 @@ by sender, time, and a short summary.
 
 The sticker tab works like WhatsApp's: a row of tabs holds **Recent**
 (the clock), **Favorites** (the star), each of your packs, and **+** for
-adding more. Zap Faster adds **Received** (the speech bubble) after Favorites.
+adding more. Zap Fasterk adds **Received** (the speech bubble) after Favorites.
 Click a sticker to send it. Animated stickers play on hover.
 
 Click a downloaded sticker in a conversation to see it on its own. Animated
@@ -186,7 +186,7 @@ express in their metadata, as WhatsApp's own stickers do.
 Under **+**, paste a `signal.art` link from
 [signalstickers.org](https://signalstickers.org) (or click **Find packs**), or
 open a `.wastickers` file, to import a pack. Signal packs keep each sticker's
-emoji. Open a pack's tab and use its delete button to remove it; Zap Faster asks
+emoji. Open a pack's tab and use its delete button to remove it; Zap Fasterk asks
 first, since that deletes the pack's files. Packs are stored as WebP files on
 your computer.
 
@@ -228,11 +228,11 @@ one. Press Escape or click a file's close button to remove it.
 With exactly one supported photo (JPEG, PNG, or WebP) staged, select
 the **View once** icon (a 1 inside a dashed circle) beside Send. It lights up
 when enabled, and sends the photo as a WhatsApp view-once message. You can still
-add a caption. The sent message appears as a view-once placeholder in ZapFast;
+add a caption. The sent message appears as a view-once placeholder in Zap Fasterk;
 the recipient opens it on their phone. This option is not available for
 documents or batches of attachments. If you add more attachments, or a refused
 send returns to a draft with other attachments, remove the extras or turn off
-**View once** before sending. ZapFast keeps this choice until you switch it off,
+**View once** before sending. Zap Fasterk keeps this choice until you switch it off,
 send, or clear the draft.
 
 Pictures and videos sent as a WhatsApp album appear together in a grid. Only
@@ -242,7 +242,7 @@ shows individual failures; **Save all…** copies downloaded files to a folder
 without replacing existing files. Open an item to view it individually.
 
 Videos go as playable video messages only when they are MP4. WhatsApp does
-not deliver a video message in another format, and Zap Faster does not
+not deliver a video message in another format, and Zap Fasterk does not
 convert videos, so a QuickTime `.mov`, WebM, MKV, or AVI file goes as a
 document instead and arrives as the original file. Audio works the same way:
 MP3, M4A, AAC, AMR, and OGG go as audio messages, other formats as documents.
@@ -250,7 +250,7 @@ MP3, M4A, AAC, AMR, and OGG go as audio messages, other formats as documents.
 Staged attachments, captions, selected mentions and reply quotes remain with
 their chat and account when you switch or close conversations. Text drafts
 persist in the encrypted archive; attachment drafts stay in memory until
-Zap Faster exits. Clearing or deleting the chat, or unlinking its account,
+Zap Fasterk exits. Clearing or deleting the chat, or unlinking its account,
 discards its drafts. A refused attachment send returns to its originating
 chat without filling another account's composer.
 
@@ -267,7 +267,7 @@ right** turn the picture a quarter at a time, and **Reset** puts it back the way
 it started. Press Enter or click the check to keep the crop, or Escape or the
 close button to leave the picture as it was.
 
-Keeping a crop does not change the file you picked. Zap Faster writes the cropped
+Keeping a crop does not change the file you picked. Zap Fasterk writes the cropped
 picture beside its other media and sends that one. Opening the cropper again
 starts from your original with the crop you chose, so you can widen it back out
 without a second pass over the picture.
@@ -279,14 +279,14 @@ videos. Downloads stream to a temporary file with at most two active transfers;
 verified files enter the cache only after the protocol library checks their
 integrity. Transfer progress and cancellation appear beside the attachment.
 Cancelled, failed, oversized, or timed-out transfers discard their partial file.
-Images above 64 MiB can be saved and opened in another app; Zap Faster does not
+Images above 64 MiB can be saved and opened in another app; Zap Fasterk does not
 load those files into memory for an in-process image preview or clipboard copy.
 Attachment preparation and uploads run in selection order, with progress and
 cancellation above the composer. Upload progress counts encrypted transfer bytes.
 Unfinished attachment preparation is not recovered after closing the app.
-If an attachment has expired, Zap Faster asks your phone to upload
+If an attachment has expired, Zap Fasterk asks your phone to upload
 it again. A live-location share shows the position this linked device received;
-WhatsApp sends later positions only to the phone. Zap Faster marks when newer
+WhatsApp sends later positions only to the phone. Zap Fasterk marks when newer
 positions are available there, but cannot follow the moving location here.
 
 ## Locations
@@ -299,7 +299,7 @@ comma as the decimal mark. The dialog shows the spot and a link to it before
 anything is sent, and refuses text it cannot read instead of guessing a place.
 
 What goes out is a location that stays where it was sent. A position that keeps
-moving is shared from the phone only, so a linked device such as Zap Faster sends
+moving is shared from the phone only, so a linked device such as Zap Fasterk sends
 the spot.
 
 A location shows in a chat as a card with its coordinates, the place name when
@@ -315,7 +315,7 @@ include its option labels, and find these messages through search.
 - **Web links** have an external-link icon. Click one to open it in your browser,
   or focus it with the keyboard and press Enter.
 - **Reply buttons** send the selected response immediately, quoting the original
-  message. Zap Faster includes the option identifier so the business can recognize
+  message. Zap Fasterk includes the option identifier so the business can recognize
   the choice. Legacy buttons, hydrated templates, and native-flow quick replies
   are supported.
 - **Simple lists** open a dialog with section headings and descriptions. Select an
@@ -354,8 +354,8 @@ Edited messages keep their current text, and downloaded images stay available.
 
 Embedded videos, documents, and templates containing only
 a reference to server-side text still need another client. A **More content in
-WhatsApp Web or on your phone** note marks content Zap Faster cannot display.
-Interactive messages cannot yet be forwarded from Zap Faster.
+WhatsApp Web or on your phone** note marks content Zap Fasterk cannot display.
+Interactive messages cannot yet be forwarded from Zap Fasterk.
 
 ### Lists, polls, and carousels
 
@@ -397,7 +397,7 @@ Click a video to download it to the local cache and play it in its message,
 with sound, a seek bar, a speed chip, and a mute switch; round video messages
 play inside their circle. Click the speed chip to cycle 1x, 1.5x, and 2x, as on
 voice messages: the voice keeps its pitch, in mono while sped up, and the
-speed stays for the next video until Zap Faster quits. Already downloaded videos play from their local file. Playback
+speed stays for the next video until Zap Fasterk quits. Already downloaded videos play from their local file. Playback
 waits for the download to finish, and the [manual download limit](#attachments)
 also applies to videos. Double-click one, or use the button at the end of its
 controls, to play it over the whole window:
@@ -464,11 +464,11 @@ speed. The first play sends
 a played receipt, so your phone marks the voice message as heard. With read
 receipts off in your account privacy, the receipt goes only to your own
 devices and the sender is not told. With **Send read receipts** off in
-Zap Faster's settings, no played receipt is sent. A voice message you have not
+Zap Fasterk's settings, no played receipt is sent. A voice message you have not
 heard yet shows a dot beside its length; it goes away once you play it here or
 on another device. When the composer is empty, the send button becomes a
 microphone. Press Enter or the send button to send the recording, or Escape or
-the delete button to discard it. Zap Faster raises the volume of quiet recordings.
+the delete button to discard it. Zap Fasterk raises the volume of quiet recordings.
 Starting a reply before recording includes the quoted message.
 
 ## Copying
@@ -498,7 +498,7 @@ any caption; their files are not copied. Copying keeps the selection open.
 
 To contact someone without saving their number, open **New chat** and choose
 **Message a number**. Enter an international number, including its country
-code. Spaces, hyphens and balanced parentheses are allowed. Zap Faster checks
+code. Spaces, hyphens and balanced parentheses are allowed. Zap Fasterk checks
 whether the number is on WhatsApp before opening the conversation. Failed
 checks show an error and can be retried. Closing or replacing the dialog
 cancels its pending lookup; results remain with the originating account.
@@ -541,14 +541,14 @@ Under the **Favorites** chip, the list keeps the phone's order and stays in plac
 
 A shared contact message shows the name from its vCard. When the card names a
 WhatsApp account, **Chat** opens a private conversation with it and, if the
-person is not already in Zap Faster's contacts, **Add** saves them, adding them to
+person is not already in Zap Fasterk's contacts, **Add** saves them, adding them to
 your phone's contacts if you chose that for the last contact you added. A card with only a local number shows the number.
 
 A chat or group with disappearing messages shows its timer in the contact or
 group details, opened from the header or by right-clicking a row in the chat
 list. The line reads **Off** when the timer is turned off and stays away
-entirely when Zap Faster has never heard of a timer for that chat. Read-only for
-now: change the timer on your phone, and messages Zap Faster sends carry it,
+entirely when Zap Fasterk has never heard of a timer for that chat. Read-only for
+now: change the timer on your phone, and messages Zap Fasterk sends carry it,
 while messages received here stay in the archive after they disappear on your
 other devices.
 
@@ -558,7 +558,7 @@ Followed channels have their own **Channels** chip, and **Archived** opens the
 archived chats. A chip with unread chats shows how many it
 has. Click the active chip again, or **All**, to see every chat. The
 filter applies only to this list: search and the archive still show everything,
-and it resets when Zap Faster restarts. As on the phone, the list leaves out
+and it resets when Zap Fasterk restarts. As on the phone, the list leaves out
 people you have never exchanged a message or call with, though your phone sends
 their chats along with the others. One stays listed while it is pinned, a
 favorite, labeled, unread, locked, open, or holds an unsent draft. Search still
@@ -577,7 +577,7 @@ open chat, or unarchives it from **Archived**, as in WhatsApp.
 Archived chats stay archived when new messages arrive, unless your phone's
 **Keep chats archived** (in WhatsApp's chat settings) is off: then a new message,
 received or sent, brings an archived chat back to the list, as on the phone.
-Until a phone has sent its setting, **Keep chats archived** in Zap Faster's
+Until a phone has sent its setting, **Keep chats archived** in Zap Fasterk's
 Settings decides for that account. Messages older than the archiving, duplicate
 deliveries, and history replay leave archived chats in place.
 
@@ -587,7 +587,7 @@ chat's matches, newest first. Its calendar narrows them to one day.
 Click the chat header to see its picture, number, and group members. When
 WhatsApp lets you edit a group's info, rename it with the pencil beside its
 name and click its photo to change it. Clicking a `chat.whatsapp.com` invite
-link shows the group and joins it without leaving Zap Faster.
+link shows the group and joins it without leaving Zap Fasterk.
 
 Chat info also shows the group's description above its members.
 The text is selectable, preserves line breaks and emoji, and scrolls when long.
@@ -597,34 +597,34 @@ Description editing still requires your phone.
 
 ## Browser chat links
 
-Zap Faster can open `whatsapp://send` links from a browser or
+Zap Fasterk can open `whatsapp://send` links from a browser or
 another application. The link opens its recipient on the active WhatsApp
 account and puts any `text=` message in the composer as an unsent draft.
 An existing draft is kept, with the link's text appended on a new line.
 
-On Linux, choose Zap Faster as the handler after installing it:
+On Linux, choose Zap Fasterk as the handler after installing it:
 
 ```sh
-xdg-mime default zap-faster.desktop x-scheme-handler/whatsapp
+xdg-mime default zap-fasterk.desktop x-scheme-handler/whatsapp
 xdg-open 'whatsapp://send?phone=15550100123&text=Hello%20from%20a%20link'
 ```
 
 Use the full international phone number, including the country code. Text
 is URL-decoded, including accents, emoji, and line breaks. You can also pass
 the same link, a `wa.me` or `api.whatsapp.com/send` web link, or a number
-directly to `zap-faster` on the command line:
+directly to `zap-fasterk` on the command line:
 
 ```sh
-zap-faster '+1 (555) 010-0123'
-zap-faster 'https://wa.me/15550100123?text=Hello%20from%20a%20link'
+zap-fasterk '+1 (555) 010-0123'
+zap-fasterk 'https://wa.me/15550100123?text=Hello%20from%20a%20link'
 ```
 
 Numbers must contain 6 to 15 digits, including the country code. Spaces,
 parentheses, dots and hyphens are accepted as formatting. Web links opened
-in a browser still go to the browser; pass them to `zap-faster` to open
+in a browser still go to the browser; pass them to `zap-fasterk` to open
 them here. Only recognized WhatsApp hosts and send paths are accepted.
 
-If Zap Faster is already running, the link goes to that copy and brings its
+If Zap Fasterk is already running, the link goes to that copy and brings its
 window forward. It waits for the account's archive to load and for the app
 to be unlocked. A link cannot open a locked chat outside its locked folder.
 Very long links are refused before opening a chat.
@@ -636,17 +636,17 @@ leaves the chat list, search, and the unread count, and never raises a
 notification. The lock syncs with your phone and other linked devices.
 
 Choose **Locked** beside the chat filters and type your local code to open
-them; the first time, Zap Faster offers to set one up. The code is separate from
+them; the first time, Zap Fasterk offers to set one up. The code is separate from
 your phone's and adds no encryption beyond the encrypted message archive.
 Leaving the tab, changing the code, or closing the window hides them again.
 
 ## Labels
 
 Labels are yours alone. They stay on this computer, they never reach your phone,
-and nobody else sees them. They are not WhatsApp Business labels, and Zap Faster
+and nobody else sees them. They are not WhatsApp Business labels, and Zap Fasterk
 does not read or change those. Open **Labels** in any chat's right-click menu
 and choose **Manage labels…** to make one, with a name and one of the offered
-colours. Zap Faster keeps up to twenty.
+colours. Zap Fasterk keeps up to twenty.
 
 A chat can wear several labels at once. The **Labels** submenu of a chat's
 right-click menu lists them, with a checkmark beside the ones the chat wears;
@@ -667,26 +667,26 @@ it, and `Ctrl+B` brings the full list back.
 
 ## Notifications and the tray
 
-Closing the window keeps Zap Faster linked in the tray. Click the tray icon or
+Closing the window keeps Zap Fasterk linked in the tray. Click the tray icon or
 launch the app again to reopen it. To quit, use **Quit** in the tray menu, or on
-Linux **Quit Zap Faster** in the launcher's right-click menu (KDE Plasma's task
-manager and application menu, GNOME's Dash), which runs `zapfast quit`.
+Linux **Quit Zap Fasterk** in the launcher's right-click menu (KDE Plasma's task
+manager and application menu, GNOME's Dash), which runs `zapfasterk quit`.
 Launchers that support the Unity Launcher API
 show the unread count as a badge on the app icon: KDE Plasma's taskbar, with
 **Show badges** enabled in the Task Manager settings, and GNOME's Dash to Dock
-or Dash to Panel. Windows overlays a compact unread-message count on Zap Faster's
+or Dash to Panel. Windows overlays a compact unread-message count on Zap Fasterk's
 taskbar button while the window is open, using `99+` above 99. Windows must use
 its regular taskbar icon size for overlays to appear. The count
 does not count toasts remaining in Windows notification history. On Linux and
 Windows, notifications show the chat picture and open the chat at the message
 they announced when clicked. On Linux, a notification that arrives while the
-window is open behind others also highlights Zap Faster in the taskbar until you
+window is open behind others also highlights Zap Fasterk in the taskbar until you
 switch to it. Muted chats do not send notifications, and
 archived chats stay quiet while they remain archived. You can change both settings.
 With several numbers linked, the bell beside a number in the account switcher
 mutes all of that number's notifications while it stays connected, and leaves
 its unread chats out of the taskbar badge, as a muted chat's are.
-On Windows, while every display is off, ZapFast leaves new-message notifications
+On Windows, while every display is off, Zap Fasterk leaves new-message notifications
 to the phone instead of queuing desktop banners to appear when the display turns on.
 On macOS, the Dock icon also shows the unread count and clears it while the app
 is locked. In **Settings > Notifications**, **Show notification sender** controls
@@ -699,10 +699,10 @@ Focus and Do Not Disturb settings control them. Custom files must be at most
 16 MiB, shorter than 30 seconds, and decodable as mono or stereo audio. Unsupported
 files use the system notification sound. The prepared WAV copy stays locally in
 `~/Library/Sounds`. Banners still require notification permission and enabled
-banner settings for the installed Zap Faster application.
+banner settings for the installed Zap Fasterk application.
 
 Linux hidden startup waits up to 15 seconds for a tray watcher. If none appears,
-Zap Faster opens its window so you can still reach it.
+Zap Fasterk opens its window so you can still reach it.
 To hear less from busy chats, set **Limit repeat notifications** in
 **Settings > Notifications** to direct messages, groups, or both: a chat then
 sends one notification, stays quiet for 10 minutes, and notifies again once you
@@ -756,13 +756,13 @@ Choose **Document** on a staged attachment tile to send original image file byte
 
 Under **Settings > Appearance > Emoji style**, choose System, Noto Color Emoji,
 or **Choose a colour emoji font file**. Supply a local font you are allowed to
-use; Zap Faster does not download or include proprietary emoji libraries.
+use; Zap Fasterk does not download or include proprietary emoji libraries.
 Apple emoji already come from the system font on macOS in System mode.
 
 Import accepts CBDT or sbix colour bitmap fonts (TTF, OTF or collections) up to
 256 MiB, using the first face of a collection. COLR/SVG-only fonts and image
 packs are unsupported. The application keeps its own copy, so the original
-can move. All accounts share the choice. **Restart Zap Faster to apply it.**
+can move. All accounts share the choice. **Restart Zap Fasterk to apply it.**
 Missing emoji in a custom font have no bundled Noto fallback. If the custom
 font cannot load at startup, Settings shows the reason and the selected
 built-in style remains active. Choose System or Noto to reset the choice and
@@ -771,7 +771,7 @@ remove the application's imported copies, then restart.
 ## Custom interface fonts
 
 Under **Settings > Appearance > Font**, choose System, Inter, or **Choose a font
-file**. Zap Faster accepts `.ttf`, `.otf`, `.ttc`, and `.otc` files and keeps a copy
+file**. Zap Fasterk accepts `.ttf`, `.otf`, `.ttc`, and `.otc` files and keeps a copy
 in the `font` folder of its application state directory. The original file may
 then move without affecting the app. A collection uses its first face.
 
@@ -800,8 +800,8 @@ rounded bubbles and header are available immediately.
 ### Portable preferences
 
 To keep process preferences beside the executable, create
-`zap-faster-portable-settings.txt` there containing exactly
-`zap-faster-portable-settings-v1`. Restart Zap Faster. It reads and saves the
+`zap-fasterk-portable-settings.txt` there containing exactly
+`zap-fasterk-portable-settings-v1`. Restart Zap Fasterk. It reads and saves the
 adjacent `settings.json`; you may copy your existing process preferences there
 before restarting. The executable folder must be writable. Removing this marker
 returns to standard process preferences without deleting either file.
@@ -814,7 +814,7 @@ enable portable preferences.
 
 ### Local contact pictures
 
-Open a person's contact information and choose Set local picture. Zap Faster
+Open a person's contact information and choose Set local picture. Zap Fasterk
 copies and scales the image into that account's own state folder; the source
 file may then be moved. Reset local picture returns to their WhatsApp picture.
 This changes display only on this computer, never uploads a picture, and never

@@ -45,8 +45,8 @@ pub fn make(
     }
     let webp = encode(&sticker)?;
     let info = crate::sticker_meta::StickerInfo {
-        pack_id: "zapfast".to_owned(),
-        pack_name: "Zap Faster".to_owned(),
+        pack_id: "zapfasterk".to_owned(),
+        pack_name: "Zap Fasterk".to_owned(),
         emojis: emojis.to_vec(),
         ..Default::default()
     };

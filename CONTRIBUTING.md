@@ -1,6 +1,6 @@
-# Contributing to ZapFaster
+# Contributing to ZapFasterk
 
-ZapFaster is built by a daily WhatsApp power user for people who want more from
+ZapFasterk is built by a daily WhatsApp power user for people who want more from
 their desktop client. We want useful workflows inspired by past WhatsApp plugins,
 practical improvements for busy conversations, and faster delivery of fixes and
 features. Help us turn real daily frustrations into reliable native features.
@@ -17,8 +17,8 @@ features. Help us turn real daily frustrations into reliable native features.
   version you tested. Cross-platform testing is especially useful.
 - **Improve translations and docs:** make the app and its guides easier to use.
 
-Search [our issues](https://github.com/eternalwaitt/zap-faster/issues) and
-[pull requests](https://github.com/eternalwaitt/zap-faster/pulls) before starting.
+Search [our issues](https://github.com/kevindevm/zap-fasterk/issues) and
+[pull requests](https://github.com/kevindevm/zap-fasterk/pulls) before starting.
 You do not need to follow ZapFast's PR backlog to contribute here. When adapting
 someone else's work, link the original change, credit its authors and preserve
 its license notices. A corresponding upstream PR can still be open.
@@ -28,8 +28,8 @@ its license notices. A corresponding upstream PR can still be open.
 Clone the repository and use the pinned toolchain in `rust-toolchain.toml`:
 
 ```sh
-git clone https://github.com/eternalwaitt/zap-faster.git
-cd zap-faster
+git clone https://github.com/kevindevm/zap-fasterk.git
+cd zap-fasterk
 cargo run --locked --release
 ```
 
@@ -55,8 +55,8 @@ Product boundaries and upstream responsibilities:
 - The protocol comes from [whatsapp-rust](https://github.com/oxidezap/whatsapp-rust).
   A capability it does not support is fixed upstream first, not reimplemented
   here.
-- ZapFaster will not embed a browser engine, add telemetry, or introduce a
-  ZapFaster-operated service. Features that send message content to a third
+- ZapFasterk will not embed a browser engine, add telemetry, or introduce a
+  ZapFasterk-operated service. Features that send message content to a third
   party are out of scope.
 
 The guide's [current limitations](docs/_guide/what-is-zapfast.md#what-it-does-not-do-yet)
@@ -96,7 +96,7 @@ release status stated. Reopen the issue if it persists after updating.
 
 Keep each pull request to one change. A pull request that bundles unrelated
 fixes or features will be closed with a request to split it. Explain why the
-change belongs in ZapFaster, what changed, and how you tested it. Avoid unrelated
+change belongs in ZapFasterk, what changed, and how you tested it. Avoid unrelated
 formatting, refactors, generated prose, and large mechanical rewrites.
 
 `main` has a linear history. Outside pull requests are squash-merged into one

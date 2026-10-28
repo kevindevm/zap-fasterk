@@ -1,6 +1,10 @@
 //! SQLCipher archive storage and automatic OS-keyring unlock.
 
-use std::{fs, io::Read, path::Path};
+use std::{
+    fs,
+    io::Read,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result, ensure};
 use keyring_core::api::CredentialStoreApi;
@@ -24,14 +28,20 @@ fn plaintext(path: &Path) -> Result<bool> {
     Ok(&header == HEADER)
 }
 
+/// Keyring service of this install. The previous install's service follows
+/// below; entries move over on adoption and are never read afterwards.
+const KEYRING_SERVICE: &str = "rocks.zapfasterk.ZapFasterk";
+/// Keyring service of Zap Faster releases; entries move to KEYRING_SERVICE.
+const PREVIOUS_KEYRING_SERVICE: &str = "rocks.zapfast.ZapFast";
+
 pub(super) fn key_for(path: &Path) -> Result<Zeroizing<[u8; 32]>> {
     let parent = path.parent().context("Archive has no parent directory")?;
     fs::create_dir_all(parent)?;
     let store = platform_store()?;
     let entry = store
-        .build("rocks.zapfast.ZapFast", &identity_for(parent)?, None)
+        .build(KEYRING_SERVICE, &identity_for(parent)?, None)
         .map_err(keyring_error)
-        .context("The OS keyring could not open Zap Faster's archive key")?;
+        .context("The OS keyring could not open Zap Fasterk's archive key")?;
     key_from_entry(path, &entry)
 }
 
@@ -54,7 +64,7 @@ pub(super) fn restore_key_digest(key: &[u8]) -> String {
 
 pub(super) fn ensure_restore_key_available(identity: &str) -> Result<()> {
     let entry = platform_store()?
-        .build("rocks.zapfast.ZapFast", identity, None)
+        .build(KEYRING_SERVICE, identity, None)
         .map_err(keyring_error)?;
     match entry.get_secret() {
         Err(keyring_core::Error::NoEntry) => Ok(()),
@@ -74,7 +84,7 @@ pub(super) fn validate_owned_restore_key(
     allow_missing: bool,
 ) -> Result<()> {
     let entry = platform_store()?
-        .build("rocks.zapfast.ZapFast", identity, None)
+        .build(KEYRING_SERVICE, identity, None)
         .map_err(keyring_error)?;
     match entry.get_secret() {
         Err(keyring_core::Error::NoEntry) if allow_missing => Ok(()),
@@ -96,7 +106,7 @@ pub(super) fn validate_owned_restore_key(
 /// The transaction is durable before this write. Existing credentials are never replaced.
 pub(super) fn save_new_restore_key(identity: &str, key: &[u8; 32]) -> Result<()> {
     let entry = platform_store()?
-        .build("rocks.zapfast.ZapFast", identity, None)
+        .build(KEYRING_SERVICE, identity, None)
         .map_err(keyring_error)?;
     save_new_restore_key_in(&entry, key)
 }
@@ -124,7 +134,7 @@ fn save_new_restore_key_in(entry: &keyring_core::Entry, key: &[u8; 32]) -> Resul
 /// Deletes only the credential whose digest was reserved by this transaction.
 pub(super) fn forget_owned_restore_key(identity: &str, digest: &str) -> Result<()> {
     let entry = platform_store()?
-        .build("rocks.zapfast.ZapFast", identity, None)
+        .build(KEYRING_SERVICE, identity, None)
         .map_err(keyring_error)?;
     forget_owned_restore_key_in(&entry, digest)
 }
@@ -171,9 +181,9 @@ fn copy_archive_key_in(
         return Ok(());
     }
     let old_entry = store
-        .build("rocks.zapfast.ZapFast", &identity_for(old_parent)?, None)
+        .build(KEYRING_SERVICE, &identity_for(old_parent)?, None)
         .map_err(keyring_error)
-        .context("The OS keyring could not open Zap Faster's archive key")?;
+        .context("The OS keyring could not open Zap Fasterk's archive key")?;
     let key = match old_entry.get_secret() {
         Ok(secret) => decoded_key(secret)?,
         Err(keyring_core::Error::NoEntry) => {
@@ -188,9 +198,9 @@ fn copy_archive_key_in(
         }
     };
     let new_entry = store
-        .build("rocks.zapfast.ZapFast", &identity_for(new_parent)?, None)
+        .build(KEYRING_SERVICE, &identity_for(new_parent)?, None)
         .map_err(keyring_error)
-        .context("The OS keyring could not open Zap Faster's archive key")?;
+        .context("The OS keyring could not open Zap Fasterk's archive key")?;
     new_entry
         .set_secret(&stored_key(&key))
         .map_err(keyring_error)
@@ -209,11 +219,151 @@ fn copy_archive_key_in(
     Ok(())
 }
 
+/// An archive key read from the previous install, waiting for its folder to
+/// move. Identities digest the folder, so they are captured before the move
+/// and resolved after it.
+pub struct StagedKeyMove {
+    old_identity: String,
+    new_archive: PathBuf,
+    key: Zeroizing<[u8; 32]>,
+}
+
+impl std::fmt::Debug for StagedKeyMove {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("StagedKeyMove")
+            .field("old_identity", &self.old_identity)
+            .field("new_archive", &self.new_archive)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Reads every linked account's archive key before adoption renames their
+/// folders. Plaintext archives need no key. A missing key on an encrypted
+/// archive fails, like a single-account adoption, rather than orphaning
+/// history. Touches the OS store only when an archive actually needs moving.
+pub fn stage_key_move(old_state: &Path, new_state: &Path) -> Result<Vec<StagedKeyMove>> {
+    let mut pending: Vec<(PathBuf, PathBuf)> = Vec::new();
+    let accounts = match fs::read_dir(old_state.join("accounts")) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error.into()),
+    };
+    for entry in accounts {
+        let dir = entry?.path();
+        if !dir.is_dir() {
+            continue;
+        }
+        let old_archive = dir.join("archive.db");
+        if !old_archive.try_exists()? {
+            continue;
+        }
+        let name = dir
+            .file_name()
+            .context("Account folder has no name")?
+            .to_os_string();
+        pending.push((
+            old_archive,
+            new_state.join("accounts").join(name).join("archive.db"),
+        ));
+    }
+    if pending.is_empty() {
+        return Ok(Vec::new());
+    }
+    let store = platform_store()?;
+    stage_key_move_in(pending, &*store)
+}
+
+fn stage_key_move_in(
+    pending: Vec<(PathBuf, PathBuf)>,
+    store: &dyn CredentialStoreApi,
+) -> Result<Vec<StagedKeyMove>> {
+    let mut staged = Vec::new();
+    for (old_archive, new_archive) in pending {
+        let old_identity = archive_key_identity(&old_archive)?;
+        if let Some(key) = read_key_for_move(&old_archive, &old_identity, store)? {
+            staged.push(StagedKeyMove {
+                old_identity,
+                new_archive,
+                key,
+            });
+        }
+    }
+    Ok(staged)
+}
+
+fn read_key_for_move(
+    old_archive: &Path,
+    old_identity: &str,
+    store: &dyn CredentialStoreApi,
+) -> Result<Option<Zeroizing<[u8; 32]>>> {
+    for service in [KEYRING_SERVICE, PREVIOUS_KEYRING_SERVICE] {
+        let entry = store
+            .build(service, old_identity, None)
+            .map_err(keyring_error)?;
+        match entry.get_secret() {
+            Ok(secret) => return decoded_key(secret).map(Some),
+            Err(keyring_core::Error::NoEntry) => continue,
+            Err(error) => return Err(keyring_error(error)),
+        }
+    }
+    ensure!(
+        plaintext(old_archive)?,
+        "The archive is encrypted but its OS keyring key is missing. Restore the original keyring; the archive has not been changed"
+    );
+    Ok(None)
+}
+
+/// Writes a staged key under its new folder's identity, reads it back, and
+/// drops the previous install's entry. An existing new entry wins: another
+/// setup already claimed this folder, and nothing is replaced.
+pub fn commit_key_move(staged: &StagedKeyMove) -> Result<()> {
+    commit_key_move_in(staged, &*platform_store()?)
+}
+
+fn commit_key_move_in(staged: &StagedKeyMove, store: &dyn CredentialStoreApi) -> Result<()> {
+    let new_identity = archive_key_identity(&staged.new_archive)?;
+    let new_entry = store
+        .build(KEYRING_SERVICE, &new_identity, None)
+        .map_err(keyring_error)?;
+    match new_entry.get_secret() {
+        Ok(_) => return Ok(()),
+        Err(keyring_core::Error::NoEntry) => {}
+        Err(error) => return Err(keyring_error(error)),
+    }
+    new_entry
+        .set_secret(&stored_key(&staged.key))
+        .map_err(keyring_error)
+        .context("Could not save the archive key in the OS keyring")?;
+    let saved = decoded_key(
+        new_entry
+            .get_secret()
+            .map_err(keyring_error)
+            .context("Could not verify the copied archive key")?,
+    )?;
+    ensure!(
+        saved.as_slice() == staged.key.as_ref(),
+        "The OS keyring did not retain the copied archive key"
+    );
+    // Best effort: the entry is inert once the new one exists (the previous
+    // service is never read again), so litter must not block startup.
+    let old_entry = store
+        .build(PREVIOUS_KEYRING_SERVICE, &staged.old_identity, None)
+        .map_err(keyring_error)?;
+    match old_entry.delete_credential() {
+        Ok(()) | Err(keyring_core::Error::NoEntry) => Ok(()),
+        Err(error) => {
+            log::warn!("could not remove the previous install's archive key: {error:#}");
+            Ok(())
+        }
+    }
+}
+
 /// Deletes the keyring entry of an archive folder that is gone for good,
 /// such as a removed account's. Never call it while the archive exists.
 pub fn forget_archive_key(identity: &str) -> Result<()> {
     let entry = platform_store()?
-        .build("rocks.zapfast.ZapFast", identity, None)
+        .build(KEYRING_SERVICE, identity, None)
         .map_err(keyring_error)?;
     match entry.delete_credential() {
         Ok(()) | Err(keyring_core::Error::NoEntry) => Ok(()),
@@ -241,7 +391,9 @@ fn identity_for_resolved(parent: &Path) -> String {
 
 // KDE Wallet's Secret Service bridge stores UTF-8 secrets only. Keep legacy
 // binary credentials readable; new Linux credentials use a versioned text form.
-const TEXT_KEY_PREFIX: &[u8] = b"zapfast-key-v1:";
+// The previous install's Linux prefix follows; it still decodes on read.
+const TEXT_KEY_PREFIX: &[u8] = b"zapfasterk-key-v1:";
+const PREVIOUS_TEXT_KEY_PREFIX: &[u8] = b"zapfast-key-v1:";
 
 fn text_key(key: &[u8; 32]) -> Zeroizing<Vec<u8>> {
     use std::fmt::Write;
@@ -268,8 +420,9 @@ fn decoded_key(secret: Vec<u8>) -> Result<Zeroizing<[u8; 32]>> {
         key.copy_from_slice(&secret);
         return Ok(key);
     }
-    let text = secret
-        .strip_prefix(TEXT_KEY_PREFIX)
+    let text = [TEXT_KEY_PREFIX, PREVIOUS_TEXT_KEY_PREFIX]
+        .into_iter()
+        .find_map(|prefix| secret.strip_prefix(prefix))
         .filter(|text| text.len() == 64)
         .context("The archive key in the OS keyring is invalid")?;
     for (output, pair) in key.iter_mut().zip(text.as_chunks::<2>().0) {
@@ -284,7 +437,7 @@ fn decoded_key(secret: Vec<u8>) -> Result<Zeroizing<[u8; 32]>> {
 fn keyring_recovery() -> &'static str {
     #[cfg(target_os = "linux")]
     {
-        "Start a Secret Service provider in your desktop session (GNOME Keyring, or KWallet with Secret Service support), unlock its login collection, then choose Try again. Zap Faster needs the session D-Bus service org.freedesktop.secrets; the archive has not been replaced"
+        "Start a Secret Service provider in your desktop session (GNOME Keyring, or KWallet with Secret Service support), unlock its login collection, then choose Try again. Zap Fasterk needs the session D-Bus service org.freedesktop.secrets; the archive has not been replaced"
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -486,7 +639,7 @@ mod tests {
         assert!(std::str::from_utf8(&text).is_ok());
         assert_eq!(*decoded_key(text.to_vec()).unwrap(), key);
         assert_eq!(*decoded_key(key.to_vec()).unwrap(), key);
-        assert!(decoded_key(b"zapfast-key-v1:bad".to_vec()).is_err());
+        assert!(decoded_key(b"zapfasterk-key-v1:bad".to_vec()).is_err());
         let mut invalid = text.to_vec();
         *invalid.last_mut().unwrap() = b'z';
         assert!(decoded_key(invalid).is_err());
@@ -500,6 +653,111 @@ mod tests {
         connection
             .query_row("SELECT value FROM secrets", [], |row| row.get(0))
             .unwrap()
+    }
+
+    fn moved_account(
+        old_root: &tempfile::TempDir,
+        new_root: &tempfile::TempDir,
+    ) -> (PathBuf, PathBuf) {
+        let old_archive = old_root
+            .path()
+            .join("accounts")
+            .join("1")
+            .join("archive.db");
+        let new_archive = new_root
+            .path()
+            .join("accounts")
+            .join("1")
+            .join("archive.db");
+        fs::create_dir_all(old_archive.parent().unwrap()).unwrap();
+        fs::create_dir_all(new_archive.parent().unwrap()).unwrap();
+        (old_archive, new_archive)
+    }
+
+    #[test]
+    fn staged_keys_move_between_services_and_clean_up() {
+        let store = keyring_core::mock::Store::new().unwrap();
+        let old_root = directory();
+        let new_root = directory();
+        let (old_archive, new_archive) = moved_account(&old_root, &new_root);
+        fs::write(&old_archive, b"encrypted fixture archive").unwrap();
+        let old_identity = archive_key_identity(&old_archive).unwrap();
+        store
+            .build(PREVIOUS_KEYRING_SERVICE, &old_identity, None)
+            .unwrap()
+            .set_secret(&[4; 32])
+            .unwrap();
+        let staged = stage_key_move_in(vec![(old_archive, new_archive)], &*store).unwrap();
+        assert_eq!(staged.len(), 1);
+        commit_key_move_in(&staged[0], &*store).unwrap();
+        let new_identity = archive_key_identity(&staged[0].new_archive).unwrap();
+        let secret = store
+            .build(KEYRING_SERVICE, &new_identity, None)
+            .unwrap()
+            .get_secret()
+            .unwrap();
+        assert_eq!(*decoded_key(secret).unwrap(), [4; 32]);
+        assert!(matches!(
+            store
+                .build(PREVIOUS_KEYRING_SERVICE, &old_identity, None)
+                .unwrap()
+                .get_secret(),
+            Err(keyring_core::Error::NoEntry)
+        ));
+        // A second adoption is a no-op: the new entry wins.
+        commit_key_move_in(&staged[0], &*store).unwrap();
+    }
+
+    #[test]
+    fn staged_keys_accept_the_previous_prefix_and_rewrite_it() {
+        let store = keyring_core::mock::Store::new().unwrap();
+        let old_root = directory();
+        let new_root = directory();
+        let (old_archive, new_archive) = moved_account(&old_root, &new_root);
+        fs::write(&old_archive, b"encrypted fixture archive").unwrap();
+        let old_identity = archive_key_identity(&old_archive).unwrap();
+        let hex: String = [9; 32].iter().map(|byte| format!("{byte:02x}")).collect();
+        store
+            .build(PREVIOUS_KEYRING_SERVICE, &old_identity, None)
+            .unwrap()
+            .set_secret(format!("zapfast-key-v1:{hex}").as_bytes())
+            .unwrap();
+        let staged = stage_key_move_in(vec![(old_archive, new_archive)], &*store).unwrap();
+        assert_eq!(*staged[0].key, [9; 32]);
+        commit_key_move_in(&staged[0], &*store).unwrap();
+        let new_identity = archive_key_identity(&staged[0].new_archive).unwrap();
+        let secret = store
+            .build(KEYRING_SERVICE, &new_identity, None)
+            .unwrap()
+            .get_secret()
+            .unwrap();
+        #[cfg(target_os = "linux")]
+        assert!(secret.starts_with(b"zapfasterk-key-v1:"));
+        assert_eq!(*decoded_key(secret).unwrap(), [9; 32]);
+    }
+
+    #[test]
+    fn staged_keys_skip_plaintext_and_fail_loudly_without_one() {
+        let store = keyring_core::mock::Store::new().unwrap();
+        let old_root = directory();
+        let new_root = directory();
+        // An empty archive needs no key at all.
+        let (old_archive, new_archive) = moved_account(&old_root, &new_root);
+        fs::write(&old_archive, b"").unwrap();
+        assert!(
+            stage_key_move_in(vec![(old_archive, new_archive)], &*store)
+                .unwrap()
+                .is_empty()
+        );
+        // An encrypted archive without any key must not move silently.
+        let (old_archive, new_archive) = moved_account(&old_root, &new_root);
+        fs::write(&old_archive, b"encrypted fixture archive").unwrap();
+        assert!(
+            stage_key_move_in(vec![(old_archive, new_archive)], &*store)
+                .unwrap_err()
+                .to_string()
+                .contains("missing")
+        );
     }
 
     #[test]
@@ -535,7 +793,7 @@ mod tests {
         let directory = directory();
         let path = directory.path().join("archive.db");
         let store = keyring_core::mock::Store::new().unwrap();
-        let entry = store.build("zapfast-test", "archive", None).unwrap();
+        let entry = store.build("zapfasterk-test", "archive", None).unwrap();
         let key = key_from_entry(&path, &entry).unwrap();
         assert_eq!(*key, *key_from_entry(&path, &entry).unwrap());
         let connection = open(&path, &key).unwrap();
@@ -628,7 +886,7 @@ mod tests {
             let path = directory.path().join("archive.db");
             let kept = directory.path().join("archive-unreadable.db");
             let store = keyring_core::mock::Store::new().unwrap();
-            let entry = store.build("zapfast-test", "archive", None).unwrap();
+            let entry = store.build("zapfasterk-test", "archive", None).unwrap();
             let original_key = key_from_entry(&path, &entry).unwrap();
             let connection = open(&path, &original_key).unwrap();
             connection
@@ -659,7 +917,7 @@ mod tests {
         let directory = directory();
         let path = directory.path().join("archive.db");
         let store = keyring_core::mock::Store::new().unwrap();
-        let entry = store.build("zapfast-test", "archive", None).unwrap();
+        let entry = store.build("zapfasterk-test", "archive", None).unwrap();
         entry.set_secret(&[]).unwrap();
         for contents in [b"".as_slice(), HEADER.as_slice()] {
             fs::write(&path, contents).unwrap();

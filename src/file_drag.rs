@@ -116,7 +116,7 @@ mod native {
         #[test]
         fn a_unicode_file_provides_the_native_file_drop_format() {
             let file = tempfile::Builder::new()
-                .prefix("zapfast-drag-写真-")
+                .prefix("zapfasterk-drag-写真-")
                 .suffix(".png")
                 .tempfile()
                 .unwrap();

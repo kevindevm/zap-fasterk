@@ -3,7 +3,7 @@
 //! The crate checks for a newer release, refuses package-managed copies,
 //! downloads and verifies the update against the publisher signature, and
 //! hands it to a helper that installs it and rolls back if it does not start.
-//! Zap Faster keeps its names, its key, its proxy and its interface.
+//! Zap Fasterk keeps its names, its key, its proxy and its interface.
 
 pub use fastframe_update::{
     CHECK_INTERVAL, DownloadState, Installation, Kind, Prepared, Release, Source, Unsupported,
@@ -11,22 +11,22 @@ pub use fastframe_update::{
 };
 use fastframe_update::{MacConfig, ReqwestTransport, UpdateConfig};
 
-/// Zap Faster's releases and the names its installations have had.
+/// Zap Fasterk's releases and the names its installations have had.
 pub const CONFIG: UpdateConfig = UpdateConfig {
-    // Upstream installations are never treated as Zap Faster update targets.
+    // Upstream installations are never treated as Zap Fasterk update targets.
     legacy_names: &[],
     macos: MacConfig {
-        bundle_ids: &["io.github.eternalwaitt.ZapFaster"],
+        bundle_ids: &["io.github.kevindevm.ZapFasterk"],
         executable_names: &[],
         legacy_bundle_names: &[],
     },
     publisher_key: Some(include_str!("../assets/update-public-key.hex")),
-    // Only Zap Faster signatures authorize updates.
+    // Only Zap Fasterk signatures authorize updates.
     additional_publisher_keys: &[],
     ..UpdateConfig::new(
-        "eternalwaitt/zap-faster",
-        "Zap Faster",
-        "zap-faster",
+        "kevindevm/zap-fasterk",
+        "Zap Fasterk",
+        "zap-fasterk",
         env!("CARGO_PKG_VERSION"),
     )
 };
@@ -48,8 +48,8 @@ mod tests {
     fn update_config_is_valid() {
         CONFIG.validate().unwrap();
         assert_eq!(CONFIG.current_version, env!("CARGO_PKG_VERSION"));
-        assert_eq!(CONFIG.slug, "zap-faster");
-        assert_eq!(CONFIG.repository, "eternalwaitt/zap-faster");
+        assert_eq!(CONFIG.slug, "zap-fasterk");
+        assert_eq!(CONFIG.repository, "kevindevm/zap-fasterk");
         assert!(CONFIG.additional_publisher_keys.is_empty());
         assert!(CONFIG.legacy_names.is_empty());
     }

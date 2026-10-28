@@ -516,9 +516,9 @@ impl Downloadable for PhoneSticker {
 fn device_name() -> String {
     let host = crate::util::hostname();
     if host.is_empty() {
-        "Zap Faster".to_owned()
+        "Zap Fasterk".to_owned()
     } else {
-        format!("Zap Faster ({host})")
+        format!("Zap Fasterk ({host})")
     }
 }
 
@@ -1063,7 +1063,7 @@ fn invite_error(error: &str) -> String {
 /// unconfirmed. A healthy sync answers well within this.
 const PRIVACY_GRACE: Duration = Duration::from_secs(10);
 
-/// How long Zap Faster stays "available" after the window loses focus.
+/// How long Zap Fasterk stays "available" after the window loses focus.
 const PRESENCE_LINGER: Duration = Duration::from_secs(10);
 
 /// Waits longer after each failed lock-state recovery, so a collection the
@@ -1374,7 +1374,7 @@ struct Worker {
     favorites_pushing: bool,
     /// More favorite changes arrived while a push was running.
     favorites_again: bool,
-    /// The phone's favorites from before Zap Faster followed them were replayed.
+    /// The phone's favorites from before Zap Fasterk followed them were replayed.
     favorites_recovered: bool,
     /// That replay is running.
     favorites_recovering: bool,
@@ -2985,7 +2985,7 @@ impl Worker {
         // stays serialized while the snapshot is copied; the window stays responsive.
         let destination = tokio::task::spawn_blocking(|| {
             rfd::FileDialog::new()
-                .add_filter("Encrypted Zap Faster account", &["zfbackup"])
+                .add_filter("Encrypted Zap Fasterk account", &["zfbackup"])
                 .set_file_name("WhatsApp-account.zfbackup")
                 .save_file()
         })
@@ -3029,7 +3029,7 @@ impl Worker {
                 .is_err()
         {
             self.device_store_release = Some(release);
-            self.set_status(LinkStatus::Failed("Backup paused: the device store did not stop safely. Restart Zap Faster before trying again.".into()));
+            self.set_status(LinkStatus::Failed("Backup paused: the device store did not stop safely. Restart Zap Fasterk before trying again.".into()));
             self.emit(Event::ArchiveBackupFinished(Err(
                 "The device store is still in use. No backup was created.".into(),
             )));
@@ -3779,7 +3779,7 @@ impl Worker {
             }
             E::ClientOutdated(_) => {
                 self.set_status(LinkStatus::Failed(
-                    "WhatsApp rejected this version of Zap Faster. Update the app".to_owned(),
+                    "WhatsApp rejected this version of Zap Fasterk. Update the app".to_owned(),
                 ));
             }
             E::Messages(batch) => {
@@ -3854,7 +3854,7 @@ impl Worker {
                         .set_ephemeral(&chat, *expiration, timestamp)
                         .unwrap_or(false);
                     log::debug!(
-                        target: "zapfast::disappearing",
+                        target: "zapfasterk::disappearing",
                         "group timer update: duration={expiration}s timestamp={timestamp} accepted={accepted}"
                     );
                     if accepted {
@@ -4554,7 +4554,7 @@ impl Worker {
                         .set_ephemeral(&chat, expiration, timestamp)
                         .unwrap_or(false);
                     log::debug!(
-                        target: "zapfast::disappearing",
+                        target: "zapfasterk::disappearing",
                         "protocol timer update: duration={expiration}s timestamp={timestamp} fallback_timestamp={used_fallback} accepted={accepted}"
                     );
                     if accepted {
@@ -4562,7 +4562,7 @@ impl Worker {
                     }
                 } else {
                     log::debug!(
-                        target: "zapfast::disappearing",
+                        target: "zapfasterk::disappearing",
                         "protocol timer update missing expiration"
                     );
                 }
@@ -6610,7 +6610,7 @@ impl Worker {
         if let Some(chat) = destination
             && !writable(chat)
         {
-            let error = "This conversation is read-only in Zap Faster".to_owned();
+            let error = "This conversation is read-only in Zap Fasterk".to_owned();
             if matches!(&command, Command::CreatePoll { .. }) {
                 self.emit(Event::PollCreated {
                     chat: chat.clone(),
@@ -7577,7 +7577,7 @@ impl Worker {
             Command::PrepareClipboardImage(path) => {
                 if !crate::safety::image_preview_size_allowed(&path) {
                     self.emit(Event::Error(
-                        "This image could not be displayed in Zap Faster.".into(),
+                        "This image could not be displayed in Zap Fasterk.".into(),
                     ));
                     return;
                 }
@@ -7904,7 +7904,7 @@ impl Worker {
                 let Some(client) = self.client.clone() else {
                     self.emit(Event::InvitePreview {
                         code,
-                        result: Err("Zap Faster is not connected to WhatsApp".to_owned()),
+                        result: Err("Zap Fasterk is not connected to WhatsApp".to_owned()),
                     });
                     return;
                 };
@@ -7933,7 +7933,7 @@ impl Worker {
                 let Some(client) = self.client.clone() else {
                     self.emit(Event::InviteJoined {
                         code,
-                        result: Err("Zap Faster is not connected to WhatsApp".to_owned()),
+                        result: Err("Zap Fasterk is not connected to WhatsApp".to_owned()),
                     });
                     return;
                 };
@@ -8211,7 +8211,7 @@ impl Worker {
                         // The phone has cleared it; say so rather than leave
                         // the messages here looking as if nothing happened.
                         self.emit(Event::Error(
-                            "The phone cleared this chat, but Zap Faster could not clear it here"
+                            "The phone cleared this chat, but Zap Fasterk could not clear it here"
                                 .to_owned(),
                         ));
                     }
@@ -10868,7 +10868,7 @@ impl Worker {
                 }
             }
             Err(_) => self.emit(Event::Error(
-                "WhatsApp accepted the deletion, but Zap Faster could not remove its copy. Local cleanup is saved for restart or reconnect".to_owned(),
+                "WhatsApp accepted the deletion, but Zap Fasterk could not remove its copy. Local cleanup is saved for restart or reconnect".to_owned(),
             )),
 
         }
@@ -12812,7 +12812,7 @@ fn whatsapp_audio_mime(mime: &str) -> Option<&'static str> {
 /// inline, and WhatsApp drops a video message in another container (a
 /// QuickTime `.mov`, WebM, MKV, AVI) without telling either side, so the
 /// recipient gets nothing (#553). Those go as documents and arrive as the
-/// original file; Zap Faster does not transcode.
+/// original file; Zap Fasterk does not transcode.
 fn whatsapp_video_mime(mime: &str) -> bool {
     mime == "video/mp4"
 }
@@ -15089,7 +15089,7 @@ mod tests {
     #[test]
     fn attachment_staging_files_are_hidden_and_exclusive() {
         let directory = std::env::temp_dir().join(format!(
-            "zapfast-attachment-staging-{}",
+            "zapfasterk-attachment-staging-{}",
             rand::random::<u64>()
         ));
         std::fs::create_dir_all(&directory).expect("creates staging directory");
@@ -16833,7 +16833,8 @@ mod tests {
     #[tokio::test]
     async fn downloads_use_the_chosen_folder_and_fall_back_to_the_cache() {
         let (mut worker, _events, _, _) = receipt_tests::worker();
-        let root = std::env::temp_dir().join(format!("zapfast-downloads-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("zapfasterk-downloads-{}", std::process::id()));
         let chosen = root.join("Downloads/WhatsApp");
         worker
             .handle_command(Command::SetDownloadFolder(Some(chosen.clone())))
@@ -16996,7 +16997,8 @@ mod tests {
 
     #[test]
     fn starting_over_keeps_the_old_archive_and_forgets_the_link() {
-        let root = std::env::temp_dir().join(format!("zapfast-start-over-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("zapfasterk-start-over-{}", std::process::id()));
         let dirs = crate::paths::AppDirs::under(&root);
         dirs.ensure().unwrap();
         std::fs::write(dirs.archive_db(), b"encrypted").unwrap();
@@ -17428,7 +17430,8 @@ fn offline_worker(
     // test's cached avatar or download must not answer another's lookup.
     static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let root = std::env::temp_dir().join(format!("zapfast-worker-test-{}-{n}", std::process::id()));
+    let root =
+        std::env::temp_dir().join(format!("zapfasterk-worker-test-{}-{n}", std::process::id()));
     let worker = Worker {
         privacy_ready: true,
         privacy_confirmed: true,
@@ -20655,7 +20658,7 @@ mod receipt_tests {
         };
         worker.store_message(picture.clone(), None, None);
         let chat = PEER.to_owned();
-        let downloaded = std::path::PathBuf::from("/tmp/zapfast-photo.jpg");
+        let downloaded = std::path::PathBuf::from("/tmp/zapfasterk-photo.jpg");
         worker
             .archive
             .set_media_path(&chat, "photo", &downloaded)
@@ -21084,7 +21087,7 @@ mod receipt_tests {
         let archived = |worker: &Worker| worker.archive.chat(PEER).unwrap().unwrap().archived;
         worker.store_message(incoming("before", 100), None, None);
         worker.archive.set_archived_at(PEER, true, 200_000).unwrap();
-        // Kept archived, the default, as Zap Faster always behaved.
+        // Kept archived, the default, as Zap Fasterk always behaved.
         worker.store_message(incoming("kept", 300), None, None);
         assert!(archived(&worker));
 

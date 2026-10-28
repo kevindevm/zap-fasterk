@@ -6,27 +6,27 @@ nav_order: 0
 
 ## File locations
 
-Zap Faster follows each platform's conventions. Each linked number has its own
+Zap Fasterk follows each platform's conventions. Each linked number has its own
 folder, `<id>` below, so files, caches, and keys never mix between numbers.
 On Linux:
 
 | What | Where | Notes |
 | --- | --- | --- |
-| Settings | `~/.config/zapfast/settings.json` | JSON, safe to edit; the app lock password and the locked-chats code are kept only as salted verifiers |
-| Account list | `~/.config/zapfast/accounts.json` | Which numbers are linked here and which one is showing |
-| Session keys | `~/.local/state/zapfast/accounts/<id>/session.db` | Deleting it unlinks that number |
-| Message archive | `~/.local/state/zapfast/accounts/<id>/archive.db` | Encrypted; the only copy of history WhatsApp will not send again |
-| Per-number settings | `~/.local/state/zapfast/accounts/<id>/settings.json` | Notifications, receipts, typing, automatic downloads, the last open chat, and the wallpaper |
-| Stickers and packs | `~/.local/state/zapfast/accounts/<id>/stickers/` | Plain WebP files; each pack is a folder |
-| Wallpaper image | `~/.local/state/zapfast/accounts/<id>/wallpaper.jpg` | Copy of the chosen picture (or `.png`, `.webp`, `.gif`) |
-| Attachments, avatars | `~/.cache/zapfast/accounts/<id>/` | Safe to delete; available files download again when viewed |
-| Last run's log | `~/.local/state/zapfast/zapfast.log` | `--verbose` for more |
-| The run before's log | `~/.local/state/zapfast/zapfast.previous.log` | Kept for one more start |
-| Crash log | `~/.local/state/zapfast/panic.log` | Safe to delete |
+| Settings | `~/.config/zapfasterk/settings.json` | JSON, safe to edit; the app lock password and the locked-chats code are kept only as salted verifiers |
+| Account list | `~/.config/zapfasterk/accounts.json` | Which numbers are linked here and which one is showing |
+| Session keys | `~/.local/state/zapfasterk/accounts/<id>/session.db` | Deleting it unlinks that number |
+| Message archive | `~/.local/state/zapfasterk/accounts/<id>/archive.db` | Encrypted; the only copy of history WhatsApp will not send again |
+| Per-number settings | `~/.local/state/zapfasterk/accounts/<id>/settings.json` | Notifications, receipts, typing, automatic downloads, the last open chat, and the wallpaper |
+| Stickers and packs | `~/.local/state/zapfasterk/accounts/<id>/stickers/` | Plain WebP files; each pack is a folder |
+| Wallpaper image | `~/.local/state/zapfasterk/accounts/<id>/wallpaper.jpg` | Copy of the chosen picture (or `.png`, `.webp`, `.gif`) |
+| Attachments, avatars | `~/.cache/zapfasterk/accounts/<id>/` | Safe to delete; available files download again when viewed |
+| Last run's log | `~/.local/state/zapfasterk/zapfasterk.log` | `--verbose` for more |
+| The run before's log | `~/.local/state/zapfasterk/zapfasterk.previous.log` | Kept for one more start |
+| Crash log | `~/.local/state/zapfasterk/panic.log` | Safe to delete |
 
 Back up the archive if you need its history. WhatsApp sends only recent
-history to a new device, although Zap Faster can request some older messages from
-the phone. Clearing the media cache makes Zap Faster download attachments again.
+history to a new device, although Zap Fasterk can request some older messages from
+the phone. Clearing the media cache makes Zap Fasterk download attachments again.
 Expired attachments may still be available through the phone.
 A download is reported as complete only after its local path is recorded in
 the archive. If that write fails, the attachment shows a failure instead;
@@ -35,22 +35,22 @@ the downloaded file is kept in its destination.
 earlier ones in place.
 
 On macOS, settings, state, and the logs are in
-`~/Library/Application Support/me.paolino.zapfast` and the caches in
-`~/Library/Caches/me.paolino.zapfast`. On Windows, settings are in
-`%APPDATA%\paolino\zapfast\config`, state and the logs in
-`%LOCALAPPDATA%\paolino\zapfast\data`, and the caches in
-`%LOCALAPPDATA%\paolino\zapfast\cache`.
+`~/Library/Application Support/me.paolino.zapfasterk` and the caches in
+`~/Library/Caches/me.paolino.zapfasterk`. On Windows, settings are in
+`%APPDATA%\paolino\zapfasterk\config`, state and the logs in
+`%LOCALAPPDATA%\paolino\zapfasterk\data`, and the caches in
+`%LOCALAPPDATA%\paolino\zapfasterk\cache`.
 
-On first start, Zap Faster moves the corresponding `fastsapp` directories (or
+On first start, Zap Fasterk moves the corresponding `fastsapp` directories (or
 `fastwhatsapp` from earlier versions), including the session, archive, saved
-stickers, and window state. Existing Zap Faster directories are never overwritten.
-Quit FastsApp first; launching Zap Faster while it is running brings the existing
+stickers, and window state. Existing Zap Fasterk directories are never overwritten.
+Quit FastsApp first; launching Zap Fasterk while it is running brings the existing
 window forward. A single-number setup from before 0.19 moves into
 `accounts/1/` on first start, keyring key included; if that cannot finish (a
-locked keyring, or a folder already in the way), Zap Faster stops without moving
+locked keyring, or a folder already in the way), Zap Fasterk stops without moving
 anything and says why in its log.
 
-On Linux and macOS, Zap Faster restricts its configuration, state, and cache
+On Linux and macOS, Zap Fasterk restricts its configuration, state, and cache
 directories to your user (`0700`) and stops at startup if it cannot. Windows
 uses the permissions inherited from your user profile.
 
@@ -63,7 +63,7 @@ Credential Manager. Back up both the archive and its keyring entry: copying
 only `archive.db` to another computer is not enough.
 
 If the keyring is locked or unavailable, unlock it and click **Retry**;
-Zap Faster keeps the archive intact and waits before connecting. It never saves
+Zap Fasterk keeps the archive intact and waits before connecting. It never saves
 a replacement plaintext archive.
 
 A missing key is different from a locked keyring. Restore the original
@@ -72,7 +72,7 @@ creating new credentials will not help: neither can decrypt the existing
 archive. If the key cannot come back, **Start over…** renames the unreadable
 archive to `archive-unreadable-<date>.db`, forgets the linked session, and
 shows the linking screen; linking again brings recent history back from your
-phone. Remove the old Zap Faster entry under **Linked devices** on the phone
+phone. Remove the old Zap Fasterk entry under **Linked devices** on the phone
 afterwards.
 
 Only the archive and its SQLite journal are encrypted. Session keys,
@@ -99,7 +99,7 @@ beside their labels.
 - **Theme**: dark, light, follow the system, or a local JSON palette from the
   themes folder. See [Making a theme]({{ '/themes/' | relative_url }}).
 - **Interface font**: the system typeface or Inter.
-- **Emoji style**: use the platform emoji font (with bundled Noto fallback), bundled Noto Color Emoji only, or import a local colour bitmap emoji font you are allowed to use. Custom fonts must use CBDT or sbix bitmaps and be at most 256 MiB; only the first face of a collection is used. COLR/SVG-only fonts and folders of emoji images are unsupported. Custom fonts have no Noto fallback for missing emoji. Zap Faster keeps its own copy under `emoji-fonts` in the application state directory; selecting System or Noto removes imported copies. Restart Zap Faster to apply any change. If a custom file cannot load, Settings shows the error and the selected built-in style is used. This changes rendering on this computer, not the emoji sent in messages.
+- **Emoji style**: use the platform emoji font (with bundled Noto fallback), bundled Noto Color Emoji only, or import a local colour bitmap emoji font you are allowed to use. Custom fonts must use CBDT or sbix bitmaps and be at most 256 MiB; only the first face of a collection is used. COLR/SVG-only fonts and folders of emoji images are unsupported. Custom fonts have no Noto fallback for missing emoji. Zap Fasterk keeps its own copy under `emoji-fonts` in the application state directory; selecting System or Noto removes imported copies. Restart Zap Fasterk to apply any change. If a custom file cannot load, Settings shows the error and the selected built-in style is used. This changes rendering on this computer, not the emoji sent in messages.
 - **Wallpaper**: WhatsApp's light and dark chat wallpaper colours, with or
   without doodles.
 - **Zoom**: interface scale, also `Ctrl+Plus`, `Ctrl+Minus` and `Ctrl+0`.
@@ -116,7 +116,7 @@ beside their labels.
   while working through unanswered chats. Off by default, so sending scrolls
   the chat list to the top. Chat order and scrolling inside a conversation
   are unchanged.
-- **Restore last open chat**: on by default. When off, Zap Faster starts on the
+- **Restore last open chat**: on by default. When off, Zap Fasterk starts on the
   chat list with no conversation open, but still remembers the last chat for
   the next launch after you turn this back on.
 - **Download files automatically**: attachments up to 64 MiB download as they
@@ -127,7 +127,7 @@ beside their labels.
 - **Keep chats archived**: on by default. When off, a new
   message, received or sent, brings an archived chat back to the list. Applies
   to all accounts here whose phone has not sent its own **Keep chats archived**;
-  once a phone has, Zap Faster follows the phone for that account. It does not
+  once a phone has, Zap Fasterk follows the phone for that account. It does not
   change the phone's setting.
 - **Pause other media while recording or playing**: pause music and videos in
   other apps while you record, or while a voice message, audio, or video plays
@@ -186,17 +186,17 @@ supported history metadata; complete cross-device call history is not guaranteed
 - **Last seen**, **Online**, **Profile photo**, **About**, **Groups**, **Read
   receipts**, **Calls**: your WhatsApp account privacy, stored on WhatsApp's
   servers and shared with your phone. They can be changed while connected.
-- **App lock**: hide Zap Faster behind a password. See [App lock](#app-lock).
+- **App lock**: hide Zap Fasterk behind a password. See [App lock](#app-lock).
 
 **System**
 
-- **Keep running when the window closes**: keep Zap Faster linked in the tray.
+- **Keep running when the window closes**: keep Zap Fasterk linked in the tray.
 - **Start at login**: start in the tray without a window, where the platform
   supports it.
 - **Check for updates**: ask GitHub once a day whether a newer release exists.
 - **Download updates automatically**: download and verify a new release in the
   background; restarting stays your choice. Package managers and Flatpak update
-  Zap Faster themselves.
+  Zap Fasterk themselves.
 - **Proxy**: for the WhatsApp connection, media, profile pictures, GIF search,
   Signal sticker imports, and update checks. It accepts `socks5h://host:port`
   (the proxy resolves names, as Tor expects), `socks5://host:port`, and
@@ -217,10 +217,10 @@ hints under the message box** in the Keyboard shortcuts dialog brings it back),
 **Also save to your phone's contacts** in the new-contact dialog, voice
 playback speed, and the chat list and search pane widths.
 
-Zap Faster also remembers the window's size, position, and maximized
+Zap Fasterk also remembers the window's size, position, and maximized
 state in `settings.json`, including when reopening from the tray or a
 notification. The window opens at the same size whatever the interface's
-zoom. On Wayland the compositor controls placement, so Zap Faster keeps the size
+zoom. On Wayland the compositor controls placement, so Zap Fasterk keeps the size
 without choosing the position. These window changes and **Keep chats
 archived** are not yet included in 0.19.0.
 
@@ -237,10 +237,10 @@ the one above: it stays on only if both were on.
 ## App lock
 
 Like WhatsApp Web's screen lock, **Settings > Privacy > App lock** hides
-Zap Faster behind a password of at least six characters. Zap Faster then starts
+Zap Fasterk behind a password of at least six characters. Zap Fasterk then starts
 locked and locks again after 1 minute, 15 minutes (the default), or 1 hour
 without input, a choice under **Lock after**; time hidden in the tray counts.
-**Lock Zap Faster** in the tray menu and `Ctrl+Shift+L` lock it at once.
+**Lock Zap Fasterk** in the tray menu and `Ctrl+Shift+L` lock it at once.
 
 While locked, the window shows only the lock screen. Messages keep arriving
 but stay unread, and notifications say only "New message", without the chat,
@@ -260,16 +260,16 @@ opens the other.
 
 ## Updates
 
-With **Check for updates** on, Zap Faster asks GitHub once a day for a newer
+With **Check for updates** on, Zap Fasterk asks GitHub once a day for a newer
 release. **Update** in the banner downloads and verifies it, and **Restart to
 update** installs it when convenient. Downloads are checked against the
 release's SHA-256 checksums, whose manifest must carry a valid Ed25519
 publisher signature; a missing or invalid signature stops the update. The
 updater keeps a backup and restores it if the new version cannot start.
 Release builds also carry GitHub provenance attestations
-(`gh attestation verify FILE -R crmne/zapfast`).
+(`gh attestation verify FILE -R kevindevm/zap-fasterk`).
 
-The in-app updater handles portable downloads (keep `zapfast-portable.txt`
+The in-app updater handles portable downloads (keep `zapfasterk-portable.txt`
 beside the executable), the Windows installer, and the macOS app in
 Applications. AUR, DEB, RPM, Flatpak, Nix, Cargo, and Homebrew installations
 update through their package manager; an AppImage is replaced by downloading
@@ -277,13 +277,13 @@ the new one.
 
 ## The log
 
-Each run starts `zapfast.log` afresh and records warnings and errors, never
+Each run starts `zapfasterk.log` afresh and records warnings and errors, never
 message contents, phone numbers, or keys. Include the end of this file when
 reporting an issue. **Settings > Files > Log > Open** shows it. The run before
-is kept beside it as `zapfast.previous.log`: if Zap Faster froze and you had
+is kept beside it as `zapfasterk.previous.log`: if Zap Fasterk froze and you had
 to restart it, that file holds what happened.
 
-## Zap Faster local transcripts
+## Zap Fasterk local transcripts
 
 Older releases transcribed voice notes locally and cached the text in the
 encrypted account archive; transcripts cached then still show under their

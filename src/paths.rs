@@ -1,4 +1,4 @@
-//! Where Zap Faster keeps its files.
+//! Where Zap Fasterk keeps its files.
 //!
 //! Configuration, session state, and caches use separate standard platform
 //! directories. Clearing a cache does not remove device keys.
@@ -23,7 +23,22 @@ pub struct AppDirs {
 /// A separate preferences marker is required; the updater's installation marker is insufficient.
 fn portable_settings_beside(executable: &Path) -> Option<PathBuf> {
     let parent = executable.parent()?;
-    let marker = parent.join("zap-faster-portable-settings.txt");
+    portable_settings_in(
+        parent,
+        "zap-fasterk-portable-settings.txt",
+        "zap-fasterk-portable-settings-v1",
+    )
+    .or_else(|| {
+        portable_settings_in(
+            parent,
+            "zap-faster-portable-settings.txt",
+            "zap-faster-portable-settings-v1",
+        )
+    })
+}
+
+fn portable_settings_in(parent: &Path, file: &str, content: &str) -> Option<PathBuf> {
+    let marker = parent.join(file);
     let metadata = std::fs::symlink_metadata(&marker).ok()?;
     if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 128 {
         return None;
@@ -35,21 +50,20 @@ fn portable_settings_beside(executable: &Path) -> Option<PathBuf> {
             return None;
         }
     }
-    (std::fs::read_to_string(marker).ok()?.trim() == "zap-faster-portable-settings-v1")
-        .then(|| parent.join("settings.json"))
+    (std::fs::read_to_string(marker).ok()?.trim() == content).then(|| parent.join("settings.json"))
 }
 
 impl AppDirs {
     pub fn discover() -> Self {
-        let mut dirs = match Self::of("zapfast") {
+        let mut dirs = match Self::of("zapfasterk") {
             Some(dirs) => dirs,
             None => {
                 let fallback = std::env::current_dir().unwrap_or_default();
                 Self {
-                    config: fallback.join("zapfast-config"),
-                    state: fallback.join("zapfast-state"),
-                    cache: fallback.join("zapfast-cache"),
-                    runtime: fallback.join("zapfast-run"),
+                    config: fallback.join("zapfasterk-config"),
+                    state: fallback.join("zapfasterk-state"),
+                    cache: fallback.join("zapfasterk-cache"),
+                    runtime: fallback.join("zapfasterk-run"),
                     portable_settings: None,
                 }
             }
@@ -79,12 +93,12 @@ impl AppDirs {
     /// Adopts earlier names, newest first, without replacing existing data.
     /// Call only after acquiring the instance guard, and never for demo runs.
     pub fn adopt_previous_names(&self) -> std::io::Result<()> {
-        for name in ["fastsapp", "fastwhatsapp"] {
+        for name in ["zapfast", "fastsapp", "fastwhatsapp"] {
             if let Some(old) = Self::of(name) {
-                self.adopt(&old)?;
+                self.adopt(name, &old)?;
             }
             if let (Some(from), Some(to)) =
-                (eframe::storage_dir(name), eframe::storage_dir("zapfast"))
+                (eframe::storage_dir(name), eframe::storage_dir("zapfasterk"))
             {
                 adopt_directory(&from, &to)?;
             }
@@ -92,13 +106,26 @@ impl AppDirs {
         Ok(())
     }
 
-    fn adopt(&self, old: &Self) -> std::io::Result<()> {
+    fn adopt(&self, name: &str, old: &Self) -> std::io::Result<()> {
+        // Read archive keys before the rename changes their path-digest
+        // identities. Only the Zap Faster hop has known key services; older
+        // layouts keep their previous behavior.
+        let staged = if name == "zapfast" {
+            crate::archive::stage_key_move(&old.state, &self.state)
+                .map_err(|error| std::io::Error::other(format!("{error:#}")))?
+        } else {
+            Vec::new()
+        };
         for (from, to) in [
             (&old.config, &self.config),
             (&old.state, &self.state),
             (&old.cache, &self.cache),
         ] {
             adopt_directory(from, to)?;
+        }
+        for key in &staged {
+            crate::archive::commit_key_move(key)
+                .map_err(|error| std::io::Error::other(format!("{error:#}")))?;
         }
         Ok(())
     }
@@ -222,7 +249,7 @@ impl AppDirs {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::AlreadyExists,
                 format!(
-                    "{} holds a single-account setup, but {} already exists. Nothing was moved; move one of them away and start Zap Faster again",
+                    "{} holds a single-account setup, but {} already exists. Nothing was moved; move one of them away and start Zap Fasterk again",
                     self.state.display(),
                     blocked[0].display()
                 ),
@@ -260,7 +287,7 @@ impl AppDirs {
 
     /// Current-run log, replaced at startup.
     pub fn log_file(&self) -> PathBuf {
-        self.state.join("zapfast.log")
+        self.state.join("zapfasterk.log")
     }
 
     /// Panic log written before process exit.
@@ -288,7 +315,7 @@ impl AppDirs {
         self.state.join("stickers")
     }
 
-    /// Zap Faster's copy of the chosen chat wallpaper image. User data, so it
+    /// Zap Fasterk's copy of the chosen chat wallpaper image. User data, so it
     /// sits beside saved stickers rather than in the cache.
     pub fn wallpaper_file(&self, extension: &str) -> PathBuf {
         self.state.join(format!("wallpaper.{extension}"))
@@ -380,7 +407,7 @@ impl AccountDirs {
         self.state.join("stickers")
     }
 
-    /// Zap Faster's copy of the chosen chat wallpaper image for this account.
+    /// Zap Fasterk's copy of the chosen chat wallpaper image for this account.
     pub fn wallpaper_file(&self, extension: &str) -> PathBuf {
         self.state.join(format!("wallpaper.{extension}"))
     }
@@ -457,7 +484,7 @@ mod tests {
 
     fn root(name: &str) -> PathBuf {
         let root =
-            std::env::temp_dir().join(format!("zapfast-paths-{name}-{}", std::process::id()));
+            std::env::temp_dir().join(format!("zapfasterk-paths-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         root
@@ -516,10 +543,10 @@ mod tests {
 
     #[test]
     fn rename_preserves_session_archive_settings_and_cached_files() {
-        for name in ["fastsapp", "fastwhatsapp"] {
+        for name in ["zapfast", "fastsapp", "fastwhatsapp"] {
             let root = root(name);
             let old = AppDirs::under(&root.join(name));
-            let new = AppDirs::under(&root.join("zapfast"));
+            let new = AppDirs::under(&root.join("zapfasterk"));
             old.ensure().unwrap();
             for path in [
                 old.settings_file(),
@@ -533,8 +560,8 @@ mod tests {
                 std::fs::create_dir_all(path.parent().unwrap()).unwrap();
                 std::fs::write(path, b"preserved").unwrap();
             }
-            new.adopt(&old).unwrap();
-            new.adopt(&old).unwrap(); // A second launch is a no-op.
+            new.adopt(name, &old).unwrap();
+            new.adopt(name, &old).unwrap(); // A second launch is a no-op.
             for path in [
                 new.settings_file(),
                 new.session_db(),
@@ -556,7 +583,7 @@ mod tests {
     #[test]
     fn newest_data_wins_without_merging_archives() {
         let root = root("precedence");
-        let new = AppDirs::under(&root.join("zapfast"));
+        let new = AppDirs::under(&root.join("zapfasterk"));
         let recent = AppDirs::under(&root.join("fastsapp"));
         let oldest = AppDirs::under(&root.join("fastwhatsapp"));
         recent.ensure().unwrap();
@@ -566,8 +593,8 @@ mod tests {
         std::fs::write(recent.settings_file(), b"old settings").unwrap();
         std::fs::write(recent.archive_db(), b"recent archive").unwrap();
         std::fs::write(oldest.archive_db(), b"oldest archive").unwrap();
-        new.adopt(&recent).unwrap();
-        new.adopt(&oldest).unwrap();
+        new.adopt("fastsapp", &recent).unwrap();
+        new.adopt("fastwhatsapp", &oldest).unwrap();
         assert_eq!(std::fs::read(new.settings_file()).unwrap(), b"new settings");
         assert_eq!(
             std::fs::read(recent.settings_file()).unwrap(),
@@ -584,18 +611,18 @@ mod tests {
     #[test]
     fn portable_preferences_are_explicit_and_do_not_move_identity() {
         let root = tempfile::tempdir().unwrap();
-        let executable = root.path().join("zap-faster.exe");
+        let executable = root.path().join("zap-fasterk.exe");
         assert!(portable_settings_beside(&executable).is_none());
         std::fs::write(
-            root.path().join("zap-faster-portable.txt"),
-            "zap-faster-portable-v1",
+            root.path().join("zap-fasterk-portable.txt"),
+            "zap-fasterk-portable-v1",
         )
         .unwrap();
         assert!(portable_settings_beside(&executable).is_none());
-        let marker = root.path().join("zap-faster-portable-settings.txt");
+        let marker = root.path().join("zap-fasterk-portable-settings.txt");
         std::fs::write(&marker, "invalid").unwrap();
         assert!(portable_settings_beside(&executable).is_none());
-        std::fs::write(&marker, "zap-faster-portable-settings-v1\n").unwrap();
+        std::fs::write(&marker, "zap-fasterk-portable-settings-v1\n").unwrap();
         let mut dirs = AppDirs::under(&root.path().join("standard"));
         let previous = dirs.clone();
         dirs.portable_settings = portable_settings_beside(&executable);
@@ -608,6 +635,15 @@ mod tests {
             dirs.account(&AccountId::first()).archive_db(),
             previous.account(&AccountId::first()).archive_db()
         );
+        // The previous install's marker still opts in, so a portable copy
+        // keeps working across the rename until its marker is replaced.
+        std::fs::remove_file(&marker).unwrap();
+        let legacy = root.path().join("zap-faster-portable-settings.txt");
+        std::fs::write(&legacy, "zap-faster-portable-settings-v1\n").unwrap();
+        assert!(portable_settings_beside(&executable).is_some());
+        let mut portable = AppDirs::under(&root.path().join("legacy"));
+        portable.portable_settings = portable_settings_beside(&executable);
+        assert_eq!(portable.settings_file(), root.path().join("settings.json"));
     }
 
     #[test]
@@ -629,7 +665,7 @@ mod tests {
         };
         old.ensure().unwrap();
         std::fs::write(old.session_db(), b"session").unwrap();
-        new.adopt(&old).unwrap();
+        new.adopt("fastsapp", &old).unwrap();
         assert_eq!(std::fs::read(new.session_db()).unwrap(), b"session");
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -642,10 +678,10 @@ mod tests {
         old.ensure().unwrap();
         std::fs::write(old.session_db(), b"session").unwrap();
         std::fs::write(root.join("blocked"), b"not a directory").unwrap();
-        assert!(new.adopt(&old).is_err());
+        assert!(new.adopt("fastsapp", &old).is_err());
         assert_eq!(std::fs::read(old.session_db()).unwrap(), b"session");
         std::fs::remove_file(root.join("blocked")).unwrap();
-        new.adopt(&old).unwrap();
+        new.adopt("fastsapp", &old).unwrap();
         assert_eq!(std::fs::read(new.session_db()).unwrap(), b"session");
         std::fs::remove_dir_all(root).unwrap();
     }

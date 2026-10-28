@@ -8,7 +8,7 @@ impl Worker {
         self.pending_backup_merge = None;
         let selected = tokio::task::spawn_blocking(|| {
             rfd::FileDialog::new()
-                .add_filter("Encrypted Zap Faster account", &["zfbackup"])
+                .add_filter("Encrypted Zap Fasterk account", &["zfbackup"])
                 .pick_file()
         })
         .await;

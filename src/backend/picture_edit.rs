@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn writing_a_crop_puts_it_under_its_own_bytes() {
-        let dir = std::env::temp_dir().join("zapfast-picture-edit-write");
+        let dir = std::env::temp_dir().join("zapfasterk-picture-edit-write");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("makes the directory");
         let source = dir.join("source.png");
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn writing_a_crop_of_a_missing_picture_says_so() {
-        let dir = std::env::temp_dir().join("zapfast-picture-edit-missing");
+        let dir = std::env::temp_dir().join("zapfasterk-picture-edit-missing");
         let error = write(
             &PictureSource::File(dir.join("gone.png")),
             4,

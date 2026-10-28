@@ -1,11 +1,11 @@
-# Maintainer: eternalwaitt
+# Maintainer: kevindevm
 # Original package templates: Carmine Paolino <carmine@paolino.me>
-pkgname=zap-faster-bin
+pkgname=zap-fasterk-bin
 pkgver=@VERSION@
 pkgrel=@PKGREL@
 pkgdesc="Fast native WhatsApp client built with Rust and egui"
 arch=('x86_64' 'aarch64')
-url="https://github.com/eternalwaitt/zap-faster"
+url="https://github.com/kevindevm/zap-fasterk"
 license=('MIT' 'GPL-2.0-only')
 install="${pkgname}.install"
 # Nothing beyond libc is linked directly; winit and glutin dlopen these at
@@ -15,13 +15,13 @@ depends=('alsa-lib' 'alsa-plugins' 'libglvnd' 'libxkbcommon' 'libxkbcommon-x11' 
 optdepends=('org.freedesktop.secrets: archive encryption key storage'
             'noto-fonts-emoji: colour emoji in messages and reactions'
             'xdg-desktop-portal: the file picker for attachments')
-provides=('zap-faster')
-conflicts=('zap-faster' 'zap-faster-git' 'zapfast' 'zapfast-bin' 'zapfast-git' 'fastsapp' 'fastsapp-bin' 'fastsapp-git')
+provides=('zap-fasterk')
+conflicts=('zap-fasterk' 'zap-fasterk-git' 'zapfasterk' 'zapfasterk-bin' 'zapfasterk-git' 'fastsapp' 'fastsapp-bin' 'fastsapp-git')
 replaces=()
 options=('!debug' '!strip')
-_repo="https://github.com/eternalwaitt/zap-faster"
-source_x86_64=("${_repo}/releases/download/v${pkgver}/zap-faster-v${pkgver}-x86_64-unknown-linux-gnu.tar.gz")
-source_aarch64=("${_repo}/releases/download/v${pkgver}/zap-faster-v${pkgver}-aarch64-unknown-linux-gnu.tar.gz")
+_repo="https://github.com/kevindevm/zap-fasterk"
+source_x86_64=("${_repo}/releases/download/v${pkgver}/zap-fasterk-v${pkgver}-x86_64-unknown-linux-gnu.tar.gz")
+source_aarch64=("${_repo}/releases/download/v${pkgver}/zap-fasterk-v${pkgver}-aarch64-unknown-linux-gnu.tar.gz")
 sha256sums_x86_64=('@AMD64_SHA256@')
 sha256sums_aarch64=('@ARM64_SHA256@')
 
@@ -31,22 +31,22 @@ package() {
     x86_64) target="x86_64-unknown-linux-gnu" ;;
     aarch64) target="aarch64-unknown-linux-gnu" ;;
   esac
-  local dir="${srcdir}/zap-faster-v${pkgver}-${target}"
+  local dir="${srcdir}/zap-fasterk-v${pkgver}-${target}"
 
-  install -Dm755 "${dir}/zap-faster" "${pkgdir}/usr/bin/zap-faster"
+  install -Dm755 "${dir}/zap-fasterk" "${pkgdir}/usr/bin/zap-fasterk"
   install -Dm644 "${dir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
   install -Dm644 "${dir}/THIRD-PARTY-NOTICES.md" "${pkgdir}/usr/share/licenses/${pkgname}/THIRD-PARTY-NOTICES.md"
   install -Dm644 "${dir}/README.md" "${pkgdir}/usr/share/doc/${pkgname}/README.md"
-  install -Dm644 "${dir}/packaging/applications/zap-faster.desktop" \
-    "${pkgdir}/usr/share/applications/zap-faster.desktop"
-  install -Dm644 "${dir}/packaging/icons/zap-faster.svg" \
-    "${pkgdir}/usr/share/icons/hicolor/scalable/apps/zap-faster.svg"
+  install -Dm644 "${dir}/packaging/applications/zap-fasterk.desktop" \
+    "${pkgdir}/usr/share/applications/zap-fasterk.desktop"
+  install -Dm644 "${dir}/packaging/icons/zap-fasterk.svg" \
+    "${pkgdir}/usr/share/icons/hicolor/scalable/apps/zap-fasterk.svg"
   # Releases predating theme integration remain valid packaging inputs.
-  if [[ -f "${dir}/contrib/omarchy/zap-faster.json.tpl" ]]; then
-    install -Dm644 "${dir}/contrib/omarchy/zap-faster.json.tpl" \
-      "${pkgdir}/usr/share/zap-faster/omarchy/zap-faster.json.tpl"
-    install -Dm755 "${dir}/contrib/omarchy/zap-faster-theme" \
-      "${pkgdir}/usr/share/zap-faster/omarchy/zap-faster-theme"
+  if [[ -f "${dir}/contrib/omarchy/zap-fasterk.json.tpl" ]]; then
+    install -Dm644 "${dir}/contrib/omarchy/zap-fasterk.json.tpl" \
+      "${pkgdir}/usr/share/zap-fasterk/omarchy/zap-fasterk.json.tpl"
+    install -Dm755 "${dir}/contrib/omarchy/zap-fasterk-theme" \
+      "${pkgdir}/usr/share/zap-fasterk/omarchy/zap-fasterk-theme"
   fi
 
 }

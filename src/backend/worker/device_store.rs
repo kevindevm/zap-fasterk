@@ -1,4 +1,4 @@
-//! Compatibility for returning to Zap Faster 0.14 after the library's migration.
+//! Compatibility for returning to Zap Fasterk 0.14 after the library's migration.
 //!
 //! The protocol library owns the device schema and all message-secret access.
 //! Its new migration drops an unused column that 0.14 still writes. Retain that

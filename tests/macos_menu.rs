@@ -4,7 +4,7 @@
 //! muda keeps the first menu-event handler it is given and ignores later
 //! ones, and fastframe-tray installs one when it makes its item on the first
 //! window. If that came first, Settings… (and its ⌘, shortcut), About, Quit
-//! and every other Zap Faster menu item did nothing.
+//! and every other Zap Fasterk menu item did nothing.
 //!
 //! AppKit menus work only on the main thread, where libtest never runs a
 //! test, so this file has no harness and does its work in `main`.
@@ -12,19 +12,19 @@
 #[cfg(target_os = "macos")]
 fn main() {
     use objc2_app_kit::NSApplication;
-    use zapfast::model::Page;
+    use zapfasterk::model::Page;
 
     let mtm = objc2::MainThreadMarker::new().expect("a harness-less test runs on the main thread");
     let root = tempfile::tempdir().expect("a temporary directory");
-    let dirs = zapfast::paths::AppDirs::under(root.path());
-    let settings = zapfast::settings::Settings::default();
+    let dirs = zapfasterk::paths::AppDirs::under(root.path());
+    let settings = zapfasterk::settings::Settings::default();
     // The backend waits for the first drawn frame before it starts, so it
     // never links or opens an archive here.
-    let mut app = zapfast::app::App::new(
-        &zapfast::backend::Waker::default(),
+    let mut app = zapfasterk::app::App::new(
+        &zapfasterk::backend::Waker::default(),
         dirs,
         settings,
-        zapfast::app::AppOptions { tray: true },
+        zapfasterk::app::AppOptions { tray: true },
     )
     .expect("a fresh app over an empty folder");
     let ctx = egui::Context::default();
@@ -36,7 +36,7 @@ fn main() {
     let submenu = menu
         .itemAtIndex(0)
         .and_then(|item| item.submenu())
-        .expect("the Zap Faster menu");
+        .expect("the Zap Fasterk menu");
     let index = (0..submenu.numberOfItems())
         .find(|&index| {
             submenu

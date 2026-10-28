@@ -1,6 +1,6 @@
 ## Why
 
-What user problem does this solve, and why does it belong in ZapFaster?
+What user problem does this solve, and why does it belong in ZapFasterk?
 
 ## What changed
 

@@ -1,18 +1,18 @@
 [Desktop Entry]
 Type=Application
-Name=Zap Faster
+Name=Zap Fasterk
 GenericName=WhatsApp Client
 Comment=A native WhatsApp client
-Exec=zap-faster %u
-Icon=zap-faster
+Exec=zap-fasterk %u
+Icon=zap-fasterk
 Terminal=false
 Categories=Network;InstantMessaging;Chat;
 Keywords=whatsapp;chat;messaging;
-StartupWMClass=zap-faster
+StartupWMClass=zap-fasterk
 MimeType=x-scheme-handler/whatsapp;
 SingleMainWindow=true
 Actions=quit;
 
 [Desktop Action quit]
-Name=Quit Zap Faster
-Exec=zap-faster quit
+Name=Quit Zap Fasterk
+Exec=zap-fasterk quit

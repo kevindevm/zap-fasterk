@@ -89,7 +89,7 @@ impl ChatLink {
         let link = Self { phone, text };
         // fastframe-instance accepts a 16 KiB line, including its prefix and
         // the Windows token. Leave room for those instead of losing a draft
-        // only when Zap Faster was already running.
+        // only when Zap Fasterk was already running.
         if link.request().len() > 15 * 1024 {
             return Err("The WhatsApp chat link is too long");
         }

@@ -593,7 +593,7 @@ impl Worker {
             self.emit(Event::CallPreparing(false));
             log::warn!("[CALL] cannot start a call: WhatsApp is not connected");
             self.emit(Event::Error(
-                "Zap Faster is not connected to WhatsApp".to_owned(),
+                "Zap Fasterk is not connected to WhatsApp".to_owned(),
             ));
             return;
         };

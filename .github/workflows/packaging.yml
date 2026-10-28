@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Published Zap Faster version (required for package builds)
+        description: Published Zap Fasterk version (required for package builds)
         type: string
         default: ''
       publish:
@@ -51,7 +51,7 @@ jobs:
 
   # The Windows package, installed for real with stand-in program files: an
   # Inno Setup install as earlier releases made, the MSI taking it over, an
-  # update, and uninstalling with Zap Faster running and without. Releases
+  # update, and uninstalling with Zap Fasterk running and without. Releases
   # ship only the MSI; the Inno script stays to make the old install to take
   # over.
   windows-installer:
@@ -82,12 +82,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $payload = "dist\windows-input-x86_64-pc-windows-msvc"
           New-Item -ItemType Directory -Force $payload | Out-Null
-          Copy-Item "$env:SystemRoot\System32\PING.EXE" "$payload\zap-faster.exe"
-          Copy-Item README.md, LICENSE, THIRD-PARTY-NOTICES.md, packaging\windows\zap-faster-installer.txt $payload
+          Copy-Item "$env:SystemRoot\System32\PING.EXE" "$payload\zap-fasterk.exe"
+          Copy-Item README.md, LICENSE, THIRD-PARTY-NOTICES.md, packaging\windows\zap-fasterk-installer.txt $payload
           native-packages build --version 0.0.1 --target windows-amd64 `
             --defer-recipes --output "$env:RUNNER_TEMP\windows-packages"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Get-ChildItem "$env:RUNNER_TEMP\windows-packages\packages\windows-amd64\msi\zap-faster-v0.0.1-x86_64-pc-windows-msvc.msi"
+          Get-ChildItem "$env:RUNNER_TEMP\windows-packages\packages\windows-amd64\msi\zap-fasterk-v0.0.1-x86_64-pc-windows-msvc.msi"
 
   installation:
     name: Install (${{ matrix.os }}, ${{ matrix.image }})
@@ -142,10 +142,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libasound2t64
-          set -- dist/native-packages/packages/"$TARGET"/appimage/zap-faster-*-"$ARCH".AppImage
+          set -- dist/native-packages/packages/"$TARGET"/appimage/zap-fasterk-*-"$ARCH".AppImage
           test "$#" -eq 1
           chmod +x "$1"
-          "$1" --appimage-extract-and-run --version | grep -Ex '(zap-faster|fastsapp) [0-9]+\.[0-9]+\.[0-9]+.*'
+          "$1" --appimage-extract-and-run --version | grep -Ex '(zap-fasterk|fastsapp) [0-9]+\.[0-9]+\.[0-9]+.*'
       - name: Generate external AppImage update sidecar
         env:
           TARGET: ${{ matrix.target }}
@@ -154,10 +154,10 @@ jobs:
         run: |
           sudo apt-get install -y --no-install-recommends zsync
           mkdir -p dist/appimage-updates
-          set -- dist/native-packages/packages/"$TARGET"/appimage/zap-faster-*-"$ARCH".AppImage
+          set -- dist/native-packages/packages/"$TARGET"/appimage/zap-fasterk-*-"$ARCH".AppImage
           test "$#" -eq 1
           filename=$(basename "$1")
-          zsyncmake -u "https://github.com/eternalwaitt/zap-faster/releases/download/v$VERSION/$filename" \
+          zsyncmake -u "https://github.com/kevindevm/zap-fasterk/releases/download/v$VERSION/$filename" \
             -o "dist/appimage-updates/$filename.zsync" "$1"
           (cd dist/appimage-updates && sha256sum "$filename.zsync" > "appimage-update-checksums-$TARGET.txt")
       - uses: actions/upload-artifact@v4
@@ -169,7 +169,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
-        run: gh release upload "v$VERSION" dist/appimage-updates/* --repo eternalwaitt/zap-faster
+        run: gh release upload "v$VERSION" dist/appimage-updates/* --repo kevindevm/zap-fasterk
 
   user-installer:
     name: User installer

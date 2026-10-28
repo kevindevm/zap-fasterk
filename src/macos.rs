@@ -24,7 +24,7 @@ struct MenuInput(Arc<Mutex<Vec<egui::Event>>>);
 
 impl egui::plugin::Plugin for MenuInput {
     fn debug_name(&self) -> &'static str {
-        "zapfast-macos-menu"
+        "zapfasterk-macos-menu"
     }
 
     fn input_hook(&mut self, _ctx: &egui::Context, input: &mut egui::RawInput) {
@@ -45,19 +45,19 @@ fn item(id: &str, text: &str, shortcut: Option<&str>) -> MenuItem {
 
 fn build_menu() -> tray_icon::menu::Result<Menu> {
     let menu = Menu::new();
-    let app = Submenu::new("Zap Faster", true);
+    let app = Submenu::new("Zap Fasterk", true);
     app.append_items(&[
-        &item("about", "About Zap Faster", None),
+        &item("about", "About Zap Fasterk", None),
         &Native::separator(),
         &item("settings", "Settings…", Some("Super+Comma")),
         &Native::separator(),
         &Native::services(None),
         &Native::separator(),
-        &Native::hide(Some("Hide Zap Faster")),
+        &Native::hide(Some("Hide Zap Fasterk")),
         &Native::hide_others(None),
         &Native::show_all(None),
         &Native::separator(),
-        &item("quit", "Quit Zap Faster", Some("Super+KeyQ")),
+        &item("quit", "Quit Zap Fasterk", Some("Super+KeyQ")),
     ])?;
     let file = Submenu::new("File", true);
     file.append_items(&[
@@ -94,12 +94,12 @@ fn build_menu() -> tray_icon::menu::Result<Menu> {
         &Native::minimize(None),
         &Native::maximize(Some("Zoom")),
         &Native::separator(),
-        &item("show-window", "Show Zap Faster", None),
+        &item("show-window", "Show Zap Fasterk", None),
     ])?;
     let help = Submenu::new("Help", true);
     help.append_items(&[
         &item("shortcuts", "Keyboard Shortcuts", Some("Super+Slash")),
-        &item("help", "Zap Faster Help", None),
+        &item("help", "Zap Fasterk Help", None),
     ])?;
     menu.append_items(&[&app, &file, &edit, &view, &window, &help])?;
     window.set_as_windows_menu_for_nsapp();
@@ -232,7 +232,7 @@ fn action(id: &str) -> Option<Action> {
         "zoom-reset" => Action::ResetZoom,
         "shortcuts" => Action::ShowDialog(Dialog::Shortcuts),
         "help" => Action::OpenUrl(
-            "https://github.com/eternalwaitt/zap-faster/blob/main/docs/_guide/using-zapfast.md"
+            "https://github.com/kevindevm/zap-fasterk/blob/main/docs/_guide/using-zapfast.md"
                 .into(),
         ),
         "show-window" => Action::ShowWindow,

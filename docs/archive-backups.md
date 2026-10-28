@@ -1,7 +1,7 @@
 # Portable encrypted account backups
 
 Settings, Files saves a passphrase-protected account backup. At least twelve
-passphrase characters are required. Keep the passphrase separately; Zap Faster
+passphrase characters are required. Keep the passphrase separately; Zap Fasterk
 cannot recover it. Saving never overwrites an existing backup.
 
 Full backups include an independent, consistent SQLCipher archive snapshot and

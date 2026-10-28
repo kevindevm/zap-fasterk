@@ -240,7 +240,7 @@ impl Worker {
             Some((row, reply))
         })();
         let Some((source, mut message)) = prepared else {
-            self.emit(Event::Error("This option is unavailable in Zap Faster. Open the message in WhatsApp Web or on your phone.".into()));
+            self.emit(Event::Error("This option is unavailable in Zap Fasterk. Open the message in WhatsApp Web or on your phone.".into()));
             return;
         };
         let expiration = self.apply_ephemeral(&chat, &mut message);

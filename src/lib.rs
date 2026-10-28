@@ -1,4 +1,4 @@
-//! Zap Faster internals exposed for diagnostics and tests.
+//! Zap Fasterk internals exposed for diagnostics and tests.
 
 pub mod a11y;
 pub mod account;

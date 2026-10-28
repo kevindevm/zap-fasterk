@@ -1,6 +1,6 @@
 # Developing with the demo
 
-The `demo` feature builds Zap Faster with offline sample chats, for development,
+The `demo` feature builds Zap Fasterk with offline sample chats, for development,
 screenshots, and recorded tours. `AGENTS.md` describes the architecture and
 the rules for changes; `CONTRIBUTING.md` lists the checks.
 
@@ -35,10 +35,10 @@ WhatsApp, or register a tray icon. You can run it alongside your regular app.
 
 ```sh
 cargo build --locked --features demo
-./target/debug/zap-faster --demo-tour --demo-size 1280x800
+./target/debug/zap-fasterk --demo-tour --demo-size 1280x800
 ```
 
-The **Zap Faster Demo** window waits for **Space**. The 41-second tour starts with
+The **Zap Fasterk Demo** window waits for **Space**. The 41-second tour starts with
 search, switches chats with keyboard shortcuts, scrolls, right-clicks a message
 and selects Reply, types quickly, completes emoji and mentions, searches the GIF
 picker and sends a still sticker, opens group information and the shortcut list,
@@ -52,7 +52,7 @@ sound and holds its final frame. Space rebuilds the sample and replays.
 For an automatic start, add `--demo-tour-delay 5000` (milliseconds).
 Use `--demo` instead of `--demo-tour` to explore the sample chats yourself.
 
-`--demo-tour-script whats-new` plays an 86-second tour of what Zap Faster 0.16
+`--demo-tour-script whats-new` plays an 86-second tour of what Zap Fasterk 0.16
 added instead: the composer's plus menu and poll dialog, searching a chat and
 narrowing it to a day, the photo preview, videos and round video messages
 playing in place, sticker shelves and sticker search, message info in a group,
@@ -104,12 +104,12 @@ preview any of these in the light theme. Capture the app's own frame without des
 content:
 
 ```sh
-./target/debug/zap-faster --demo --demo-page interactive-media --demo-shot interactive.png
-./target/debug/zap-faster --demo --demo-page interactive-media,light --demo-shot interactive-light.png
+./target/debug/zap-fasterk --demo --demo-page interactive-media --demo-shot interactive.png
+./target/debug/zap-fasterk --demo --demo-page interactive-media,light --demo-shot interactive-light.png
 ```
 
 On Omarchy, run `omarchy screenrecord`, select the demo window, then press Space
-in Zap Faster. Recording has no audio unless you explicitly enable desktop or
+in Zap Fasterk. Recording has no audio unless you explicitly enable desktop or
 microphone audio. Stop with `omarchy screenrecord --stop-recording` after the
 tour finishes. The default capture records a fixed rectangle, so keep the demo
 window visible and stationary until recording stops.
@@ -140,7 +140,7 @@ output keeps it off your screens. Then assemble and annotate the frames:
 
 ```sh
 cargo build --release --locked --features demo
-./target/release/zap-faster --demo-tour --demo-tour-script whats-new \
+./target/release/zap-fasterk --demo-tour --demo-tour-script whats-new \
   --demo-size 1280x800 --demo-tour-frames frames --demo-tour-events tour.json
 ffmpeg -framerate 30 -i frames/frame-%05d.png -c:v libx264 -crf 12 -pix_fmt yuv420p raw.mp4
 python3 scripts/render-demo.py raw.mp4 tour.json whats-new.mp4 --scale 1.5

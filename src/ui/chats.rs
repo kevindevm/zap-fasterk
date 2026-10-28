@@ -2858,7 +2858,7 @@ mod tests {
     #[test]
     fn alt_navigation_scrolls_the_destination_chat_into_view() {
         let root = std::env::temp_dir().join(format!(
-            "zapfast-chat-list-{}-{:?}",
+            "zapfasterk-chat-list-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));

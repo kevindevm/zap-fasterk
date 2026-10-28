@@ -30,17 +30,17 @@ import yaml
 here, out = map(Path, sys.argv[1:3])
 commit = sys.argv[3]
 version = tomllib.loads(Path(sys.argv[4]).read_text())["package"]["version"]
-manifest = yaml.safe_load((here / "io.github.eternalwaitt.ZapFaster.yml").read_text())
+manifest = yaml.safe_load((here / "io.github.kevindevm.ZapFasterk.yml").read_text())
 manifest["modules"][0]["sources"][0] = {
-    "type": "git", "url": "https://github.com/eternalwaitt/zap-faster.git", "commit": commit
+    "type": "git", "url": "https://github.com/kevindevm/zap-fasterk.git", "commit": commit
 }
-(out / "io.github.eternalwaitt.ZapFaster.yml").write_text(yaml.safe_dump(manifest, sort_keys=False))
-meta = ET.parse(here / "io.github.eternalwaitt.ZapFaster.metainfo.xml")
+(out / "io.github.kevindevm.ZapFasterk.yml").write_text(yaml.safe_dump(manifest, sort_keys=False))
+meta = ET.parse(here / "io.github.kevindevm.ZapFasterk.metainfo.xml")
 releases = meta.getroot().find("releases")
 releases.clear()
 date = subprocess.check_output(["git", "-C", str(here), "show", "-s", "--format=%cs", commit], text=True).strip()
 release = ET.SubElement(releases, "release", version=version, date=date)
-ET.SubElement(release, "url").text = f"https://github.com/eternalwaitt/zap-faster/releases/tag/v{version}"
+ET.SubElement(release, "url").text = f"https://github.com/kevindevm/zap-fasterk/releases/tag/v{version}"
 ET.indent(meta, space="  ")
-meta.write(out / "io.github.eternalwaitt.ZapFaster.metainfo.xml", encoding="UTF-8", xml_declaration=True)
+meta.write(out / "io.github.kevindevm.ZapFasterk.metainfo.xml", encoding="UTF-8", xml_declaration=True)
 PY

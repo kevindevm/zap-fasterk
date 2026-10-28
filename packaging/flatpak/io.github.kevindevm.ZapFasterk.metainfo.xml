@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.eternalwaitt.ZapFaster</id>
-  <name>Zap Faster</name>
+  <id>io.github.kevindevm.ZapFasterk</id>
+  <name>Zap Fasterk</name>
   <summary>A native WhatsApp client</summary>
-  <developer id="io.github.eternalwaitt">
-    <name>Zap Faster contributors</name>
+  <developer id="io.github.kevindevm">
+    <name>Zap Fasterk contributors</name>
   </developer>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT AND GPL-2.0-only</project_license>
@@ -13,18 +13,18 @@
     without a browser engine. Link your phone to read and send messages.</p>
     <p>Browse chats, search your local archive, send attachments and voice messages,
     and use emoji, GIFs and stickers. Closing the window can keep the connection
-    running in the system tray. Zap Faster is an independent project, not affiliated
+    running in the system tray. Zap Fasterk is an independent project, not affiliated
     with WhatsApp or Meta.</p>
   </description>
-  <launchable type="desktop-id">io.github.eternalwaitt.ZapFaster.desktop</launchable>
-  <url type="homepage">https://github.com/eternalwaitt/zap-faster/</url>
-  <url type="bugtracker">https://github.com/eternalwaitt/zap-faster/issues</url>
-  <url type="help">https://github.com/eternalwaitt/zap-faster/blob/main/docs/_guide/getting-started.md</url>
-  <url type="vcs-browser">https://github.com/eternalwaitt/zap-faster</url>
+  <launchable type="desktop-id">io.github.kevindevm.ZapFasterk.desktop</launchable>
+  <url type="homepage">https://github.com/kevindevm/zap-fasterk/</url>
+  <url type="bugtracker">https://github.com/kevindevm/zap-fasterk/issues</url>
+  <url type="help">https://github.com/kevindevm/zap-fasterk/blob/main/docs/_guide/getting-started.md</url>
+  <url type="vcs-browser">https://github.com/kevindevm/zap-fasterk</url>
   <screenshots>
     <screenshot type="default">
       <caption>A conversation with pictures, voice messages and replies</caption>
-      <image>https://raw.githubusercontent.com/eternalwaitt/zap-faster/main/docs/screenshot.png</image>
+      <image>https://raw.githubusercontent.com/kevindevm/zap-fasterk/main/docs/screenshot.png</image>
     </screenshot>
   </screenshots>
   <content_rating type="oars-1.1"><content_attribute id="social-chat">intense</content_attribute></content_rating>
@@ -38,13 +38,13 @@
   </supports>
   <releases>
     <release version="0.30.0" date="2026-10-09">
-      <url>https://github.com/eternalwaitt/zap-faster/releases/tag/v0.30.0</url>
+      <url>https://github.com/kevindevm/zap-fasterk/releases/tag/v0.30.0</url>
     </release>
     <release version="0.21.0" date="2026-10-09">
-      <url>https://github.com/eternalwaitt/zap-faster/releases/tag/v0.21.0</url>
+      <url>https://github.com/kevindevm/zap-fasterk/releases/tag/v0.21.0</url>
     </release>
     <release version="0.20.0" date="2026-10-08">
-      <url>https://github.com/eternalwaitt/zap-faster/releases/tag/v0.20.0</url>
+      <url>https://github.com/kevindevm/zap-fasterk/releases/tag/v0.20.0</url>
     </release>
   </releases>
 </component>

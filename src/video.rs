@@ -68,7 +68,7 @@ impl Status {
 /// Something the app has to act on after [`Player::poll`].
 #[derive(Debug, PartialEq, Eq)]
 pub enum Notice {
-    /// Zap Faster cannot decode this video, so it should open in the system player.
+    /// Zap Fasterk cannot decode this video, so it should open in the system player.
     Unsupported(PathBuf),
     OutputUnavailable,
     OutputFallback(String),

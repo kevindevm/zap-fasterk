@@ -33,7 +33,7 @@ pub fn external_url(value: &str) -> Option<String> {
     }
 }
 
-/// Image formats decoded by Zap Faster's in-process preview.
+/// Image formats decoded by Zap Fasterk's in-process preview.
 pub fn can_preview_image(path: &Path) -> bool {
     let Some(extension) = path.extension().and_then(|value| value.to_str()) else {
         return false;
@@ -46,7 +46,7 @@ pub fn can_preview_image(path: &Path) -> bool {
 
 /// The code of a WhatsApp group invite link such as
 /// `https://chat.whatsapp.com/AbCd123` or `whatsapp://chat/?code=AbCd123`,
-/// which Zap Faster opens itself.
+/// which Zap Fasterk opens itself.
 pub fn group_invite_code(value: &str) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {

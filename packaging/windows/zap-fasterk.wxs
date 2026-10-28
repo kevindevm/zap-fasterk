@@ -1,45 +1,47 @@
 <!--
-  Zap Faster as a per-user Windows Installer package (WiX Toolset 5).
+  Zap Fasterk as a per-user Windows Installer package (WiX Toolset 5).
 
-  - Installs zap-faster.exe to %LOCALAPPDATA%\Programs\Zap Faster, per user, so no
+  - Installs zap-fasterk.exe to %LOCALAPPDATA%\Programs\Zap Fasterk, per user, so no
     UAC prompt. A Start menu shortcut opens it; a desktop shortcut is kept
     when one exists, as the Inno Setup installer offered it.
-  - zap-faster-installer.txt tells Zap Faster's updater that this copy came from an
+  - zap-fasterk-installer.txt tells Zap Fasterk's updater that this copy came from an
     installer, so an update downloads and runs the next package with
-    INSTALLFOLDER set to the folder Zap Faster runs from.
+    INSTALLFOLDER set to the folder Zap Fasterk runs from.
   - Takes over a copy installed by the Inno Setup installer: it installs into
     that folder, then removes Inno's uninstaller and its Settings > Apps
     entry. Chats, settings and the login live elsewhere and stay.
-  - Refuses to install or uninstall while Zap Faster runs, so it never leaves
+  - Refuses to install or uninstall while Zap Fasterk runs, so it never leaves
     half a program behind.
 
   Build (see packaging/windows/msi.rb):
-    wix build zap-faster.wxs -arch x64 -ext WixToolset.Util.wixext -d Version=1.2.3
-      -d SourceDir=... -pdbtype none -o zap-faster.msi
+    wix build zap-fasterk.wxs -arch x64 -ext WixToolset.Util.wixext -d Version=1.2.3
+      -d SourceDir=... -pdbtype none -o zap-fasterk.msi
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
   xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
   <Package
-    Name="Zap Faster"
-    Manufacturer="Carmine Paolino"
+    Name="Zap Fasterk"
+    Manufacturer="kevindevm"
     Version="$(Version)"
-    UpgradeCode="{BA74CD6C-D0D9-5D9C-99E2-CF12FE1704E8}"
+    UpgradeCode="{2ED47A9B-60C8-4FAD-8DEC-DCA2F1E64CCB}"
     Scope="perUser"
     Compressed="yes"
     Language="1033">
-    <!-- Never change the UpgradeCode: it ties every version together. -->
-    <SummaryInformation Description="Zap Faster" Manufacturer="Carmine Paolino" />
+    <!-- The fork's own UpgradeCode, new with the Zap Fasterk rename: it ties
+         every Zap Fasterk version together, apart from Zap Faster's line.
+         Never change it again. -->
+    <SummaryInformation Description="Zap Fasterk" Manufacturer="kevindevm" />
     <MajorUpgrade
       Schedule="afterInstallInitialize"
       AllowSameVersionUpgrades="yes"
       DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
-    <Icon Id="ZapFasterIcon" SourceFile="$(sys.SOURCEFILEDIR)zap-faster.ico" />
-    <Property Id="ARPPRODUCTICON" Value="ZapFasterIcon" />
-    <Property Id="ARPURLINFOABOUT" Value="https://github.com/eternalwaitt/zap-faster" />
-    <Property Id="ARPHELPLINK" Value="https://github.com/eternalwaitt/zap-faster/issues" />
-    <Property Id="ARPURLUPDATEINFO" Value="https://github.com/eternalwaitt/zap-faster/releases" />
+    <Icon Id="ZapFasterkIcon" SourceFile="$(sys.SOURCEFILEDIR)zap-fasterk.ico" />
+    <Property Id="ARPPRODUCTICON" Value="ZapFasterkIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/kevindevm/zap-fasterk" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/kevindevm/zap-fasterk/issues" />
+    <Property Id="ARPURLUPDATEINFO" Value="https://github.com/kevindevm/zap-fasterk/releases" />
     <Property Id="ARPCOMMENTS" Value="© 2026 Carmine Paolino. MIT License. Not affiliated with WhatsApp or Meta." />
     <Property Id="ARPNOMODIFY" Value="1" />
     <Property Id="ARPNOREPAIR" Value="1" />
@@ -53,7 +55,7 @@
 
     <!-- An earlier MSI install, wherever it went. -->
     <Property Id="ZAPFASTFOLDER">
-      <RegistrySearch Id="PreviousFolder" Root="HKCU" Key="Software\ZapFaster"
+      <RegistrySearch Id="PreviousFolder" Root="HKCU" Key="Software\ZapFasterk"
         Name="InstallFolder" Type="directory" />
     </Property>
     <!-- A copy installed by the Inno Setup installer (its AppId). -->
@@ -65,13 +67,13 @@
     <!-- The desktop shortcut that installer may have made. -->
     <Property Id="DESKTOPSHORTCUT">
       <DirectorySearch Id="Desktop" Path="[DesktopFolder]" Depth="0">
-        <FileSearch Id="DesktopShortcut" Name="Zap Faster.lnk" />
+        <FileSearch Id="DesktopShortcut" Name="Zap Fasterk.lnk" />
       </DirectorySearch>
     </Property>
 
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="ProgramsFolder" Name="Programs">
-        <Directory Id="INSTALLFOLDER" Name="Zap Faster" />
+        <Directory Id="INSTALLFOLDER" Name="Zap Fasterk" />
       </Directory>
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder" />
@@ -85,11 +87,11 @@
     <!-- Per-user components use an HKCU value as their key path. -->
     <ComponentGroup Id="Program" Directory="INSTALLFOLDER">
       <Component Id="Program" Guid="{4D12A07D-C2CD-54F1-9166-62FBA6F01681}">
-        <File Id="ZapFasterExe" Name="zap-faster.exe" Source="$(SourceDir)\zap-faster.exe" KeyPath="no" />
+        <File Id="ZapFasterkExe" Name="zap-fasterk.exe" Source="$(SourceDir)\zap-fasterk.exe" KeyPath="no" />
         <!-- The updater's sign that this copy came from an installer. -->
-        <File Id="InstallerMarker" Name="zap-faster-installer.txt"
-          Source="$(SourceDir)\zap-faster-installer.txt" KeyPath="no" />
-        <RegistryValue Root="HKCU" Key="Software\ZapFaster"
+        <File Id="InstallerMarker" Name="zap-fasterk-installer.txt"
+          Source="$(SourceDir)\zap-fasterk-installer.txt" KeyPath="no" />
+        <RegistryValue Root="HKCU" Key="Software\ZapFasterk"
           Name="InstallFolder" Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
         <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
       </Component>
@@ -97,61 +99,61 @@
         <File Id="Readme" Name="README.md" Source="$(SourceDir)\README.md" KeyPath="no" />
         <File Id="License" Name="LICENSE" Source="$(SourceDir)\LICENSE" KeyPath="no" />
         <File Id="Notices" Name="THIRD-PARTY-NOTICES.md" Source="$(SourceDir)\THIRD-PARTY-NOTICES.md" KeyPath="no" />
-        <RegistryValue Root="HKCU" Key="Software\ZapFaster"
+        <RegistryValue Root="HKCU" Key="Software\ZapFasterk"
           Name="Documents" Type="integer" Value="1" KeyPath="yes" />
       </Component>
       <!--
         Taking over an Inno Setup install: its uninstaller and Settings > Apps
         entry go, and never run, because they would delete these files. The
         fastsapp.exe copy Inno kept for updaters up to 0.16.5 goes too: those
-        updaters only run the setup program, and Zap Faster deletes the copy itself.
+        updaters only run the setup program, and Zap Fasterk deletes the copy itself.
       -->
       <Component Id="InnoTakeover" Guid="{E6B5D376-52A4-55F5-B228-C424FD342429}" Condition="INNOFOLDER">
         <RemoveFile Id="InnoUninstaller" Name="unins000.*" On="install" />
         <RemoveFile Id="LegacyExe" Name="fastsapp.exe" On="install" />
         <RemoveRegistryKey Root="HKCU" Action="removeOnInstall"
           Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\{AE0F1449-0366-4CA8-98B4-A0186CB798A8}_is1" />
-        <RegistryValue Root="HKCU" Key="Software\ZapFaster"
+        <RegistryValue Root="HKCU" Key="Software\ZapFasterk"
           Name="TookOverInno" Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </ComponentGroup>
 
     <ComponentGroup Id="Shortcuts">
       <Component Id="StartMenuShortcut" Guid="{F8C39A34-1921-5B58-AC07-9512167EC407}" Directory="ProgramMenuFolder">
-        <Shortcut Id="ZapFasterShortcut" Name="Zap Faster"
+        <Shortcut Id="ZapFasterkShortcut" Name="Zap Fasterk"
           Description="WhatsApp, native and fast"
-          Target="[#ZapFasterExe]" WorkingDirectory="INSTALLFOLDER">
+          Target="[#ZapFasterkExe]" WorkingDirectory="INSTALLFOLDER">
           <!-- Ties notifications and the taskbar to this shortcut. -->
-          <ShortcutProperty Key="System.AppUserModel.ID" Value="io.github.eternalwaitt.ZapFaster" />
+          <ShortcutProperty Key="System.AppUserModel.ID" Value="io.github.kevindevm.ZapFasterk" />
         </Shortcut>
         <!-- The shortcuts from before the rename. -->
-        <RegistryValue Root="HKCU" Key="Software\ZapFaster"
+        <RegistryValue Root="HKCU" Key="Software\ZapFasterk"
           Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
       </Component>
       <Component Id="DesktopShortcut" Guid="{B9698EBC-D1C0-5197-AB06-0DA8609BF398}" Directory="DesktopFolder" Condition="DESKTOPSHORTCUT">
-        <Shortcut Id="DesktopZapFasterShortcut" Name="Zap Faster"
-          Target="[#ZapFasterExe]" WorkingDirectory="INSTALLFOLDER">
-          <ShortcutProperty Key="System.AppUserModel.ID" Value="io.github.eternalwaitt.ZapFaster" />
+        <Shortcut Id="DesktopZapFasterkShortcut" Name="Zap Fasterk"
+          Target="[#ZapFasterkExe]" WorkingDirectory="INSTALLFOLDER">
+          <ShortcutProperty Key="System.AppUserModel.ID" Value="io.github.kevindevm.ZapFasterk" />
         </Shortcut>
-        <RegistryValue Root="HKCU" Key="Software\ZapFaster"
+        <RegistryValue Root="HKCU" Key="Software\ZapFasterk"
           Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </ComponentGroup>
 
-    <Feature Id="Main" Title="Zap Faster" AllowAbsent="no">
+    <Feature Id="Main" Title="Zap Fasterk" AllowAbsent="no">
       <ComponentGroupRef Id="Program" />
       <ComponentGroupRef Id="Shortcuts" />
     </Feature>
 
     <!--
-      Refuse to go on while Zap Faster runs, before anything is removed. Only
+      Refuse to go on while Zap Fasterk runs, before anything is removed. Only
       detected, never closed: a portable copy has the same name. The updater's
-      own process is a separate helper and has quit Zap Faster first.
+      own process is a separate helper and has quit Zap Fasterk first.
     -->
-    <util:CloseApplication Id="ZapFasterRunning" Target="zap-faster.exe"
+    <util:CloseApplication Id="ZapFasterkRunning" Target="zap-fasterk.exe"
       Property="ZAPFASTRUNNING" RebootPrompt="no" />
     <CustomAction Id="RefuseWhileRunning"
-      Error="Zap Faster is running. Quit Zap Faster, then try again." />
+      Error="Zap Fasterk is running. Quit Zap Fasterk, then try again." />
     <InstallExecuteSequence>
       <Custom Action="RefuseWhileRunning" After="Wix4CloseApplications_$(sys.BUILDARCHSHORT)"
         Condition="ZAPFASTRUNNING" />

@@ -1,9 +1,9 @@
 # Update signatures
 
-Zap Faster verifies `checksums.txt.sig`, a raw 64-byte Ed25519 signature over the
+Zap Fasterk verifies `checksums.txt.sig`, a raw 64-byte Ed25519 signature over the
 exact bytes of `checksums.txt`, before parsing checksums or downloading a package.
 The trusted 32-byte public key is embedded from `assets/update-public-key.hex`
-as the `publisher_key` of Zap Faster's configuration for
+as the `publisher_key` of Zap Fasterk's configuration for
 [fastframe-update](https://github.com/crmne/fastframe/tree/main/crates/fastframe-update),
 which performs the verification.
 Missing, truncated, or invalid signatures fail closed. There is no unsigned
@@ -20,13 +20,13 @@ checks that the secret matches the embedded public key, checks the artifact
 hashes, signs the checksums, and verifies its output. The key is read in-process;
 no temporary private-key file is created. Never enable shell tracing in this
 step or print the signing secret. Signing and attestation machinery are shared;
-Zap Faster still owns its key, approval environment and updater verification.
+Zap Fasterk still owns its key, approval environment and updater verification.
 See the [shared signing guide](https://github.com/crmne/native-packages/blob/dc0cb1586894ca0239c53fd02d4da8064712671c/docs/_guides/release-signing.md).
 
 Build jobs also publish GitHub artifact attestations. These identify the
 repository, workflow and commit that built each file; they do not replace the
 updater's publisher-signature check or prove the source is safe. Consumers can
-run `gh attestation verify FILE -R eternalwaitt/zap-faster`. See
+run `gh attestation verify FILE -R kevindevm/zap-fasterk`. See
 [GitHub's attestation documentation](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations).
 
 ## Key custody and rotation

@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 include!(concat!(env!("OUT_DIR"), "/catalogs.rs"));
 
-/// The interface languages Zap Faster knows about.
+/// The interface languages Zap Fasterk knows about.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Locale {
     #[default]

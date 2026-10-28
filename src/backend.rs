@@ -102,7 +102,7 @@ mod tests {
             pairing_phone: Some(phone.into()),
         };
 
-        // The previous Debug formatting leaked every field into zapfast.log.
+        // The previous Debug formatting leaked every field into zapfasterk.log.
         let previous = format!("link: {status:?}");
         assert!(previous.contains(qr));
         assert!(previous.contains(code));
@@ -558,7 +558,7 @@ pub enum Command {
         complete: bool,
     },
     /// Internal: the one-time replay of the phone's contacts, for the first
-    /// names saved before Zap Faster kept them, finished.
+    /// names saved before Zap Fasterk kept them, finished.
     FirstNamesRecovered {
         complete: bool,
     },
@@ -883,7 +883,7 @@ pub enum Command {
     /// Sets aside an unreadable archive and the linked session, then starts
     /// over with a new archive and a new link.
     StartOverArchive,
-    /// Whether the person is looking at Zap Faster. While they are not, the
+    /// Whether the person is looking at Zap Fasterk. While they are not, the
     /// linked phone keeps receiving push notifications.
     SetOnline(bool),
     Shutdown,
@@ -1551,14 +1551,14 @@ impl Backend {
         let (event_tx, event_rx) = std::sync::mpsc::channel();
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
-            .thread_name("zapfast-runtime")
+            .thread_name("zapfasterk-runtime")
             .enable_all()
             .build()
             .expect("unable to start the async runtime");
         let worker_commands = command_tx.clone();
         let (startup, started) = tokio::sync::oneshot::channel();
         let thread = std::thread::Builder::new()
-            .name("zapfast-backend".to_string())
+            .name("zapfasterk-backend".to_string())
             .spawn(move || {
                 runtime.block_on(async move {
                     if started.await.is_ok() {

@@ -372,7 +372,7 @@ fn sections(app: &App) -> Vec<Section> {
     );
     appearance.row(
         translated(locale, "Emoji style"),
-        translated(locale, "System uses platform emoji with Noto fallback. Noto uses bundled emoji only. You can import a CBDT or sbix colour emoji font you are allowed to use (up to 256 MiB). Custom fonts have no Noto fallback. Restart Zap Faster to apply."),
+        translated(locale, "System uses platform emoji with Noto fallback. Noto uses bundled emoji only. You can import a CBDT or sbix colour emoji font you are allowed to use (up to 256 MiB). Custom fonts have no Noto fallback. Restart Zap Fasterk to apply."),
         emoji_renderer_picker,
     );
     appearance.row(
@@ -698,7 +698,7 @@ fn sections(app: &App) -> Vec<Section> {
     let note = if app.account_privacy.fetch_failed {
         Some(crate::i18n::gettext(
             locale,
-            "Could not load your account privacy. Trying again when Zap Faster reconnects.",
+            "Could not load your account privacy. Trying again when Zap Fasterk reconnects.",
         ))
     } else if !app.is_connected() {
         Some(crate::i18n::gettext(
@@ -806,7 +806,7 @@ fn sections(app: &App) -> Vec<Section> {
         translated(locale, "Check for updates"),
         translated(
             locale,
-            "Asks GitHub once a day, sending only the Zap Faster version.",
+            "Asks GitHub once a day, sending only the Zap Fasterk version.",
         ),
         |settings| &mut settings.check_for_updates,
     );
@@ -814,7 +814,7 @@ fn sections(app: &App) -> Vec<Section> {
         translated(locale, "Download updates automatically"),
         translated(
             locale,
-            "You still choose when to restart. Package managers and Flatpak update Zap Faster themselves.",
+            "You still choose when to restart. Package managers and Flatpak update Zap Fasterk themselves.",
         ),
         |settings| &mut settings.download_updates_automatically,
     );
@@ -1160,7 +1160,7 @@ fn sections(app: &App) -> Vec<Section> {
     let mut about_section = Section::new(translated(locale, "About"));
     about_section.block(
         vec![
-            "Zap Faster".into(),
+            "Zap Fasterk".into(),
             translated(locale, "Keyboard shortcuts"),
             translated(locale, "Source code"),
         ],
@@ -1221,7 +1221,7 @@ fn screen_privacy_rows(locale: Locale, privacy: &mut Section) {
     privacy.toggle(translated(locale, "Avatars"), Text::default(), avatars);
 }
 
-/// The app lock: a password, how long Zap Faster may go unused, and the form
+/// The app lock: a password, how long Zap Fasterk may go unused, and the form
 /// that sets, changes, or removes the password.
 fn app_lock_rows(app: &App, privacy: &mut Section) {
     use crate::app_lock::FormMode;
@@ -1267,7 +1267,7 @@ fn app_lock_rows(app: &App, privacy: &mut Section) {
             translated(locale, "Lock after"),
             keyed(translated(
                 locale,
-                "Time without using Zap Faster, also counted while it is in the tray. Ctrl+Shift+L locks it at once.",
+                "Time without using Zap Fasterk, also counted while it is in the tray. Ctrl+Shift+L locks it at once.",
             )),
             move |ui, app| {
                 let selected = app.settings.app_lock_after;
@@ -1489,7 +1489,7 @@ fn theme_picker(ui: &mut egui::Ui, app: &mut App) {
 
 /// The website's page on writing a theme.
 const THEMES_GUIDE: &str =
-    "https://github.com/eternalwaitt/zap-faster/blob/main/docs/_reference/themes.md";
+    "https://github.com/kevindevm/zap-fasterk/blob/main/docs/_reference/themes.md";
 
 /// The interface language menu.
 fn font_picker(ui: &mut egui::Ui, app: &mut App) {
@@ -1864,7 +1864,7 @@ fn storage_usage(ui: &mut egui::Ui, app: &App) {
         ui,
         &crate::i18n::gettext(
             app.locale,
-            "Space taken by the pictures, videos, stickers, and GIFs Zap Faster has \
+            "Space taken by the pictures, videos, stickers, and GIFs Zap Fasterk has \
              downloaded. The size is the one WhatsApp declared. Documents and audio \
              count under Other.",
         ),
@@ -2180,7 +2180,7 @@ fn profile_field(
     response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter))
 }
 
-/// The version, links to more about Zap Faster, and who made it.
+/// The version, links to more about Zap Fasterk, and who made it.
 fn about(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
     ui.horizontal(|ui| {
@@ -2190,7 +2190,7 @@ fn about(app: &mut App, ui: &mut egui::Ui) {
         ui.vertical(|ui| {
             theme::text(
                 ui,
-                format!("Zap Faster {}", env!("CARGO_PKG_VERSION")),
+                format!("Zap Fasterk {}", env!("CARGO_PKG_VERSION")),
                 theme::semibold(16.0),
                 palette.text,
             );

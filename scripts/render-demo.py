@@ -101,7 +101,7 @@ def main():
     # libass scales the captions from their logical size to the frame.
     out_width, out_height = even(width * args.scale), even(height * args.scale)
     band = even(64 * args.scale)
-    with tempfile.TemporaryDirectory(prefix='zapfast-tour-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='zapfasterk-tour-') as tmp:
         ass = Path(tmp) / 'captions.ass'
         ass.write_text(captions(trace))
         subprocess.run([

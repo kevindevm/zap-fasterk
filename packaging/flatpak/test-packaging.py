@@ -13,7 +13,7 @@ import yaml
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
-APP_ID = "io.github.eternalwaitt.ZapFaster"
+APP_ID = "io.github.kevindevm.ZapFasterk"
 
 
 class FlatpakPackaging(unittest.TestCase):

@@ -69,7 +69,7 @@ pub(super) fn card(
                                 ui.allocate_exact_size(Vec2::splat(64.0), egui::Sense::hover());
                             theme::mark(ui, logo.center(), 64.0);
                             ui.add_space(4.0);
-                            theme::text(ui, "Zap Faster", theme::bold(28.0), palette.text);
+                            theme::text(ui, "Zap Fasterk", theme::bold(28.0), palette.text);
                             theme::paragraph(ui, tagline, theme::regular(14.5), palette.secondary);
                             ui.add_space(16.0);
                             body(app, ui);
@@ -425,8 +425,8 @@ mod start_over_tests {
             assert!(super::archive_key_lost(lost), "{lost}");
         }
         for recoverable in [
-            "Unlock your OS keyring and restart Zap Faster",
-            "The OS keyring could not open Zap Faster's archive key",
+            "Unlock your OS keyring and restart Zap Fasterk",
+            "The OS keyring could not open Zap Fasterk's archive key",
         ] {
             assert!(!super::archive_key_lost(recoverable), "{recoverable}");
         }

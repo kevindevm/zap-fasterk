@@ -77,7 +77,7 @@ pub(super) fn copy_verified(
     }
     let mut input = std::fs::File::open(source)?;
     let mut staging = tempfile::Builder::new()
-        .prefix(".zap-faster-export-")
+        .prefix(".zap-fasterk-export-")
         .tempfile_in(folder)?;
     std::io::copy(&mut input, staging.as_file_mut())?;
     staging.as_file().sync_all()?;

@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Contribution and project scope
-    url: https://github.com/eternalwaitt/zap-faster/blob/main/CONTRIBUTING.md
+    url: https://github.com/kevindevm/zap-fasterk/blob/main/CONTRIBUTING.md
     about: Check product boundaries and contribution requirements before opening an issue or pull request.
   - name: Documentation
-    url: https://github.com/eternalwaitt/zap-faster/blob/main/docs
-    about: Install steps, settings, and where Zap Faster keeps its files and logs.
+    url: https://github.com/kevindevm/zap-fasterk/blob/main/docs
+    about: Install steps, settings, and where Zap Fasterk keeps its files and logs.

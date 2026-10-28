@@ -74,7 +74,7 @@ pub struct NotificationTarget {
 }
 
 #[cfg(test)]
-const MACOS_APPLICATION_ID: &str = "io.github.eternalwaitt.ZapFaster";
+const MACOS_APPLICATION_ID: &str = "io.github.kevindevm.ZapFasterk";
 
 /// Notifications that may still wait for a click. Each one waiting holds a
 /// thread, a runtime, and a D-Bus connection, about five file descriptors,
@@ -421,7 +421,7 @@ impl<T: std::io::Read + std::io::Seek + Send + Sync> ReadSeek for T {}
 /// name neither the chat nor the sender and carry none of the message.
 pub fn locked_lines(locale: crate::i18n::Locale) -> (String, String) {
     (
-        "Zap Faster".to_owned(),
+        "Zap Fasterk".to_owned(),
         crate::i18n::gettext(locale, "New message").into_owned(),
     )
 }
@@ -460,7 +460,7 @@ pub fn lines(chat_name: &str, is_group: bool, sender: &str, summary: &str) -> (S
 
 /// What a Linux notification asks of the desktop's sound. The system sound is
 /// named, because notification servers such as Plasma's play nothing for an
-/// application without its own notification configuration. Zap Faster's own sounds
+/// application without its own notification configuration. Zap Fasterk's own sounds
 /// and silence keep the desktop quiet.
 #[cfg(target_os = "linux")]
 fn sound_hint(system_sound: bool) -> notify_rust::Hint {
@@ -490,16 +490,16 @@ fn deliver(
     };
     let mut notification = notify_rust::Notification::new();
     notification
-        .appname("Zap Faster")
+        .appname("Zap Fasterk")
         // Ties the notification to the installed application, so desktops
-        // list Zap Faster in their notification settings and group by it.
+        // list Zap Fasterk in their notification settings and group by it.
         .hint(notify_rust::Hint::DesktopEntry(badge::desktop_file()))
         .summary(title)
         .body(body)
         // The freedesktop category for a received instant message, which
         // notification servers can sort, filter, or style by.
         .hint(notify_rust::Hint::Category("im.received".into()))
-        .icon("zap-faster")
+        .icon("zap-fasterk")
         .action("default", "Open");
     notification.hint(sound_hint(system_sound));
     if let Some(picture) = picture {
@@ -615,7 +615,10 @@ fn deliver(
         return;
     }
     let mut notification = notify_rust::Notification::new();
-    notification.appname("Zap Faster").summary(title).body(body);
+    notification
+        .appname("Zap Fasterk")
+        .summary(title)
+        .body(body);
     let _ = (system_sound, native_sound);
     // Windows uses the image; macOS always uses the app icon.
     if let Some(picture) = picture {
@@ -898,7 +901,7 @@ mod tests {
         let mut notifications = Notifications::default();
         notifications.show(
             "Ada Lovelace".into(),
-            "A test from Zap Faster, with a picture".into(),
+            "A test from Zap Fasterk, with a picture".into(),
             picture,
             NotificationSound::System,
             NotificationTarget {

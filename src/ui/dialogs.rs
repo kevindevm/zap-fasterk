@@ -506,12 +506,12 @@ fn unlock_locked_chats(app: &mut App, ui: &mut egui::Ui) {
     let desc_text = if setup {
         crate::i18n::gettext(
             app.locale,
-            "Choose a local code to open the Locked tab. It is separate from your phone's code. This hides chats in Zap Faster, it does not add another encryption layer.",
+            "Choose a local code to open the Locked tab. It is separate from your phone's code. This hides chats in Zap Fasterk, it does not add another encryption layer.",
         )
     } else {
         crate::i18n::gettext(
             app.locale,
-            "Enter your local Zap Faster code. Leaving the Locked tab or closing the window locks it again.",
+            "Enter your local Zap Fasterk code. Leaving the Locked tab or closing the window locks it again.",
         )
     };
     theme::paragraph(ui, desc_text, theme::regular(13.0), palette.secondary);
@@ -597,7 +597,7 @@ fn confirm_lock_chat(app: &mut App, ui: &mut egui::Ui, id: &str) {
         ui,
         crate::i18n::gettext(
             app.locale,
-            "This moves the chat to the Locked tab, hiding it from the normal chat list, search, unread badges, and notifications. The lock status also syncs to your phone. Open Locked with a separate local Zap Faster code to read it.",
+            "This moves the chat to the Locked tab, hiding it from the normal chat list, search, unread badges, and notifications. The lock status also syncs to your phone. Open Locked with a separate local Zap Fasterk code to read it.",
         ),
         theme::regular(13.0),
         palette.secondary,
@@ -1258,7 +1258,7 @@ fn about(app: &mut App, ui: &mut egui::Ui) {
         let (logo, _) = ui.allocate_exact_size(egui::Vec2::splat(44.0), egui::Sense::hover());
         theme::mark(ui, logo.center(), 44.0);
         ui.vertical(|ui| {
-            theme::text(ui, "Zap Faster", theme::bold(17.0), palette.text);
+            theme::text(ui, "Zap Fasterk", theme::bold(17.0), palette.text);
             let version_label = crate::i18n::gettext(app.locale, "Version {version}")
                 .replace("{version}", env!("CARGO_PKG_VERSION"));
             theme::text(ui, version_label, theme::regular(13.0), palette.secondary);
@@ -1689,7 +1689,7 @@ fn confirm_start_over(app: &mut App, ui: &mut egui::Ui) {
     title(ui, app, "Start over?");
     theme::paragraph(
         ui,
-        "Zap Faster keeps your unreadable archive as a separate file, creates a new one, and asks you to link again. Linking again brings back recent history from your phone. Afterwards, remove the old Zap Faster entry under Linked devices on your phone.",
+        "Zap Fasterk keeps your unreadable archive as a separate file, creates a new one, and asks you to link again. Linking again brings back recent history from your phone. Afterwards, remove the old Zap Fasterk entry under Linked devices on your phone.",
         theme::regular(13.5),
         palette.text,
     );
@@ -1869,7 +1869,7 @@ fn resume_restored_account(app: &mut App, ui: &mut egui::Ui, id: crate::model::A
         ui,
         &*crate::i18n::gettext(
             locale,
-            "Close Zap Faster on the original installation before continuing. Both installations share the same linked-device identity and must not connect at the same time. Resuming reconnects to WhatsApp and may send pending messages or account changes from the backup. If the phone has invalidated the session, you will need to link again.",
+            "Close Zap Fasterk on the original installation before continuing. Both installations share the same linked-device identity and must not connect at the same time. Resuming reconnects to WhatsApp and may send pending messages or account changes from the backup. If the phone has invalidated the session, you will need to link again.",
         ),
         theme::regular(13.5),
         palette.text,
@@ -3261,7 +3261,8 @@ pub(super) fn danger_button(ui: &mut egui::Ui, app: &mut App, label: &str) -> bo
 mod tests {
     #[test]
     fn chat_info_docks_only_when_the_conversation_has_room_and_is_accessible() {
-        let root = std::env::temp_dir().join(format!("zapfast-docked-info-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("zapfasterk-docked-info-{}", std::process::id()));
         let (mut app, _) = crate::app::App::headless(
             crate::paths::AppDirs::under(&root),
             crate::settings::Settings::default(),

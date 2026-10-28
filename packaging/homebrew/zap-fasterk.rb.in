@@ -1,0 +1,16 @@
+cask "zap-fasterk" do
+  version "@VERSION@"
+  sha256 "@MACOS_SHA256@"
+
+  url "https://github.com/kevindevm/zap-fasterk/releases/download/v#{version}/zap-fasterk-v#{version}-macos-universal.dmg"
+  name "Zap Fasterk"
+  desc "Native WhatsApp client"
+  homepage "https://github.com/kevindevm/zap-fasterk"
+
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
+
+  app "Zap Fasterk.app"
+end

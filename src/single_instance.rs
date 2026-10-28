@@ -1,8 +1,8 @@
-//! One running Zap Faster per user, through fastframe-instance.
+//! One running Zap Fasterk per user, through fastframe-instance.
 //!
 //! The crate holds the lock in the per-user runtime directory and serves the
 //! private channel a later launch hands its request over (a socket only the
-//! user can open, or a token-checked loopback port on Windows). Zap Faster keeps
+//! user can open, or a token-checked loopback port on Windows). Zap Fasterk keeps
 //! its verbs, its directory, and the `fastsapp:` prefix, so a new launch still
 //! reaches an older copy that is already running, and an older launch this
 //! one. Copies from before the lock (0.15 and earlier) only know a fixed
@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 /// and reply starts with `fastsapp:`.
 const NAME: &str = "fastsapp";
 const PREFIX: &str = "fastsapp:";
-/// What Zap Faster answers a request it takes: `fastsapp:ok` on the wire.
+/// What Zap Fasterk answers a request it takes: `fastsapp:ok` on the wire.
 const OK: &str = "ok";
 
 /// Fixed port of copies that predate the lock. They never take it.
@@ -73,7 +73,7 @@ impl Guard {
     }
 }
 
-/// Zap Faster's slot: its runtime directory, with the prefix older copies use.
+/// Zap Fasterk's slot: its runtime directory, with the prefix older copies use.
 fn slot(dir: &Path) -> fastframe_instance::Slot {
     fastframe_instance::Slot::at(dir, NAME)
 }
@@ -175,7 +175,7 @@ fn legacy_instance_answers(verb: &str) -> bool {
     let answered = TcpStream::connect_timeout(&address, REPLY_TIME)
         .and_then(|stream| legacy_request(stream, verb))
         .is_ok();
-    // A background start never runs beside a copy that may be Zap Faster,
+    // A background start never runs beside a copy that may be Zap Fasterk,
     // including older ones that do not answer `ping`.
     answered || verb == "ping"
 }
@@ -195,7 +195,7 @@ fn legacy_request(mut stream: TcpStream, verb: &str) -> std::io::Result<()> {
     } else {
         Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            "the port is held by something other than Zap Faster",
+            "the port is held by something other than Zap Fasterk",
         ))
     }
 }
@@ -214,7 +214,7 @@ fn listen_legacy(commands: Queue, waker: crate::backend::Waker) {
         }
     };
     let spawned = std::thread::Builder::new()
-        .name("zapfast-legacy-instance".to_owned())
+        .name("zapfasterk-legacy-instance".to_owned())
         .spawn(move || serve_legacy(listener, &commands, &waker));
     if let Err(error) = spawned {
         log::debug!("cannot answer older launches: {error}");

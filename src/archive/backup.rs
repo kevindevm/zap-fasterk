@@ -565,7 +565,7 @@ pub fn prepare_restore(
     let staging = tempfile::Builder::new()
         .prefix("restore-")
         .tempdir_in(staging_parent)?;
-    let mut ownership = private_create(&staging.path().join(".zap-faster-restore-preparation"))?;
+    let mut ownership = private_create(&staging.path().join(".zap-fasterk-restore-preparation"))?;
     let mut token = [0u8; 32];
     getrandom::fill(&mut token)?;
     let owner = PreparationOwner {
@@ -723,7 +723,7 @@ fn reconcile_preparations(parent: &Path) -> Result<()> {
                 continue;
             }
         }
-        let marker = path.join(".zap-faster-restore-preparation");
+        let marker = path.join(".zap-fasterk-restore-preparation");
         if !present(&marker)? {
             continue;
         }
@@ -761,7 +761,7 @@ fn reconcile_preparations(parent: &Path) -> Result<()> {
     Ok(())
 }
 
-const OWNER_FILE: &str = ".zap-faster-restore-owner";
+const OWNER_FILE: &str = ".zap-fasterk-restore-owner";
 
 #[derive(Serialize, Deserialize)]
 struct RestoreTransaction {

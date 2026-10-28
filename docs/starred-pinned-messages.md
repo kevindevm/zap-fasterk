@@ -14,11 +14,11 @@ Choose **Star** in a message's menu to save it in your account's starred list.
 The star button above the chat list opens that list. **Load more** retrieves the
 next page, so the list is not restricted to its first 200 messages. Click a row
 to open its chat at that message. Choose **Unstar** to remove it from the list. Stars made before your copy of
-Zap Faster followed them are read from the phone once, the next time it
+Zap Fasterk followed them are read from the phone once, the next time it
 connects.
 
 Star changes are saved locally before synchronization and survive restarts and
-connection failures. A pending change appears locally while Zap Faster waits to
+connection failures. A pending change appears locally while Zap Fasterk waits to
 sync it. Starred messages belong to the linked account that made the change.
 Locked chats are excluded from the cross-chat list. Deleting or revoking a message,
 or clearing its chat, removes its saved mark and preview. Screen privacy also
@@ -31,7 +31,7 @@ chat header opens a pinned message; clicking its pin icon opens the next pin.
 someone pinned the message. Notices remain after unpinning or expiry until the
 referenced message is deleted.
 
-Zap Faster permits up to three active message pins and does not replace a fourth
+Zap Fasterk permits up to three active message pins and does not replace a fourth
 silently. WhatsApp decides whether the account may pin in a particular group and
 can refuse the request. The client only adds a pin after a confirmed send or a
 remote pin update. A timed-out request may have reached WhatsApp: check the phone
@@ -55,7 +55,7 @@ history cannot undo a newer unpin, including events in the same second. Remote
 updates and history recovery do not produce success toasts.
 
 The pinned whatsapp-rust revision replays records during app-state snapshot
-recovery, but does not reconcile records absent from a snapshot. Zap Faster cannot
+recovery, but does not reconcile records absent from a snapshot. Zap Fasterk cannot
 prove that a previously stored star is still present when only an absent snapshot
 record supplies the evidence. Complete recovery of that case requires a protocol
 library change. This client does not advertise complete mobile synchronization

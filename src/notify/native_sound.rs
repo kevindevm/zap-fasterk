@@ -32,7 +32,7 @@ pub(super) fn prepare(sound: &NotificationSound) -> Result<Option<String>, Strin
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect();
-    let name = format!("zap-faster-{hash}.wav");
+    let name = format!("zap-fasterk-{hash}.wav");
     let base = directories::BaseDirs::new().ok_or("home unavailable")?;
     let folder = base.home_dir().join("Library/Sounds");
     let path = folder.join(&name);

@@ -910,7 +910,7 @@ pub const SHORTCUTS: &[(&str, &str)] = &[
     ("? / Ctrl+/", "Keyboard shortcuts (? when not typing)"),
     (
         "Ctrl+Shift+L",
-        "Lock Zap Faster (with an app lock password)",
+        "Lock Zap Fasterk (with an app lock password)",
     ),
     ("Ctrl+W", "Close the window or chat (choose in Settings)"),
     ("Ctrl+Q", "Quit"),

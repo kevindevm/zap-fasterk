@@ -59,15 +59,15 @@ impl NativePopups {
                     let class = WNDCLASSW {
                         lpfnWndProc: Some(procedure),
                         hInstance: module.into(),
-                        lpszClassName: w!("ZapFasterLocalCards"),
+                        lpszClassName: w!("ZapFasterkLocalCards"),
                         ..Default::default()
                     };
                     // Repeated handle creation reuses the same process-local registered class.
                     let _ = RegisterClassW(&class);
                     let window = CreateWindowExW(
                         WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
-                        w!("ZapFasterLocalCards"),
-                        w!("Zap Faster"),
+                        w!("ZapFasterkLocalCards"),
+                        w!("Zap Fasterk"),
                         WS_POPUP,
                         0,
                         0,

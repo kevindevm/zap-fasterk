@@ -1,6 +1,6 @@
 //! Reading a location out of the text a reader pastes.
 //!
-//! A computer has no position of its own to offer and Zap Faster asks no service
+//! A computer has no position of its own to offer and Zap Fasterk asks no service
 //! for one, so the location dialog takes the spot as text: a pair of
 //! coordinates, or a link to a spot on a map. Everything here is offline
 //! parsing, and anything it cannot read with confidence it refuses, so the
@@ -41,7 +41,7 @@ pub fn spot(text: &str) -> Option<Spot> {
 }
 
 /// The link to open for a spot, the one the location card offers too. The
-/// browser fetches it, never Zap Faster, so no map is ever loaded in the app.
+/// browser fetches it, never Zap Fasterk, so no map is ever loaded in the app.
 pub fn map_url(spot: Spot) -> String {
     let (latitude, longitude) = (spot.latitude, spot.longitude);
     format!(

@@ -19,7 +19,7 @@ struct PreviewLimit;
 
 impl egui::load::BytesLoader for PreviewLimit {
     fn id(&self) -> &str {
-        "zapfast::image_cache::PreviewLimit"
+        "zapfasterk::image_cache::PreviewLimit"
     }
 
     fn load(&self, _ctx: &egui::Context, uri: &str) -> egui::load::BytesLoadResult {
@@ -211,7 +211,7 @@ mod tests {
 
     impl egui::load::ImageLoader for ReadyLoader {
         fn id(&self) -> &str {
-            "zapfast::image_cache::tests::ReadyLoader"
+            "zapfasterk::image_cache::tests::ReadyLoader"
         }
 
         fn load(

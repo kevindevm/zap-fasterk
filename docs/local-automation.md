@@ -7,7 +7,7 @@ an existing conversation in that account. Restoring a backup disables this
 computer-specific authority until explicitly enabled again.
 
 The CLI uses a separate private fastframe-instance slot named
-zap-faster-automation-v1 under runtime/automation-v1. Unix filesystem permissions
+zap-fasterk-automation-v1 under runtime/automation-v1. Unix filesystem permissions
 and Windows's random token authenticate the local user. The compatibility
 legacy port never accepts these operations. This grants local programs running
 as that user account access to the selected account; it is not remote access.
@@ -16,17 +16,17 @@ No network service, account system or telemetry is introduced.
 Examples below use synthetic ids; substitute your chosen account/conversation.
 
 ```powershell
-zap-faster chats --account 2
-zap-faster contacts --account 2 --all
-zap-faster messages fixture@s.whatsapp.net --account 2 --limit 10 --before 1700000000
-zap-faster search "synthetic phrase" --account 2 --chat fixture@s.whatsapp.net
-zap-faster watch --account 2 --since 1700000000 --interval 2
-zap-faster send fixture@s.whatsapp.net "Synthetic text" --account 2 --request-id 0123456789abcdef0123456789abcdef
-"Synthetic stdin text" | zap-faster send fixture@s.whatsapp.net - --account 2 --request-id 1123456789abcdef0123456789abcdef
-zap-faster send fixture@s.whatsapp.net "Synthetic caption" --file ./synthetic.pdf --file ./synthetic.png --account 2 --request-id 2123456789abcdef0123456789abcdef
-zap-faster automation read --account 2 --chat fixture@s.whatsapp.net --limit 10
-zap-faster automation send --account 2 --chat fixture@s.whatsapp.net --request-id 3123456789abcdef0123456789abcdef --text-file ./synthetic.txt
-zap-faster status --account 2 --chat fixture@s.whatsapp.net --request-id 2123456789abcdef0123456789abcdef
+zap-fasterk chats --account 2
+zap-fasterk contacts --account 2 --all
+zap-fasterk messages fixture@s.whatsapp.net --account 2 --limit 10 --before 1700000000
+zap-fasterk search "synthetic phrase" --account 2 --chat fixture@s.whatsapp.net
+zap-fasterk watch --account 2 --since 1700000000 --interval 2
+zap-fasterk send fixture@s.whatsapp.net "Synthetic text" --account 2 --request-id 0123456789abcdef0123456789abcdef
+"Synthetic stdin text" | zap-fasterk send fixture@s.whatsapp.net - --account 2 --request-id 1123456789abcdef0123456789abcdef
+zap-fasterk send fixture@s.whatsapp.net "Synthetic caption" --file ./synthetic.pdf --file ./synthetic.png --account 2 --request-id 2123456789abcdef0123456789abcdef
+zap-fasterk automation read --account 2 --chat fixture@s.whatsapp.net --limit 10
+zap-fasterk automation send --account 2 --chat fixture@s.whatsapp.net --request-id 3123456789abcdef0123456789abcdef --text-file ./synthetic.txt
+zap-fasterk status --account 2 --chat fixture@s.whatsapp.net --request-id 2123456789abcdef0123456789abcdef
 ```
 
 Read returns ascending rows from a bounded recent archive page, plus next_before.

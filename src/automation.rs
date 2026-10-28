@@ -411,7 +411,7 @@ pub struct Server {
     _guard: fastframe_instance::Guard,
 }
 fn slot(runtime: &Path) -> fastframe_instance::Slot {
-    fastframe_instance::Slot::at(runtime.join("automation-v1"), "zap-faster-automation-v1")
+    fastframe_instance::Slot::at(runtime.join("automation-v1"), "zap-fasterk-automation-v1")
 }
 impl Server {
     pub fn start(runtime: &Path, waker: crate::backend::Waker) -> Result<Self, String> {

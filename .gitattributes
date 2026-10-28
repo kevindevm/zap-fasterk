@@ -5,6 +5,6 @@ flake.nix text eol=lf
 packaging/applications/*.desktop text eol=lf
 packaging/**/*.sh text eol=lf
 packaging/*.sh text eol=lf
-contrib/omarchy/zap-faster-theme text eol=lf
+contrib/omarchy/zap-fasterk-theme text eol=lf
 contrib/omarchy/*.tpl text eol=lf
 contrib/omarchy/previous/*.tpl text eol=lf

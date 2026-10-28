@@ -1,25 +1,25 @@
-print_zap-faster_post_install() {
+print_zap-fasterk_post_install() {
   cat <<'EOF2'
-zap-faster setup:
+zap-fasterk setup:
 
   Launch it and, on the phone, open WhatsApp > Linked devices > Link a
   device, then point the camera at the code (or link with your phone
   number instead). The chats sync to a local archive on the first link.
 
-  Keep your desktop keyring unlocked so Zap Faster can open its encrypted
+  Keep your desktop keyring unlocked so Zap Fasterk can open its encrypted
   archive. On Linux this needs a Secret Service provider (GNOME Keyring
   or KeePassXC with Secret Service enabled).
 
   Colour emoji have a bundled fallback; GIFs play in the app.
 
-Docs: https://github.com/eternalwaitt/zap-faster
+Docs: https://github.com/kevindevm/zap-fasterk
 EOF2
 }
 
 post_install() {
-  print_zap-faster_post_install
+  print_zap-fasterk_post_install
 }
 
 post_upgrade() {
-  print_zap-faster_post_install
+  print_zap-fasterk_post_install
 }

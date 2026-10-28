@@ -108,8 +108,8 @@
             libxi
             libxrandr
           ];
-          zap-faster = rustPlatform.buildRustPackage rec {
-            pname = "zap-faster";
+          zap-fasterk = rustPlatform.buildRustPackage rec {
+            pname = "zap-fasterk";
             version = (pkgs.lib.importTOML ./Cargo.toml).package.version;
             src = self;
 
@@ -151,7 +151,7 @@
             postFixup =
               # The GUI dlopens its Wayland, X11 and GL libraries at run time.
               pkgs.lib.optionalString isLinux ''
-                wrapProgram $out/bin/zap-faster \
+                wrapProgram $out/bin/zap-fasterk \
                   --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath runtimeLibs}
               ''
               # Sign after the strip hook, which would invalidate the signature.
@@ -159,42 +159,42 @@
               + pkgs.lib.optionalString isDarwin ''
                 rcodesign sign \
                   --entitlements-xml-file packaging/macos/entitlements.plist \
-                  "$out/Applications/Zap Faster.app"
+                  "$out/Applications/Zap Fasterk.app"
               '';
 
             postInstall =
               pkgs.lib.optionalString isLinux ''
-                install -Dm644 packaging/applications/zap-faster.desktop \
-                  $out/share/applications/zap-faster.desktop
-                install -Dm644 packaging/icons/zap-faster.svg \
-                  $out/share/icons/hicolor/scalable/apps/zap-faster.svg
-                install -Dm644 contrib/omarchy/zap-faster.json.tpl \
-                  $out/share/zap-faster/omarchy/zap-faster.json.tpl
-                install -Dm755 contrib/omarchy/zap-faster-theme \
-                  $out/share/zap-faster/omarchy/zap-faster-theme
+                install -Dm644 packaging/applications/zap-fasterk.desktop \
+                  $out/share/applications/zap-fasterk.desktop
+                install -Dm644 packaging/icons/zap-fasterk.svg \
+                  $out/share/icons/hicolor/scalable/apps/zap-fasterk.svg
+                install -Dm644 contrib/omarchy/zap-fasterk.json.tpl \
+                  $out/share/zap-fasterk/omarchy/zap-fasterk.json.tpl
+                install -Dm755 contrib/omarchy/zap-fasterk-theme \
+                  $out/share/zap-fasterk/omarchy/zap-fasterk-theme
               ''
-              # Mirrors packaging/macos/bundle.sh: Zap Faster.app around the built
+              # Mirrors packaging/macos/bundle.sh: Zap Fasterk.app around the built
               # binary, with the version stripped of any prerelease suffix.
               + pkgs.lib.optionalString isDarwin ''
-                app="$out/Applications/Zap Faster.app"
+                app="$out/Applications/Zap Fasterk.app"
                 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-                mv "$out/bin/zap-faster" "$app/Contents/MacOS/zap-faster"
-                chmod 755 "$app/Contents/MacOS/zap-faster"
+                mv "$out/bin/zap-fasterk" "$app/Contents/MacOS/zap-fasterk"
+                chmod 755 "$app/Contents/MacOS/zap-fasterk"
                 # The command runs the bundled executable, so macOS applies the
                 # bundle's Info.plist and entitlements, and start at login
                 # records the bundled path.
-                makeWrapper "$app/Contents/MacOS/zap-faster" "$out/bin/zap-faster"
+                makeWrapper "$app/Contents/MacOS/zap-fasterk" "$out/bin/zap-fasterk"
                 sed "s/__VERSION__/''${version%%-*}/g" packaging/macos/Info.plist \
                   > "$app/Contents/Info.plist"
                 icnsify packaging/macos/icon-1024.png \
-                  --output "$app/Contents/Resources/zap-faster.icns"
+                  --output "$app/Contents/Resources/zap-fasterk.icns"
               '';
 
             meta = {
               description = "Fast native WhatsApp client";
-              homepage = "https://github.com/eternalwaitt/zap-faster";
+              homepage = "https://github.com/kevindevm/zap-fasterk";
               license = with pkgs.lib.licenses; [ mit gpl2Only ];
-              mainProgram = "zap-faster";
+              mainProgram = "zap-fasterk";
               # The flake publishes only aarch64-darwin. Older nixpkgs, for
               # example through follows, still list x86_64-darwin.
               platforms = pkgs.lib.platforms.linux ++ [ "aarch64-darwin" ];
@@ -202,8 +202,8 @@
           };
         in
         {
-          default = zap-faster;
-          inherit zap-faster;
+          default = zap-fasterk;
+          inherit zap-fasterk;
         }
       );
 

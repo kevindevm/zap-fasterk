@@ -1,7 +1,7 @@
 //! The update flags reach fastframe-update before anything else in `main`.
 //!
 //! The previous release's helper runs the installed executable as
-//! `zapfast --apply-update <job>` and relaunches the new one with
+//! `zapfasterk --apply-update <job>` and relaunches the new one with
 //! `--update-receipt <job>` or `--update-error <message>`. Those must be
 //! handled before the command line is parsed, before the single-instance
 //! lock, and before any directory, log or setting is touched.
@@ -10,8 +10,8 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 /// Runs the built executable with every per-user location inside `home`.
-fn zapfast(home: &Path, arguments: &[&str]) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_zap-faster"));
+fn zapfasterk(home: &Path, arguments: &[&str]) -> Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_zap-fasterk"));
     command.args(arguments).env_remove("RUST_LOG");
     #[cfg(windows)]
     {
@@ -31,7 +31,7 @@ fn zapfast(home: &Path, arguments: &[&str]) -> Output {
     ] {
         command.env(variable, home);
     }
-    command.output().expect("the zapfast executable runs")
+    command.output().expect("the zapfasterk executable runs")
 }
 
 fn entries(directory: &Path) -> Vec<String> {
@@ -45,7 +45,7 @@ fn entries(directory: &Path) -> Vec<String> {
 fn apply_update_runs_the_helper_before_anything_else() {
     let home = tempfile::tempdir().unwrap();
     let job = home.path().join("missing").join("handoff.json");
-    let output = zapfast(home.path(), &["--apply-update", job.to_str().unwrap()]);
+    let output = zapfasterk(home.path(), &["--apply-update", job.to_str().unwrap()]);
     let stderr = String::from_utf8_lossy(&output.stderr);
     // The helper reports a job it cannot read and exits with 1; clap would
     // have rejected the unknown flag with 2 and its usage text.
@@ -60,7 +60,7 @@ fn apply_update_runs_the_helper_before_anything_else() {
 fn update_receipt_and_error_are_taken_off_the_command_line() {
     let home = tempfile::tempdir().unwrap();
     let job = home.path().join("handoff.json");
-    let output = zapfast(
+    let output = zapfasterk(
         home.path(),
         &[
             "--update-receipt",
@@ -72,11 +72,11 @@ fn update_receipt_and_error_are_taken_off_the_command_line() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    // Zap Faster helpers check the fork binary name and version.
+    // Zap Fasterk helpers check the fork binary name and version.
     assert!(output.status.success(), "stderr: {stderr}");
     assert_eq!(
         stdout.trim(),
-        format!("zap-faster {}", env!("CARGO_PKG_VERSION")),
+        format!("zap-fasterk {}", env!("CARGO_PKG_VERSION")),
         "stderr: {stderr}"
     );
     assert_eq!(entries(home.path()), Vec::<String>::new());

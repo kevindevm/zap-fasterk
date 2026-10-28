@@ -1,6 +1,6 @@
-# Zap Faster agent guide (Windows-only fork)
+# Zap Fasterk agent guide (Windows-only fork)
 
-Zap Faster is a small native WhatsApp client: Rust, egui, and the
+Zap Fasterk is a small native WhatsApp client: Rust, egui, and the
 [whatsapp-rust](https://github.com/oxidezap/whatsapp-rust) library for the
 protocol. These notes are for coding agents and new contributors.
 This fork targets Windows only: do not add code, tests, packaging, or docs
@@ -9,7 +9,7 @@ for Linux or macOS, and do not verify other platforms.
 ## Product boundaries
 
 - Keep it a small native client. No browser engine, no telemetry, no
-  hosted backend, no Zap Faster-operated account system. Features never send
+  hosted backend, no Zap Fasterk-operated account system. Features never send
   message content to a third party.
 - Do not vendor, fork, or patch upstream crates (egui, epaint, whatsapp-rust)
   in this repository. Fix them upstream.
@@ -140,15 +140,15 @@ for Linux or macOS, and do not verify other platforms.
 - Chat ids are canonical strings: a chat behind a privacy id (`@lid`) is
   filed under its phone number once the mapping is known. Use
   `Worker::canonical` for anything that arrives as a `Jid`.
-- Updates come from fastframe-update: `src/updates.rs` holds Zap Faster's
+- Updates come from fastframe-update: `src/updates.rs` holds Zap Fasterk's
   `UpdateConfig` (the fork repository, asset names and publisher key) and the
   proxy-aware client. It downloads verified GitHub releases and hands
   installation to a helper after an explicit restart action. `main` calls
   `fastframe_update::intercept` before anything else, so `--apply-update`,
   `--update-receipt` and `--update-error` keep working with older releases'
   helpers (`tests/update_flags.rs`). Portable releases carry
-  `packaging/zap-faster-portable.txt`; the Windows installer has its own marker.
-- Custom themes come from fastframe-theme (`theme::Catalog`, Zap Faster's
+  `packaging/zap-fasterk-portable.txt`; the Windows installer has its own marker.
+- Custom themes come from fastframe-theme (`theme::Catalog`, Zap Fasterk's
   `fastframe_theme::Palette` impl in `src/theme.rs`): it scans local JSON
   palettes off the UI thread, and the app caches the last usable choice in
   settings, with the palettes shared with Spotifast embedded as defaults.
@@ -307,7 +307,7 @@ for Linux or macOS, and do not verify other platforms.
   `fastsapp:show` and `fastsapp:ok` for older copies), and a second launch
   asks the first to surface over a private socket (a token-checked loopback
   port on Windows); the handler queues `ControlCommand`s and declines unknown
-  verbs. The fixed port 47119 that 0.15-era copies look for stays in Zap Faster,
+  verbs. The fixed port 47119 that 0.15-era copies look for stays in Zap Fasterk,
   answered once the slot is claimed. `src/notify.rs` sends desktop notifications
   for `Event::Incoming` (live messages from others, not history) when the
   reader is away from that chat; a click carries the chat and the message
@@ -446,7 +446,7 @@ A release is not finished when the tag is pushed. Do these in order:
    `packaging/release-notes/vX.Y.Z.md`: the release workflow publishes that
    file as the release description, and a stable tag without it fails. Link
    screenshots at the release's asset URLs
-   (`https://github.com/eternalwaitt/zap-faster/releases/download/vX.Y.Z/NAME.png`).
+   (`https://github.com/kevindevm/zap-fasterk/releases/download/vX.Y.Z/NAME.png`).
    Run the full checks, commit, and push `main`. Before tagging, verify the
    release commit is reachable from the fork's public main so the binaries report the
    right version and the release contains the canonical history.
@@ -455,12 +455,12 @@ A release is not finished when the tag is pushed. Do these in order:
 3. Upload the screenshots to the release as assets with the names the notes
    link, then open the published release and check the text, every image,
    and every download link. Never leave generated placeholder notes.
-4. After the release files exist, update both `zapfast_version` in
+4. After the release files exist, update both `zapfasterk_version` in
    `docs/_config.yml` and the version menu in `docs/_data/versions.yml`.
    The menu lists only the current version, which points to `/download/`,
    and the Changelog link; do not add older versions to it. Never point the
    download page at files that do not exist yet. Set `release_asset_prefix` to
-   `zap-faster` and `release_app_name` to `Zap Faster` only once those assets exist.
+   `zap-fasterk` and `release_app_name` to `Zap Fasterk` only once those assets exist.
 
 ## Verification cadence
 

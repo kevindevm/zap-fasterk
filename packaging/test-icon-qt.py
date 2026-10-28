@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import QApplication
 application = QApplication([])
 warnings = []
 qInstallMessageHandler(lambda kind, context, message: warnings.append(message))
-icon = Path(__file__).parent / "icons" / "zap-faster.svg"
+icon = Path(__file__).parent / "icons" / "zap-fasterk.svg"
 renderer = QSvgRenderer(str(icon))
 assert renderer.isValid(), "Qt rejects the desktop SVG"
 image = QImage(256, 256, QImage.Format_ARGB32)

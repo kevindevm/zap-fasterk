@@ -1,23 +1,23 @@
-# Installs, updates and removes Zap Faster's Windows packages on a CI runner,
+# Installs, updates and removes Zap Fasterk's Windows packages on a CI runner,
 # with stand-in program files: the Inno Setup installer, the MSI
 # taking it over (as the updater runs it, and by hand), an MSI update, and
-# uninstalling with Zap Faster running and then without.
+# uninstalling with Zap Fasterk running and then without.
 #
 #   pwsh packaging/windows/test-installer.ps1
 #
 # Needs Inno Setup 6, WiX 5 with WixToolset.Util.wixext, and Ruby. Run from
-# the repository root. Changes the current user's Zap Faster install.
+# the repository root. Changes the current user's Zap Fasterk install.
 
 $ErrorActionPreference = "Stop"
 if ($env:GITHUB_ACTIONS -ne "true" -or -not $env:RUNNER_TEMP) { throw "Run only on a disposable GitHub Actions runner; this changes the installed client." }
-$root = Join-Path $env:RUNNER_TEMP "zap-faster-installer-test"
+$root = Join-Path $env:RUNNER_TEMP "zap-fasterk-installer-test"
 if (Test-Path -LiteralPath $root) { throw "Installer test scratch directory already exists" }
 New-Item -ItemType Directory $root | Out-Null
 
 $innoKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{AE0F1449-0366-4CA8-98B4-A0186CB798A8}_is1"
-$startMenu = Join-Path ([Environment]::GetFolderPath("Programs")) "Zap Faster.lnk"
-$desktop = Join-Path ([Environment]::GetFolderPath("Desktop")) "Zap Faster.lnk"
-$defaultFolder = Join-Path $env:LOCALAPPDATA "Programs\Zap Faster"
+$startMenu = Join-Path ([Environment]::GetFolderPath("Programs")) "Zap Fasterk.lnk"
+$desktop = Join-Path ([Environment]::GetFolderPath("Desktop")) "Zap Fasterk.lnk"
+$defaultFolder = Join-Path $env:LOCALAPPDATA "Programs\Zap Fasterk"
 
 function Check($condition, $what) {
   if (-not $condition) { throw "FAILED: $what" }
@@ -30,8 +30,8 @@ function Check($condition, $what) {
 function Payload($version) {
   $dir = Join-Path $root "payload-$version"
   New-Item -ItemType Directory -Force $dir | Out-Null
-  Set-Content -NoNewline -Path (Join-Path $dir "zap-faster.exe") -Value "zap-faster.exe $version"
-  Copy-Item README.md, LICENSE, THIRD-PARTY-NOTICES.md, packaging\windows\zap-faster-installer.txt $dir
+  Set-Content -NoNewline -Path (Join-Path $dir "zap-fasterk.exe") -Value "zap-fasterk.exe $version"
+  Copy-Item README.md, LICENSE, THIRD-PARTY-NOTICES.md, packaging\windows\zap-fasterk-installer.txt $dir
   Get-ChildItem $dir | ForEach-Object { $_.LastWriteTime = (Get-Date).AddDays(-30) }
   $dir
 }
@@ -39,17 +39,17 @@ function Payload($version) {
 function Inno($version, $arguments) {
   $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
   if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
-  $binary = Join-Path (Payload "inno-$version") "zap-faster.exe"
+  $binary = Join-Path (Payload "inno-$version") "zap-fasterk.exe"
   & $iscc /Q "/DVersion=$version" /DArch=x86_64 "/DBinary=$binary" `
-    "/DOutputDir=$root" packaging\windows\zap-faster.iss
+    "/DOutputDir=$root" packaging\windows\zap-fasterk.iss
   if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
-  $setup = Join-Path $root "zap-faster-v$version-x86_64-pc-windows-msvc-setup.exe"
+  $setup = Join-Path $root "zap-fasterk-v$version-x86_64-pc-windows-msvc-setup.exe"
   $process = Start-Process $setup -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
   Check ($process.ExitCode -eq 0) "Inno Setup $version installs"
 }
 
 function Msi($version, $arch = "x64") {
-  $package = Join-Path $root "zap-faster-$version-$arch.msi"
+  $package = Join-Path $root "zap-fasterk-$version-$arch.msi"
   ruby packaging\windows\msi.rb (Payload "msi-$version-$arch") $package $version $arch | Out-Host
   if ($LASTEXITCODE -ne 0) { throw "MSI build failed" }
   $package
@@ -66,15 +66,15 @@ function Msiexec($arguments) {
 }
 
 function Program($folder) {
-  Get-Content -Raw (Join-Path $folder "zap-faster.exe")
+  Get-Content -Raw (Join-Path $folder "zap-fasterk.exe")
 }
 
-# What Settings > Apps lists for Zap Faster: the MSI installs Windows Installer
-# knows by Zap Faster's UpgradeCode, and the Inno Setup entry.
+# What Settings > Apps lists for Zap Fasterk: the MSI installs Windows Installer
+# knows by Zap Fasterk's UpgradeCode, and the Inno Setup entry.
 function Entries {
   $installer = New-Object -ComObject WindowsInstaller.Installer
   $products = $installer.GetType().InvokeMember("RelatedProducts", "GetProperty", $null, $installer,
-    @("{BA74CD6C-D0D9-5D9C-99E2-CF12FE1704E8}"))
+    @("{2ED47A9B-60C8-4FAD-8DEC-DCA2F1E64CCB}"))
   $count = @($products).Count
   if (Test-Path $innoKey) { $count += 1 }
   $count
@@ -91,13 +91,13 @@ Check (-not (Test-Path (Join-Path $defaultFolder "fastsapp.exe"))) "fork install
 $v1 = Msi "0.18.1"
 $code = Msiexec "/i `"$v1`" /qn /norestart INSTALLFOLDER=`"$defaultFolder`""
 Check ($code -in 0, 3010) "the MSI takes over the Inno install ($code)"
-Check ((Program $defaultFolder) -eq "zap-faster.exe msi-0.18.1-x64") "the program is replaced"
-Check (Test-Path (Join-Path $defaultFolder "zap-faster-installer.txt")) "the installer marker is in place"
+Check ((Program $defaultFolder) -eq "zap-fasterk.exe msi-0.18.1-x64") "the program is replaced"
+Check (Test-Path (Join-Path $defaultFolder "zap-fasterk-installer.txt")) "the installer marker is in place"
 Check (-not (Test-Path (Join-Path $defaultFolder "unins000.exe"))) "Inno's uninstaller is gone"
 Check (-not (Test-Path (Join-Path $defaultFolder "unins000.dat"))) "Inno's uninstall log is gone"
 Check (-not (Test-Path $innoKey)) "Inno's Settings > Apps entry is gone"
 Check (-not (Test-Path (Join-Path $defaultFolder "fastsapp.exe"))) "the copy kept for old updaters is gone"
-Check ((Entries) -eq 1) "Settings > Apps lists Zap Faster once"
+Check ((Entries) -eq 1) "Settings > Apps lists Zap Fasterk once"
 Check (Test-Path $startMenu) "the Start menu shortcut is there"
 Check (Test-Path $desktop) "the desktop shortcut is kept"
 
@@ -105,38 +105,38 @@ Check (Test-Path $desktop) "the desktop shortcut is kept"
 $v2 = Msi "0.18.2"
 $code = Msiexec "/i `"$v2`" /qn /norestart"
 Check ($code -in 0, 3010) "the next MSI updates in place ($code)"
-Check ((Program $defaultFolder) -eq "zap-faster.exe msi-0.18.2-x64") "the program is the new one"
-Check ((Entries) -eq 1) "Settings > Apps still lists Zap Faster once"
+Check ((Program $defaultFolder) -eq "zap-fasterk.exe msi-0.18.2-x64") "the program is the new one"
+Check ((Entries) -eq 1) "Settings > Apps still lists Zap Fasterk once"
 Check (Test-Path $desktop) "the desktop shortcut survives the update"
 
-# 4. Uninstalling while Zap Faster runs is refused, untouched.
+# 4. Uninstalling while Zap Fasterk runs is refused, untouched.
 $fake = Join-Path $root "running"
 New-Item -ItemType Directory $fake | Out-Null
-Copy-Item "$env:SystemRoot\System32\PING.EXE" (Join-Path $fake "zap-faster.exe")
-$running = Start-Process (Join-Path $fake "zap-faster.exe") -ArgumentList "-n 600 127.0.0.1" -PassThru -WindowStyle Hidden
+Copy-Item "$env:SystemRoot\System32\PING.EXE" (Join-Path $fake "zap-fasterk.exe")
+$running = Start-Process (Join-Path $fake "zap-fasterk.exe") -ArgumentList "-n 600 127.0.0.1" -PassThru -WindowStyle Hidden
 try {
   $code = Msiexec "/x `"$v2`" /qn /norestart"
-  Check ($code -ne 0 -and $code -ne 3010) "uninstalling while Zap Faster runs is refused ($code)"
-  Check (Select-String -Quiet -Encoding unicode "Zap Faster is running" $script:lastLog) "by the check for a running Zap Faster"
-  Check ((Program $defaultFolder) -eq "zap-faster.exe msi-0.18.2-x64") "nothing was removed"
+  Check ($code -ne 0 -and $code -ne 3010) "uninstalling while Zap Fasterk runs is refused ($code)"
+  Check (Select-String -Quiet -Encoding unicode "Zap Fasterk is running" $script:lastLog) "by the check for a running Zap Fasterk"
+  Check ((Program $defaultFolder) -eq "zap-fasterk.exe msi-0.18.2-x64") "nothing was removed"
 } finally {
   Stop-Process -Id $running.Id -Force
 }
 
 # 5. Uninstalling once it has quit removes everything.
 $code = Msiexec "/x `"$v2`" /qn /norestart"
-Check ($code -in 0, 3010) "uninstalling removes Zap Faster ($code)"
+Check ($code -in 0, 3010) "uninstalling removes Zap Fasterk ($code)"
 Check (-not (Test-Path $defaultFolder)) "the program folder is gone"
 Check (-not (Test-Path $startMenu)) "the Start menu shortcut is gone"
 Check (-not (Test-Path $desktop)) "the desktop shortcut is gone"
-Check ((Entries) -eq 0) "Settings > Apps no longer lists Zap Faster"
+Check ((Entries) -eq 0) "Settings > Apps no longer lists Zap Fasterk"
 
 # 6. An Inno install in a folder of its own, taken over by an MSI run by hand.
-$custom = Join-Path $env:LOCALAPPDATA "Zap Faster Elsewhere"
+$custom = Join-Path $env:LOCALAPPDATA "Zap Fasterk Elsewhere"
 Inno "0.18.0" "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER `"/DIR=$custom`""
 $code = Msiexec "/i `"$v1`" /qn /norestart"
 Check ($code -in 0, 3010) "a hand-run MSI takes over the Inno install ($code)"
-Check ((Program $custom) -eq "zap-faster.exe msi-0.18.1-x64") "it installs into Inno's folder"
+Check ((Program $custom) -eq "zap-fasterk.exe msi-0.18.1-x64") "it installs into Inno's folder"
 Check (-not (Test-Path $defaultFolder)) "and not into the default one"
 Check (-not (Test-Path $desktop)) "no desktop shortcut appears that Inno did not make"
 $code = Msiexec "/x `"$v1`" /qn /norestart"
