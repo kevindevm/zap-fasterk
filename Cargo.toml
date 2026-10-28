@@ -69,7 +69,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"
 tokio-websockets = { version = "0.13.3", default-features = false, features = ["client"] }
 http = "1"
 # Encodes HTTP proxy credentials. Already included through several crates.
-base64 = "0.22"
+base64 = "0.23"
 # SQLCipher encrypts the archive; the device store shares the same library.
 # Bundle OpenSSL so all release platforms use the same encryption provider.
 rusqlite = { version = "0.40", features = ["bundled-sqlcipher-vendored-openssl"] }
