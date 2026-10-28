@@ -6,7 +6,7 @@ ZapFaster is a fork of [ZapFast](https://github.com/crmne/zapfast), maintained b
 
 That means better ways to manage busy conversations, work with attachments, navigate by keyboard, and control your desktop experience. Plugin-inspired workflows are a direction for development, not a claim that every old plugin feature is already available. Requests from people who use WhatsApp every day help shape what comes next.
 
-ZapFaster is a small native WhatsApp client for Windows, Linux and macOS, built with Rust, [egui](https://github.com/emilk/egui), [whatsapp-rust](https://github.com/oxidezap/whatsapp-rust) and [fastframe](https://github.com/crmne/fastframe). It links to your phone as a companion device. No browser engine, telemetry, hosted backend or ZapFaster account is required.
+ZapFaster is a small native WhatsApp client for Windows, built with Rust, [egui](https://github.com/emilk/egui), [whatsapp-rust](https://github.com/oxidezap/whatsapp-rust) and [fastframe](https://github.com/crmne/fastframe). It links to your phone as a companion device. No browser engine, telemetry, hosted backend or ZapFaster account is required. This fork targets Windows only.
 
 The original project and its contributors made this possible. This fork preserves the MIT license, copyright notices and contributor credit. It has its own maintenance and release schedule. Contributions and fixes from either project are welcome.
 
@@ -14,7 +14,7 @@ The original project and its contributors made this possible. This fork preserve
 
 Download installers and portable builds from **[ZapFaster releases](https://github.com/eternalwaitt/zap-faster/releases)**. Upstream ZapFast installers, its Homebrew tap, AUR packages and website downloads install the original project.
 
-The current fork release, [v0.30.0](https://github.com/eternalwaitt/zap-faster/releases/tag/v0.30.0), is available for Windows, Linux and macOS. To build from source, use the toolchain in `rust-toolchain.toml`:
+The current fork release, [v0.30.0](https://github.com/eternalwaitt/zap-faster/releases/tag/v0.30.0), is available for Windows. To build from source, use the toolchain in `rust-toolchain.toml`:
 
 ```sh
 git clone https://github.com/eternalwaitt/zap-faster.git
@@ -22,7 +22,7 @@ cd zap-faster
 cargo run --locked --release
 ```
 
-Linux builds need the development packages for ALSA, OpenGL, Wayland and xkbcommon, plus CMake, Clang and Perl. Windows builds need Visual Studio C++ Build Tools, CMake, LLVM/libclang and Perl. macOS builds need Xcode Command Line Tools and CMake. See [the build and packaging guide](PACKAGING.md).
+Windows builds need Visual Studio C++ Build Tools, CMake, LLVM/libclang and Perl. See [the build and packaging guide](PACKAGING.md).
 
 ## How ZapFaster differs from ZapFast
 
@@ -47,7 +47,7 @@ See [ZapFast's pull requests](https://github.com/crmne/zapfast/pulls) for work p
 
 Quit ZapFast before starting ZapFaster. The fork intentionally retains ZapFast's existing settings, session, encrypted archive, OS keyring identity and single-instance lock. It uses the existing `zapfast` data directories; installing both does not create independent accounts. Back up your data before switching, and use one application at a time. The fork does not read your archive during builds or development.
 
-ZapFaster checks its own GitHub releases for updates and verifies them with its own Ed25519 signing key. It does not consume upstream ZapFast updates. Update signatures are separate from Windows Authenticode and Apple notarization; download pages state any platform signing limitations.
+ZapFaster checks its own GitHub releases for updates and verifies them with its own Ed25519 signing key. It does not consume upstream ZapFast updates. Update signatures are separate from Windows Authenticode; download pages state any platform signing limitations.
 
 The [settings and files guide](docs/_reference/settings-and-files.md) describes local storage, encryption and network behavior. GIF search contacts Giphy only when used and configured; preview links and location map links may contact the relevant website when opened. Whisper downloads its 1.5 GB multilingual model from Hugging Face when first requested, verifies its pinned SHA-256 digest, and transcribes on your CPU. Transcripts are stored in the encrypted account archive; model files are in the account cache. No feature uploads message content to a transcription or analytics service.
 
