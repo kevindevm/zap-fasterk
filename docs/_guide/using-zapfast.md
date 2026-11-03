@@ -17,6 +17,10 @@ Undo and redo in the message field apply to its current chat and account.
 Switching chats or accounts, closing a chat, or unlinking clears the editor's
 undo history. Saved drafts remain available when you return to their chat.
 
+ZapFasterk reconnects by itself after a lost connection, within about five
+seconds once it notices. Text refused while offline goes back to its chat's
+composer, unless that chat already has other text there.
+
 Enter sends and Shift+Enter adds a line. Turn off **Enter sends** in Settings
 to make Enter add a line and send with Ctrl+Enter (Command+Enter on macOS).
 `*bold*`, `_italic_`, `~strike~`, and ```` ```monospace ```` ```` format
