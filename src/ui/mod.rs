@@ -426,10 +426,12 @@ fn drop_target(app: &mut App, ctx: &egui::Context) {
         return;
     }
     let palette = app.palette;
-    let name = app
-        .current_chat()
-        .map(|chat| app.chat_title(chat))
-        .unwrap_or_default();
+    // A file held over another chat's row goes to that chat, opening it.
+    let chat = app
+        .drop_target_chat(ctx)
+        .and_then(|id| app.chat(id.as_str()))
+        .or_else(|| app.current_chat());
+    let name = chat.map(|chat| app.chat_title(chat)).unwrap_or_default();
     egui::Area::new(egui::Id::new("drop-target"))
         .anchor(Align2::CENTER_CENTER, vec2(0.0, 0.0))
         .order(egui::Order::Foreground)

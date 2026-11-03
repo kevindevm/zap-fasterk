@@ -3,7 +3,7 @@
 use egui::{Align, Frame, Key, Layout, Margin, Rect, Sense, Vec2, pos2, vec2};
 
 use crate::app::App;
-use crate::model::{Action, Chat, ChatFilter, Contact, Dialog, Message, Page};
+use crate::model::{Action, Chat, ChatFilter, ChatId, Contact, Dialog, Message, Page};
 use crate::theme::{self, Icon, Palette};
 
 use super::conversation;
@@ -934,6 +934,14 @@ fn list(app: &mut App, ui: &mut egui::Ui) {
         results(app, ui);
         return;
     }
+    // A file drag publishes every visible row's rect, so a drop onto one can
+    // open that chat first. Cleared here so a pointer that left the list
+    // cannot drop onto a stale row.
+    if ui.input(|input| !input.raw.hovered_files.is_empty()) {
+        ui.ctx().data_mut(|data| {
+            data.remove::<Vec<(ChatId, Rect)>>(crate::app::App::drop_chat_rows_id());
+        });
+    }
     let chats: Vec<Chat> = app.visible_chats().into_iter().cloned().collect();
     if chats.is_empty() {
         // The favorites title is translated, so it is bound here: the tuple
@@ -1702,11 +1710,28 @@ fn row(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> egui::Response {
         )
     });
     super::accessibility::result_item(&response);
+    // A file drag arms the hovered row as its drop target: dropping there
+    // opens this chat first. The armed row carries the accent.
+    let files_hover = ui.input(|input| !input.raw.hovered_files.is_empty());
+    if files_hover && response.hovered() {
+        ui.ctx().data_mut(|data| {
+            let mut rows = data
+                .get_temp::<Vec<(ChatId, Rect)>>(crate::app::App::drop_chat_rows_id())
+                .unwrap_or_default();
+            rows.push((chat.id.clone(), rect));
+            data.insert_temp(crate::app::App::drop_chat_rows_id(), rows);
+        });
+    }
     if ui.is_rect_visible(rect) {
         if selected {
             widgets::row_highlight(ui, &palette, rect, palette.surface_active);
         } else if response.hovered() {
-            widgets::row_highlight(ui, &palette, rect, palette.surface_hover);
+            let tint = if files_hover {
+                palette.accent
+            } else {
+                palette.surface_hover
+            };
+            widgets::row_highlight(ui, &palette, rect, tint);
         }
         let avatar_rect =
             Rect::from_center_size(pos2(rect.left() + 38.0, rect.center().y), Vec2::splat(48.0));

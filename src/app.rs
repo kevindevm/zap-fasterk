@@ -10928,6 +10928,23 @@ impl App {
         self.mark_settings_dirty();
     }
 
+    /// Frame temp id for the chat-list rows published while files hover.
+    /// Rows record their rects during the view pass; a drop arrives a frame
+    /// later, so the pointer is hit-tested fresh (see `drop_target_chat`).
+    pub(crate) fn drop_chat_rows_id() -> egui::Id {
+        egui::Id::new("drop-chat-rows")
+    }
+
+    /// The chat row under the pointer for a file being dragged, if any.
+    pub(crate) fn drop_target_chat(&self, ctx: &egui::Context) -> Option<ChatId> {
+        let rows =
+            ctx.data(|data| data.get_temp::<Vec<(ChatId, egui::Rect)>>(Self::drop_chat_rows_id()))?;
+        let pos = ctx.input(|input| input.pointer.hover_pos())?;
+        rows.into_iter()
+            .find(|(_, rect)| rect.contains(pos))
+            .map(|(id, _)| id)
+    }
+
     /// Handles dropped files and pasted images for the open chat.
     fn take_drops_and_pastes(&mut self, ctx: &egui::Context) {
         let (dropped, hovering) = ctx.input(|input| {
@@ -10940,13 +10957,29 @@ impl App {
             let hovering = !input.raw.hovered_files.is_empty();
             (dropped, hovering)
         });
-        self.dropping = hovering && self.open_chat.is_some();
+        self.dropping =
+            hovering && (self.open_chat.is_some() || self.drop_target_chat(ctx).is_some());
         let frame = ctx.cumulative_frame_nr();
         let drop_id = egui::Id::new("dropped-files-input-frame");
         let already_staged = ctx.data(|data| data.get_temp::<u64>(drop_id) == Some(frame));
         if !dropped.is_empty() && !already_staged {
             ctx.data_mut(|data| data.insert_temp(drop_id, frame));
-            self.stage_clipboard(ctx, ClipboardPaste::Files(dropped));
+            // A file dropped onto another chat's row goes to that chat: open
+            // it first, so the attachment stages where it will send from.
+            if let Some(target) = self.drop_target_chat(ctx) {
+                if self.chat(target.as_str()).is_some() {
+                    self.open_chat(target.clone());
+                }
+                // A chat that refuses to open (a locked one reached from
+                // outside its folder) never inherits another chat's files.
+                if self.open_chat.as_deref() == Some(target.as_str()) {
+                    self.stage_clipboard(ctx, ClipboardPaste::Files(dropped));
+                } else {
+                    log::debug!("dropped files ignored: the target chat stayed closed");
+                }
+            } else {
+                self.stage_clipboard(ctx, ClipboardPaste::Files(dropped));
+            }
         }
         // Tests inject fixtures and must never read the system clipboard.
         self.take_clipboard_paste(ctx, || {
@@ -15359,6 +15392,105 @@ mod tests {
         output.textures_delta.clear();
         assert_eq!(passes, 2);
         assert_eq!(app.pending.len(), 1);
+    }
+
+    /// A file dropped onto another chat's row opens that chat and stages there.
+    #[test]
+    fn dropping_onto_another_chat_row_opens_it_and_stages_there() {
+        #[derive(Debug)]
+        struct FixtureDrop(PathBuf);
+        impl egui::DroppedFile for FixtureDrop {
+            fn path(&self) -> &std::path::Path {
+                &self.0
+            }
+            fn bytes(&self) -> Result<Vec<u8>, String> {
+                Ok(Vec::new())
+            }
+        }
+        let (mut app, ctx) = clipboard_app();
+        app.chats.push(Chat::new("kevin".into(), "Kevin".into()));
+        let row = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(200.0, 72.0));
+        ctx.data_mut(|data| {
+            let rows: Vec<(ChatId, egui::Rect)> = vec![("kevin".into(), row)];
+            data.insert_temp(App::drop_chat_rows_id(), rows);
+        });
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                dropped_files: vec![std::sync::Arc::new(FixtureDrop("fixture.png".into()))],
+                events: vec![egui::Event::PointerMoved(egui::pos2(10.0, 10.0))],
+                ..Default::default()
+            },
+            |ui| {
+                app.take_drops_and_pastes(ui.ctx());
+            },
+        );
+        output.textures_delta.clear();
+        assert_eq!(app.open_chat.as_deref(), Some("kevin"));
+        assert_eq!(app.pending.len(), 1);
+    }
+
+    /// A drop landing outside every row keeps the open chat, as before.
+    #[test]
+    fn dropping_outside_any_row_uses_the_open_chat() {
+        #[derive(Debug)]
+        struct FixtureDrop(PathBuf);
+        impl egui::DroppedFile for FixtureDrop {
+            fn path(&self) -> &std::path::Path {
+                &self.0
+            }
+            fn bytes(&self) -> Result<Vec<u8>, String> {
+                Ok(Vec::new())
+            }
+        }
+        let (mut app, ctx) = clipboard_app();
+        app.chats.push(Chat::new("kevin".into(), "Kevin".into()));
+        let row = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(200.0, 72.0));
+        ctx.data_mut(|data| {
+            let rows: Vec<(ChatId, egui::Rect)> = vec![("kevin".into(), row)];
+            data.insert_temp(App::drop_chat_rows_id(), rows);
+        });
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                dropped_files: vec![std::sync::Arc::new(FixtureDrop("fixture.png".into()))],
+                events: vec![egui::Event::PointerMoved(egui::pos2(10.0, 200.0))],
+                ..Default::default()
+            },
+            |ui| {
+                app.take_drops_and_pastes(ui.ctx());
+            },
+        );
+        output.textures_delta.clear();
+        assert_eq!(app.open_chat.as_deref(), Some("fixture"));
+        assert_eq!(app.pending.len(), 1);
+    }
+
+    /// Hovering files over a row arms the overlay even with no chat open.
+    #[test]
+    fn hovering_files_over_a_row_arms_the_drop_overlay() {
+        let (mut app, ctx) = clipboard_app();
+        app.open_chat = None;
+        app.chats.push(Chat::new("kevin".into(), "Kevin".into()));
+        let row = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(200.0, 72.0));
+        ctx.data_mut(|data| {
+            let rows: Vec<(ChatId, egui::Rect)> = vec![("kevin".into(), row)];
+            data.insert_temp(App::drop_chat_rows_id(), rows);
+        });
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                hovered_files: vec![egui::HoveredFile {
+                    path: Some("fixture.png".into()),
+                    mime: String::new(),
+                }],
+                events: vec![egui::Event::PointerMoved(egui::pos2(10.0, 10.0))],
+                ..Default::default()
+            },
+            |ui| {
+                app.take_drops_and_pastes(ui.ctx());
+            },
+        );
+        output.textures_delta.clear();
+        assert!(app.dropping);
+        assert_eq!(app.pending.len(), 0);
     }
 
     #[test]
