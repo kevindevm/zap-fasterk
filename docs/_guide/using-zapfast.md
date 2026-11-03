@@ -23,6 +23,8 @@ composer, unless that chat already has other text there.
 
 Enter sends and Shift+Enter adds a line. Turn off **Enter sends** in Settings
 to make Enter add a line and send with Ctrl+Enter (Command+Enter on macOS).
+The emoji picker stays open while you choose emoji and closes when you send
+the text.
 `*bold*`, `_italic_`, `~strike~`, and ```` ```monospace ```` ```` format
 like WhatsApp, and a message of nothing but emoji shows large.
 A line beginning with `> ` (greater-than and a space) is a block quote.
