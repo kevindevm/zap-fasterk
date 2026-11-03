@@ -374,6 +374,11 @@ impl Notifications {
 /// Pidgin's message and alert sounds (GPL-2.0, see `assets/sounds/README.md`).
 const RECEIVE: &[u8] = include_bytes!("../assets/sounds/receive.wav");
 const ALERT: &[u8] = include_bytes!("../assets/sounds/alert.wav");
+/// Zap Fasterk's own synthesized sounds (MIT, see `assets/sounds/README.md`).
+const DING: &[u8] = include_bytes!("../assets/sounds/ding.wav");
+const POP: &[u8] = include_bytes!("../assets/sounds/pop.wav");
+const BUBBLE: &[u8] = include_bytes!("../assets/sounds/bubble.wav");
+const CHORD: &[u8] = include_bytes!("../assets/sounds/chord.wav");
 
 /// Plays a notification sound on its own thread, for notifications and
 /// their preview in Settings. System sounds and silence play nothing here.
@@ -385,6 +390,10 @@ pub fn play_sound_on(sound: NotificationSound, preferred: Option<String>) {
     let source: Box<dyn Fn() -> std::io::Result<Box<dyn ReadSeek>> + Send> = match sound {
         NotificationSound::Receive => Box::new(|| Ok(Box::new(std::io::Cursor::new(RECEIVE)))),
         NotificationSound::Alert => Box::new(|| Ok(Box::new(std::io::Cursor::new(ALERT)))),
+        NotificationSound::Ding => Box::new(|| Ok(Box::new(std::io::Cursor::new(DING)))),
+        NotificationSound::Pop => Box::new(|| Ok(Box::new(std::io::Cursor::new(POP)))),
+        NotificationSound::Bubble => Box::new(|| Ok(Box::new(std::io::Cursor::new(BUBBLE)))),
+        NotificationSound::Chord => Box::new(|| Ok(Box::new(std::io::Cursor::new(CHORD)))),
         NotificationSound::Custom(path) => Box::new(move || {
             Ok(Box::new(std::io::BufReader::new(std::fs::File::open(
                 &path,
@@ -632,6 +641,13 @@ fn deliver(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn bundled_sounds_decode_without_an_audio_device() {
+        for bytes in [RECEIVE, ALERT, DING, POP, BUBBLE, CHORD] {
+            let decoded = rodio::Decoder::new(std::io::Cursor::new(bytes)).unwrap();
+            assert!(decoded.count() > 1000, "a bundled sound plays samples");
+        }
+    }
     #[test]
     fn notification_sound_retains_the_originating_accounts_selected_output() {
         let mut notifications = Notifications::default();

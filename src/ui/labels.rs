@@ -378,6 +378,10 @@ pub fn manager(app: &mut App, ui: &mut egui::Ui, palette: &Palette) {
                     Some(NotificationSound::Alert),
                     gettext(locale, "Pidgin alert"),
                 ),
+                (Some(NotificationSound::Ding), gettext(locale, "Ding")),
+                (Some(NotificationSound::Pop), gettext(locale, "Pop")),
+                (Some(NotificationSound::Bubble), gettext(locale, "Bubble")),
+                (Some(NotificationSound::Chord), gettext(locale, "Chord")),
                 (
                     Some(NotificationSound::System),
                     gettext(locale, "System sound"),

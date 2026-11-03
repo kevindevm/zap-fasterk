@@ -429,6 +429,14 @@ pub enum NotificationSound {
     /// Pidgin's alert sound, the default for mentions and replies to us.
     #[serde(alias = "ripple")]
     Alert,
+    /// A soft synthesized bell.
+    Ding,
+    /// A short synthesized pop.
+    Pop,
+    /// A two-note synthesized bubble.
+    Bubble,
+    /// A soft synthesized three-note chord.
+    Chord,
     /// Whatever the operating system plays for notifications.
     System,
     /// No sound.
@@ -1591,6 +1599,36 @@ mod tests {
             "the language keeps its stable serde name"
         );
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn notification_sounds_round_trip_through_json() {
+        // The archive stores per-chat sounds in this same format.
+        for sound in [
+            NotificationSound::Receive,
+            NotificationSound::Alert,
+            NotificationSound::Ding,
+            NotificationSound::Pop,
+            NotificationSound::Bubble,
+            NotificationSound::Chord,
+            NotificationSound::System,
+            NotificationSound::None,
+        ] {
+            let stored = serde_json::to_string(&sound).unwrap();
+            assert_eq!(
+                serde_json::from_str::<NotificationSound>(&stored).unwrap(),
+                sound
+            );
+        }
+        // Older settings that named the built-ins differently still load.
+        assert_eq!(
+            serde_json::from_str::<NotificationSound>(r#""chime""#).unwrap(),
+            NotificationSound::Receive
+        );
+        assert_eq!(
+            serde_json::from_str::<NotificationSound>(r#""ripple""#).unwrap(),
+            NotificationSound::Alert
+        );
     }
 
     #[test]

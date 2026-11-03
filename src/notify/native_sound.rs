@@ -12,6 +12,10 @@ pub(super) fn prepare(sound: &NotificationSound) -> Result<Option<String>, Strin
         NotificationSound::System => return Ok(Some("NSUserNotificationDefaultSoundName".into())),
         NotificationSound::Receive => super::RECEIVE.to_vec(),
         NotificationSound::Alert => super::ALERT.to_vec(),
+        NotificationSound::Ding => super::DING.to_vec(),
+        NotificationSound::Pop => super::POP.to_vec(),
+        NotificationSound::Bubble => super::BUBBLE.to_vec(),
+        NotificationSound::Chord => super::CHORD.to_vec(),
         NotificationSound::Custom(path) => {
             let file = std::fs::File::open(path).map_err(|_| "sound unavailable")?;
             if file.metadata().map_err(|_| "sound unavailable")?.len() > 16 * 1024 * 1024 {

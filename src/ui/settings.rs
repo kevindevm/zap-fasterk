@@ -2338,6 +2338,10 @@ fn sound_control(ui: &mut egui::Ui, app: &mut App, mention: bool) {
     let choices = [
         (NotificationSound::Receive, "Pidgin".into()),
         (NotificationSound::Alert, gettext(locale, "Pidgin alert")),
+        (NotificationSound::Ding, gettext(locale, "Ding")),
+        (NotificationSound::Pop, gettext(locale, "Pop")),
+        (NotificationSound::Bubble, gettext(locale, "Bubble")),
+        (NotificationSound::Chord, gettext(locale, "Chord")),
         (NotificationSound::System, gettext(locale, "System default")),
         // Translators: no notification sound.
         (NotificationSound::None, pgettext(locale, "sound", "None")),

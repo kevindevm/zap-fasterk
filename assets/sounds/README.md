@@ -6,3 +6,7 @@ source release (<https://pidgin.im>). Pidgin distributes them under the GNU
 General Public License, version 2; the full text is in `THIRD-PARTY-NOTICES.md` at the repository root.
 They remain under that license. The rest of ZapFast is MIT-licensed; these
 two files are separate data files that ZapFast plays, not part of its code.
+
+`ding.wav`, `pop.wav`, `bubble.wav` and `chord.wav` are short tones
+synthesized for Zap Fasterk. They are MIT-licensed like the rest of the
+project.

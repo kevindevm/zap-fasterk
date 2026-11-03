@@ -1954,6 +1954,22 @@ msgstr ""
 msgid "Pidgin alert"
 msgstr ""
 
+#: src/ui/settings.rs:2341 src/ui/chats.rs:2540 src/ui/labels.rs:381
+msgid "Ding"
+msgstr ""
+
+#: src/ui/settings.rs:2342 src/ui/chats.rs:2541 src/ui/labels.rs:382
+msgid "Pop"
+msgstr ""
+
+#: src/ui/settings.rs:2343 src/ui/chats.rs:2542 src/ui/labels.rs:383
+msgid "Bubble"
+msgstr ""
+
+#: src/ui/settings.rs:2344 src/ui/chats.rs:2543 src/ui/labels.rs:384
+msgid "Chord"
+msgstr ""
+
 #. Translators: no notification sound.
 #: src/ui/settings.rs:2314
 msgctxt "sound"
