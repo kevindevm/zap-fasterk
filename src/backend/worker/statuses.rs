@@ -35,6 +35,19 @@ impl Stories {
     pub(super) fn rows_empty(&self) -> bool {
         self.rows.is_empty()
     }
+
+    /// Marks one update seen here, stamping its local row. The phone is
+    /// not told. True when the update was still unseen.
+    pub(super) fn mark_read(&mut self, key: &str) -> bool {
+        let Some((row, _)) = self.rows.get_mut(key) else {
+            return false;
+        };
+        if row.read_at.is_some() {
+            return false;
+        }
+        row.read_at = Some(crate::util::now());
+        true
+    }
 }
 impl Worker {
     pub(super) fn ingest_status(&mut self, raw: &Arc<wa::Message>, info: &MessageInfo) {
@@ -380,6 +393,38 @@ mod tests {
             }),
             ..Default::default()
         })
+    }
+    #[test]
+    fn marking_a_status_seen_stamps_its_local_row_only() {
+        let (mut worker, _, _, _) = super::super::receipt_tests::worker();
+        let (raw, info) = delivery("story", crate::util::now());
+        worker.ingest(&raw, &info);
+        let key = worker.stories.rows.keys().next().unwrap().clone();
+        assert!(
+            worker
+                .stories
+                .rows
+                .values()
+                .next()
+                .unwrap()
+                .0
+                .read_at
+                .is_none()
+        );
+        assert!(worker.stories.mark_read(&key));
+        assert!(
+            worker
+                .stories
+                .rows
+                .values()
+                .next()
+                .unwrap()
+                .0
+                .read_at
+                .is_some()
+        );
+        assert!(!worker.stories.mark_read(&key), "a repeat changes nothing");
+        assert!(!worker.stories.mark_read("nobody:missing"));
     }
     #[test]
     fn revocations_survive_duplicate_delivery_and_later_privacy_id_mapping() {

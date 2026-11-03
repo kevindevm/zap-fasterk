@@ -6636,6 +6636,11 @@ impl Worker {
             Command::Automation(request) => self.automation(request),
             Command::Statuses => self.emit_statuses(),
             Command::DownloadStatus(key) => self.download_status(key),
+            Command::StatusRead(key) => {
+                if self.stories.mark_read(&key) {
+                    self.emit_statuses();
+                }
+            }
             Command::StatusDownloaded { key, token, result } => {
                 self.status_downloaded(key, token, result)
             }

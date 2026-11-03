@@ -154,6 +154,8 @@ pub enum Command {
     Automation(crate::automation::Pending),
     Statuses,
     DownloadStatus(String),
+    /// Marks one status update seen here; the phone is not told.
+    StatusRead(String),
     StatusDownloaded {
         key: String,
         token: u64,
