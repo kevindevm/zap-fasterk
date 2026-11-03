@@ -9,8 +9,4 @@
 
 /dist/
 
-/packaging/flatpak/built/
-/packaging/flatpak/cargo-sources.json
-/packaging/flatpak/flatpak-cargo-generator.py
-/.flatpak-builder/
 /build-dir/

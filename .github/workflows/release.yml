@@ -17,7 +17,7 @@ env:
 jobs:
   release-source:
     name: tag is on main
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
         with:
@@ -38,20 +38,10 @@ jobs:
       id-token: write
       attestations: write
     runs-on: ${{ matrix.os }}
-    # Build Linux against glibc 2.35, compatible with Debian 12 (2.36).
-    container: ${{ matrix.container }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-24.04
-            target: x86_64-unknown-linux-gnu
-            container: ubuntu:22.04
-          # A native arm64 runner, so the GUI's system libraries need no
-          # cross-compilation sysroot.
-          - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
-            container: ubuntu:22.04
           - os: windows-latest
             target: x86_64-pc-windows-msvc
           # Cross-compiled from x64: the MSVC arm64 linker ships with the
@@ -59,11 +49,6 @@ jobs:
           - os: windows-latest
             target: aarch64-pc-windows-msvc
     steps:
-      - name: Linux container tools
-        if: runner.os == 'Linux'
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends ca-certificates curl git build-essential pkg-config
       - uses: actions/checkout@v7
       - name: Check release version
         shell: bash
@@ -85,11 +70,6 @@ jobs:
           echo CMAKE_GENERATOR=Ninja >> "$GITHUB_ENV"
           echo CC_aarch64_pc_windows_msvc=clang-cl >> "$GITHUB_ENV"
           echo CXX_aarch64_pc_windows_msvc=clang-cl >> "$GITHUB_ENV"
-      - name: GUI build dependencies
-        if: runner.os == 'Linux'
-        run: |
-          apt-get update
-          apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev libasound2-dev cmake perl libclang-dev
       # No compiler cache: published binaries never build from outputs
       # restored from an Actions cache.
       - run: cargo build --locked --release --target ${{ matrix.target }}
@@ -99,22 +79,10 @@ jobs:
         run: |
           name="zap-fasterk-${GITHUB_REF_NAME}-${{ matrix.target }}"
           mkdir -p "dist/$name"
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cp "target/${{ matrix.target }}/release/zap-fasterk.exe" "dist/$name/"
-          else
-            cp "target/${{ matrix.target }}/release/zap-fasterk" "dist/$name/"
-          fi
+          cp "target/${{ matrix.target }}/release/zap-fasterk.exe" "dist/$name/"
           cp README.md LICENSE THIRD-PARTY-NOTICES.md packaging/zap-fasterk-portable.txt "dist/$name/"
-          if [ "${{ runner.os }}" = "Linux" ]; then
-            # Desktop integration for package builds and hand-installs.
-            cp --parents packaging/applications/zap-fasterk.desktop packaging/icons/zap-fasterk.svg contrib/omarchy/zap-fasterk.json.tpl contrib/omarchy/zap-fasterk-theme "dist/$name/"
-          fi
           cd dist
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            7z a "$name.zip" "$name"
-          else
-            tar czf "$name.tar.gz" "$name"
-          fi
+          7z a "$name.zip" "$name"
 
       # The Windows installer: a per-user Windows Installer package, which also
       # takes over a copy the Inno Setup program of earlier releases installed
@@ -122,11 +90,9 @@ jobs:
       # test-installer.ps1 can make an Inno install for the package to take
       # over; releases no longer ship the setup program.
       - uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
-        if: runner.os == 'Windows'
         with:
           ruby-version: '4.0'
       - name: Windows Installer package
-        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           gem install native-packages --version 0.9.0 --no-document
@@ -155,149 +121,19 @@ jobs:
         uses: crmne/native-packages/.github/actions/attest@83bd46c245488c2b8f1b9d74569e16cf6a449e8f # v0.9.0
         with:
           subject-path: |
-            dist/*.tar.gz
             dist/*.zip
             dist/*.msi
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: |
-            dist/*.tar.gz
             dist/*.zip
             dist/*.msi
           if-no-files-found: error
 
-  macos:
-    name: macOS universal app
-    needs: release-source
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
-    runs-on: macos-latest
-    env:
-      # Complete Apple credentials enable native-packages signing/notarization.
-      APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
-      - run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
-      # No compiler cache, as in the build job above.
-      - name: Build both architectures
-        run: |
-          cargo build --locked --release --target aarch64-apple-darwin
-          cargo build --locked --release --target x86_64-apple-darwin
-
-      - name: Universal binary
-        run: |
-          mkdir -p universal
-          lipo -create \
-            target/aarch64-apple-darwin/release/zap-fasterk \
-            target/x86_64-apple-darwin/release/zap-fasterk \
-            -output universal/zap-fasterk
-          # The two release builds fill most of the runner's disk; the DMG
-          # and its notarization copy need room of their own.
-          rm -rf target
-          df -h "$RUNNER_TEMP"
-
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '4.0'
-      - name: Install native packaging
-        run: gem install native-packages --version 0.9.0 --no-document
-
-      - name: App bundle
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          mkdir -p dist/macos-input
-          bash packaging/macos/bundle.sh universal/zap-fasterk "dist/macos-input/Zap Fasterk.app" "$version"
-          cp README.md LICENSE THIRD-PARTY-NOTICES.md dist/macos-input/
-
-      - name: Package, sign and notarize macOS app
-        run: |
-          native-packages build \
-            --version "${GITHUB_REF_NAME#v}" --target macos-universal --defer-recipes \
-            --output "$RUNNER_TEMP/macos-packages"
-          cp "$RUNNER_TEMP/macos-packages/packages/macos-universal/dmg/"*.dmg dist/
-
-      - name: Verify the notarized release app
-        if: env.APPLE_SIGNING_IDENTITY != '' && env.APPLE_ID != '' && env.APPLE_TEAM_ID != '' && env.APPLE_APP_PASSWORD != ''
-        run: bash packaging/macos/verify.sh "dist/zap-fasterk-${GITHUB_REF_NAME}-macos-universal.dmg"
-
-      - name: Verify unsigned app bundle
-        if: env.APPLE_SIGNING_IDENTITY == '' || env.APPLE_ID == '' || env.APPLE_TEAM_ID == '' || env.APPLE_APP_PASSWORD == ''
-        run: |
-          echo "This release is ad-hoc signed, without Apple notarization."
-          codesign --verify --strict --deep "dist/macos-input/Zap Fasterk.app"
-          lipo "dist/macos-input/Zap Fasterk.app/Contents/MacOS/zap-fasterk" -verify_arch x86_64 arm64
-          python3 - <<'PY'
-          import plistlib
-          with open('dist/macos-input/Zap Fasterk.app/Contents/Info.plist', 'rb') as source:
-              info = plistlib.load(source)
-          assert info['CFBundleIdentifier'] == 'io.github.kevindevm.ZapFasterk'
-          assert info.get('NSMicrophoneUsageDescription', '').strip()
-          PY
-
-      - name: Attest macOS package
-        uses: crmne/native-packages/.github/actions/attest@83bd46c245488c2b8f1b9d74569e16cf6a449e8f # v0.9.0
-        with:
-          subject-path: dist/*.dmg
-      - uses: actions/upload-artifact@v7
-        with:
-          name: macos-universal
-          path: dist/*.dmg
-          if-no-files-found: error
-
-  # The Linux build packaged as a Flatpak bundle: the same binary, in the
-  # sandbox packaging/flatpak describes, so nothing compiles twice. Flathub
-  # builds from source on its own machines, from the manifest beside it.
-  flatpak:
-    name: Flatpak bundle
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
-    needs: build
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
-      options: --privileged
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v7
-        with:
-          name: x86_64-unknown-linux-gnu
-          path: dist
-      - name: Unpack the Linux build
-        run: |
-          tar xzf dist/zap-fasterk-${GITHUB_REF_NAME}-x86_64-unknown-linux-gnu.tar.gz -C packaging/flatpak
-          mv packaging/flatpak/zap-fasterk-${GITHUB_REF_NAME}-x86_64-unknown-linux-gnu packaging/flatpak/built
-      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
-        with:
-          manifest-path: packaging/flatpak/io.github.kevindevm.ZapFasterk.bundle.yml
-          bundle: zap-fasterk-${{ github.ref_name }}-x86_64.flatpak
-          cache: false
-          upload-artifact: false
-      - name: Attest Flatpak bundle
-        uses: crmne/native-packages/.github/actions/attest@83bd46c245488c2b8f1b9d74569e16cf6a449e8f # v0.9.0
-        with:
-          subject-path: "*.flatpak"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: flatpak
-          path: "*.flatpak"
-          if-no-files-found: error
-
   publish:
     name: GitHub release
-    needs: [build, macos, flatpak]
+    needs: [build]
     runs-on: ubuntu-latest
     environment: release-signing
     permissions:
