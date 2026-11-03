@@ -8,11 +8,12 @@ nav_order: 0
 
 ## Why Zap Fasterk
 
-WhatsApp has no official Linux app. Zap Fasterk is a native WhatsApp client
+WhatsApp has no official desktop app for power users on Windows. Zap Fasterk
+is a native WhatsApp client
 written in Rust with [egui](https://github.com/emilk/egui). It connects through
 [whatsapp-rust](https://github.com/oxidezap/whatsapp-rust). Zap Fasterk is a
 single binary with no browser engine and uses a layout similar to WhatsApp Web.
-In our Linux test, it opens in under a second and uses about 200 MB of idle
+It opens in under a second and uses about 200 MB of idle
 RAM, compared with 1.13 GB for WhatsApp Web and its Chromium processes.
 [See the measurements](/benchmarks/).
 

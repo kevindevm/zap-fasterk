@@ -6,53 +6,19 @@ nav_order: 2
 
 ## Install
 
-The [Download page](/download/) has packages and archives for Linux,
-macOS, and Windows.
+The [Download page](/download/) has the Windows installer and portable builds.
 
 Or build from source with a recent stable [Rust](https://rustup.rs):
 
 ```sh
 git clone https://github.com/kevindevm/zap-fasterk zapfasterk
 cd zapfasterk
-cargo install --path .
-zapfasterk
+cargo run --locked --release
 ```
 
-On Linux, `cargo install` puts the binary on your `PATH` but does not add a
-launcher entry. To get one (Zap Fasterk under your application launcher, with its
-own icon and no terminal), install a release build instead:
-
-```sh
-cargo build --release --locked
-packaging/install-user.sh
-```
-
-This installs the binary, the icon, and a desktop file under `~/.local` (or
-`$PREFIX`) and writes that desktop file's `Exec=` as the quoted full path to the
-binary it just installed, so the entry works even when `~/.local/bin` is not on
-the session's `PATH`. `install-user.sh` is Linux-only; on macOS and Windows a
-source build has no launcher integration.
-
-The build needs a C/C++ toolchain, CMake, and Perl (for the bundled
-OpenSSL); `rust-toolchain.toml` pins the Rust version. On Linux it also needs
-egui's development libraries and ALSA. libopus and the H.264 decoder build
-from source. On Arch Linux:
-
-```sh
-sudo pacman -S --needed alsa-lib libxkbcommon wayland cmake perl
-```
-
-On Debian or Ubuntu:
-
-```sh
-sudo apt install build-essential cmake perl libasound2-dev libxkbcommon-dev libwayland-dev libgl1-mesa-dev
-```
-
-With Nix, `nix develop` provides the toolchain and every native dependency,
-and `nix run .#zapfasterk` builds and runs it.
-
-The packaged desktop entry is `packaging/applications/zapfasterk.desktop`;
-`packaging/install-user.sh` derives the user copy above from it.
+The build needs Visual Studio C++ Build Tools, CMake, LLVM/libclang, and
+Perl; `rust-toolchain.toml` pins the Rust version. libopus and the H.264
+decoder build from source.
 
 ## Link with your phone
 

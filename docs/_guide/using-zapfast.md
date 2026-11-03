@@ -629,13 +629,6 @@ another application. The link opens its recipient on the active WhatsApp
 account and puts any `text=` message in the composer as an unsent draft.
 An existing draft is kept, with the link's text appended on a new line.
 
-On Linux, choose Zap Fasterk as the handler after installing it:
-
-```sh
-xdg-mime default zap-fasterk.desktop x-scheme-handler/whatsapp
-xdg-open 'whatsapp://send?phone=15550100123&text=Hello%20from%20a%20link'
-```
-
 Use the full international phone number, including the country code. Text
 is URL-decoded, including accents, emoji, and line breaks. You can also pass
 the same link, a `wa.me` or `api.whatsapp.com/send` web link, or a number
@@ -695,42 +688,25 @@ it, and `Ctrl+B` brings the full list back.
 ## Notifications and the tray
 
 Closing the window keeps Zap Fasterk linked in the tray. Click the tray icon or
-launch the app again to reopen it, and on Windows click it again to hide a
-window that is in front. To quit, use **Quit** in the tray menu, or on
-Linux **Quit Zap Fasterk** in the launcher's right-click menu (KDE Plasma's task
-manager and application menu, GNOME's Dash), which runs `zapfasterk quit`.
-Launchers that support the Unity Launcher API
-show the unread count as a badge on the app icon: KDE Plasma's taskbar, with
-**Show badges** enabled in the Task Manager settings, and GNOME's Dash to Dock
-or Dash to Panel. Windows overlays a compact unread-message count on Zap Fasterk's
-taskbar button while the window is open, using `99+` above 99. Windows must use
+launch the app again to reopen it, and click it again to hide a
+window that is in front. To quit, use **Quit** in the tray menu.
+The taskbar button carries a compact unread-message count while the window is
+open, using `99+` above 99. Windows must use
 its regular taskbar icon size for overlays to appear. The count
-does not count toasts remaining in Windows notification history. On Linux and
-Windows, notifications show the chat picture and open the chat at the message
-they announced when clicked. On Linux, a notification that arrives while the
-window is open behind others also highlights Zap Fasterk in the taskbar until you
-switch to it. Muted chats do not send notifications, and
+does not count toasts remaining in Windows notification history.
+Notifications show the chat picture and open the chat at the message
+they announced when clicked.
+Muted chats do not send notifications, and
 archived chats stay quiet while they remain archived. You can change both settings.
 With several numbers linked, the bell beside a number in the account switcher
 mutes all of that number's notifications while it stays connected, and leaves
 its unread chats out of the taskbar badge, as a muted chat's are.
-On Windows, while every display is off, Zap Fasterk leaves new-message notifications
+While every display is off, Zap Fasterk leaves new-message notifications
 to the phone instead of queuing desktop banners to appear when the display turns on.
-On macOS, the Dock icon also shows the unread count and clears it while the app
-is locked. In **Settings > Notifications**, **Show notification sender** controls
+In **Settings > Notifications**, **Show notification sender** controls
 chat names, pictures and chat-specific sounds. Turning it off also hides message
 content. **Show notification content** can hide previews while retaining the chat
 name. These choices apply separately to each account; locks always mask previews.
-
-macOS plays notification sounds through Notification Center, so the system's
-Focus and Do Not Disturb settings control them. Custom files must be at most
-16 MiB, shorter than 30 seconds, and decodable as mono or stereo audio. Unsupported
-files use the system notification sound. The prepared WAV copy stays locally in
-`~/Library/Sounds`. Banners still require notification permission and enabled
-banner settings for the installed Zap Fasterk application.
-
-Linux hidden startup waits up to 15 seconds for a tray watcher. If none appears,
-Zap Fasterk opens its window so you can still reach it.
 To hear less from busy chats, set **Limit repeat notifications** in
 **Settings > Notifications** to direct messages, groups, or both: a chat then
 sends one notification, stays quiet for 10 minutes, and notifies again once you
@@ -740,7 +716,7 @@ Press `Ctrl+/` or click the keyboard button under the composer to list all
 shortcuts.
 
 The open chat's messages form one list, a single Tab stop reached with
-`Alt+2` (`Control+2` on macOS). In the list, Up and Down move through messages,
+`Alt+2`. In the list, Up and Down move through messages,
 Home and End go to the oldest loaded and the newest message, and PgUp and PgDn
 move about a screen; Home on the oldest loaded message loads older history.
 The current message stays current while new messages arrive, and follows jumps
@@ -785,7 +761,6 @@ Choose **Document** on a staged attachment tile to send original image file byte
 Under **Settings > Appearance > Emoji style**, choose System, Noto Color Emoji,
 or **Choose a colour emoji font file**. Supply a local font you are allowed to
 use; Zap Fasterk does not download or include proprietary emoji libraries.
-Apple emoji already come from the system font on macOS in System mode.
 
 Import accepts CBDT or sbix colour bitmap fonts (TTF, OTF or collections) up to
 256 MiB, using the first face of a collection. COLR/SVG-only fonts and image
@@ -819,8 +794,7 @@ Settings > Appearance > Theme offers **Messages**, an optional appearance with
 round bubbles and a frosted conversation header. It follows your computer's
 light or dark appearance. The default theme is unchanged.
 
-macOS uses its native sidebar material, supported Windows 11 versions use Mica,
-and Hyprland can blur the desktop behind the window. Other systems retain an
+Supported Windows 11 versions use Mica, other systems retain an
 opaque background. Choosing this theme while a window is open may require
 closing and reopening the window before desktop translucency appears. The
 rounded bubbles and header are available immediately.

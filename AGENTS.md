@@ -11,6 +11,7 @@ for Linux or macOS, and do not verify other platforms.
 - Commits, PRs and issue comments read like a person wrote them: short, plain, no em dashes in new text.
 - GitHub issue comments are short and non-technical. Fix things properly instead of documenting a partial fix.
 - Do not publish a release or push without the user asking for it.
+- After a rebase, show the commit list and wait for approval before pushing.
 - After each feature or fix, build the release exe and deploy it to the local install, closing the app first if it is open.
 
 

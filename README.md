@@ -1,5 +1,7 @@
 # ZapFasterk
 
+> **Windows only.** This fork builds, tests, and releases on Windows. There are no Linux or macOS builds.
+
 **Native WhatsApp for power users. Built by one.**
 
 ZapFasterk is a fork of [ZapFast](https://github.com/crmne/zapfast), maintained by a daily WhatsApp power user. The goal is to bring the useful workflows people once relied on WhatsApp plugins for into a fast native app, and get fixes and new features into users' hands faster.
@@ -9,6 +11,30 @@ That means better ways to manage busy conversations, work with attachments, navi
 ZapFasterk is a small native WhatsApp client for Windows, built with Rust, [egui](https://github.com/emilk/egui), [whatsapp-rust](https://github.com/oxidezap/whatsapp-rust) and [fastframe](https://github.com/crmne/fastframe). It links to your phone as a companion device. No browser engine, telemetry, hosted backend or ZapFasterk account is required. This fork targets Windows only.
 
 The original project and its contributors made this possible. ZapFasterk builds on [ZapFast](https://github.com/crmne/zapfast) by Carmine Paolino and contributors, the [whatsapp-rust](https://github.com/oxidezap/whatsapp-rust) protocol library, [egui](https://github.com/emilk/egui) and [fastframe](https://github.com/crmne/fastframe). It takes in changes from many repositories: compatible fixes travel both ways with upstream, and every integrated change keeps its source link and author credit in commit history and release notes. This fork preserves the MIT license, copyright notices and contributor credit. It is vibe-coded: an AI coding assistant (OpenCode) works as co-author, drafting the changes, and the maintainer reviews, tests and signs off on every commit. The human-accountability rule in CONTRIBUTING.md applies to every contribution, human or AI. It has its own maintenance and release schedule. Contributions and fixes from either project are welcome. The human-accountability rule in CONTRIBUTING.md applies to every contribution, human or AI.
+
+## What it can and cannot do
+
+| Capability | Status |
+|---|---|
+| Send and receive text, replies, mentions, reactions | ✅ |
+| Edit, delete for me (synced), forward | ✅ |
+| Photos, videos, voice messages, documents, GIFs, stickers (animated too) | ✅ |
+| View-once photos, round video messages, motion photos | ✅ |
+| Polls: create and vote | ✅ |
+| Quick replies and single-select lists | ✅ |
+| Voice-note transcription | ❌ (removed; old transcripts still show) |
+| Schedule text and one photo with caption | ✅ |
+| Schedule view-once photos | ❌ |
+| 1:1 audio and video calls | ✅ |
+| Group calls | ❌ (waiting on upstream) |
+| Group chats, disappearing messages, group descriptions | ✅ |
+| Channels: view and mute all | ✅ |
+| Post to channels | ❌ |
+| Status updates: view the last 24 hours, kept across restarts | ✅ |
+| Post statuses, status read receipts | ❌ (read-only by design) |
+| Several linked accounts, locked chats, app lock | ✅ |
+| Encrypted archive, backups and merge, automatic exports | ✅ |
+| Themes, notifications and tray, chat search, starred, labels | ✅ |
 
 ## Download and run
 

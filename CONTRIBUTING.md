@@ -82,9 +82,8 @@ release status stated. Reopen the issue if it persists after updating.
    settings, modes, and speculative features.
 3. **Honest integrations.** Use whatsapp-rust for what it supports. Do not
    advertise a capability merely because a protobuf field exists for it.
-4. **Cross-platform by default.** Linux, macOS, and Windows are supported
-   products. Platform-specific code must be isolated and the other targets
-   must keep compiling.
+4. **Windows only.** Windows is the supported product. Do not add code,
+   tests, packaging, or docs for other platforms.
 5. **Small dependency surface.** Reuse the standard library and existing
    crates where practical. A new dependency needs a concrete benefit worth its
    build time, binary size, maintenance, and security cost. Do not vendor or
@@ -156,12 +155,10 @@ the updated PO files. Keep each translatable literal inside its own `gettext`
 call so extraction can find it. Normal Cargo builds compile the catalogs without
 gettext tools.
 
-Linux needs the development packages listed in
-[the build and packaging guide](PACKAGING.md); `nix develop`
-provides the complete development environment. When changing `Cargo.lock` or
-`flake.nix`, also verify `nix build` on a Nix host or wait for the Nix CI job.
-Passing CI is required, but does not replace review for correctness, product
-fit, maintainability, or security.
+Windows needs Visual Studio C++ Build Tools, CMake, LLVM/libclang, and
+Perl; see [the build and packaging guide](PACKAGING.md). Passing CI is
+required, but does not replace review for correctness, product fit,
+maintainability, or security.
 
 `AGENTS.md` describes the architecture and conventions in more detail.
 
