@@ -16,8 +16,8 @@ concurrency:
 jobs:
   publish:
     name: Publish from main version bump
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
+    runs-on: windows-latest
+    timeout-minutes: 120
     outputs:
       should_release: ${{ steps.determine.outputs.should_release }}
       tag_name: ${{ steps.determine.outputs.tag_name }}
@@ -78,11 +78,8 @@ jobs:
       # there is nothing to publish to crates.io.
       - uses: dtolnay/rust-toolchain@stable
         if: steps.determine.outputs.should_release == 'true'
-      - name: GUI build dependencies
-        if: steps.determine.outputs.should_release == 'true'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev libasound2-dev cmake perl libclang-dev
+        with:
+          components: rustfmt, clippy
 
       - name: Formatting
         if: steps.determine.outputs.should_release == 'true'

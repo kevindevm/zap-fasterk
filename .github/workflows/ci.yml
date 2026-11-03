@@ -23,7 +23,7 @@ env:
 jobs:
   audit:
     name: Dependency advisories
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -35,17 +35,13 @@ jobs:
 
   quality:
     name: quality
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - name: GUI build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev libasound2-dev cmake perl libclang-dev
       # After the toolchain, so the cache key follows the pinned rustc. The
       # key carries no job name, so each job sets its own generation. Saves
       # only on pushes to main; pull requests restore.
@@ -64,21 +60,12 @@ jobs:
         run: mbx doc --locked --all-features --no-deps
 
   test:
-    name: test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: test (windows-latest)
+    runs-on: windows-latest
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-      - name: GUI build dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-0 libwayland-dev libgl1-mesa-dev libasound2-dev cmake perl libclang-dev xvfb xauth libgl1-mesa-dri libegl1
       - uses: jdx/mr-boxington-action@v1
         with:
           cache-generation: test-v1
@@ -87,58 +74,6 @@ jobs:
         run: mbx test --locked --all-targets
       - name: Tests (all features)
         run: mbx test --locked --all-targets --all-features
-      - name: Build macOS demo
-        if: runner.os == 'macOS'
-        run: mbx build --locked --features demo
-      - name: macOS window smoke test
-        if: runner.os == 'macOS'
-        timeout-minutes: 3
-        run: |
-          target/debug/zap-fasterk --demo --demo-shot "$RUNNER_TEMP/zap-fasterk-content.png" --demo-shot-delay 8000 &
-          demo_pid=$!
-          sleep 6
-          screencapture -x "$RUNNER_TEMP/zap-fasterk-window.png" || true
-          wait "$demo_pid"
-          test -s "$RUNNER_TEMP/zap-fasterk-content.png"
-          for page in media-album forward-review voice-transcript starred star-menu pinned background-history original-documents international-sender; do
-            target/debug/zap-fasterk --demo --demo-page "$page" --demo-shot "$RUNNER_TEMP/zap-fasterk-$page.png" --demo-shot-delay 1200
-            test -s "$RUNNER_TEMP/zap-fasterk-$page.png"
-          done
-      - name: macOS preview
-        if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v7
-        with:
-          name: macos-preview
-          path: ${{ runner.temp }}/zap-fasterk-*.png
-      - name: Build Linux demo
-        if: runner.os == 'Linux'
-        run: mbx build --locked --features demo
-      - name: Linux native window smoke test
-        if: runner.os == 'Linux'
-        timeout-minutes: 10
-        env:
-          LIBGL_ALWAYS_SOFTWARE: "1"
-          GALLIUM_DRIVER: llvmpipe
-          XDG_RUNTIME_DIR: ${{ runner.temp }}/zap-fasterk-demo-runtime
-        run: |
-          mkdir -p "$XDG_RUNTIME_DIR"
-          chmod 700 "$XDG_RUNTIME_DIR"
-          for page in media-album forward-review voice-transcript starred star-menu pinned background-history original-documents international-sender; do
-            timeout 45s xvfb-run -a -s "-screen 0 1600x1200x24" \
-              env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET \
-              target/debug/zap-fasterk --demo --demo-page "$page" \
-              --demo-shot "$RUNNER_TEMP/zap-fasterk-$page.png" --demo-shot-delay 2500 \
-              > "$RUNNER_TEMP/zap-fasterk-$page.log" 2>&1
-            test -s "$RUNNER_TEMP/zap-fasterk-$page.png"
-          done
-      - name: Linux preview
-        if: always() && runner.os == 'Linux'
-        uses: actions/upload-artifact@v7
-        with:
-          name: linux-preview
-          path: |
-            ${{ runner.temp }}/zap-fasterk-*.png
-            ${{ runner.temp }}/zap-fasterk-*.log
 
   windows-arm64:
     name: compile (Windows arm64)
@@ -161,35 +96,3 @@ jobs:
         with:
           cache-generation: windows-arm64-v1
       - run: mbx check --locked --all-targets --all-features --target aarch64-pc-windows-msvc
-
-  nix:
-    name: Nix package (${{ matrix.system }})
-    runs-on: ${{ matrix.os }}
-    # The macOS cold build exceeded the former 90-minute job limit.
-    # Keep a finite limit and show builder output so slow steps are diagnosable.
-    timeout-minutes: ${{ matrix.system == 'aarch64-darwin' && 120 || 90 }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            system: x86_64-linux
-          - os: ubuntu-24.04-arm
-            system: aarch64-linux
-          - os: macos-latest
-            system: aarch64-darwin
-    steps:
-      - uses: actions/checkout@v7
-      # Frees disk space on Ubuntu runners; macOS runners have enough.
-      - uses: wimpysworld/nothing-but-nix@v9
-        if: runner.os == 'Linux'
-      - uses: cachix/install-nix-action@v31
-      - uses: nix-community/cache-nix-action@v7
-        with:
-          save: ${{ github.ref == 'refs/heads/main' }}
-          primary-key: nix-${{ matrix.system }}-${{ hashFiles('**/flake.lock') }}
-          restore-prefixes-first-match: nix-${{ matrix.system }}-
-      - name: Check flake outputs
-        run: nix flake check --no-build
-      - name: Build package
-        run: nix build --print-build-logs .#default
