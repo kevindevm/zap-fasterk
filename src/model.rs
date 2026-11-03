@@ -2412,6 +2412,16 @@ pub enum Action {
     FitImage,
     CloseImagePreview,
     DownloadStatus(String),
+    /// Opens the Status viewer on one update. The update counts as seen
+    /// here; the phone is not told. The key is `sender:id`.
+    StatusOpen(String),
+    /// In the Status viewer, the author's previous (`back`) or next update,
+    /// wrapping at the ends. The update it lands on counts as seen here.
+    StatusStep {
+        back: bool,
+    },
+    /// Leaves the Status viewer for its authors' list.
+    StatusClose,
     /// Shows a downloaded sticker with a favorite toggle.
     PreviewSticker(PathBuf),
     CloseStickerPreview,

@@ -2126,7 +2126,14 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
                     },
                 );
                 photo.thumbnail = Some(sample_thumbnail(4));
-                app.statuses = vec![text, photo];
+                let late = message(
+                    SAMPLES[0].id,
+                    "synthetic-status-late",
+                    false,
+                    now - 60,
+                    Content::text("Made it before sunset."),
+                );
+                app.statuses = vec![text, photo, late];
                 app.dialog = Some(Dialog::Statuses);
             }
             "archive-backup" => app.dialog = Some(Dialog::ArchiveBackup { restore: false }),

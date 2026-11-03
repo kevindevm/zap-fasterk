@@ -33,6 +33,8 @@ pub struct Account {
     pub call_devices: crate::calls::DeviceList,
     pub call_records: Vec<crate::archive::CallRecord>,
     pub statuses: Vec<Message>,
+    /// The Status viewer's open update, as a `sender:id` key, if any.
+    pub status_shown: Option<String>,
     pub call_log_open: bool,
     pub me: Option<String>,
     pub me_lid: Option<String>,
@@ -186,6 +188,7 @@ impl Account {
             call_devices: Default::default(),
             call_records: Vec::new(),
             statuses: Vec::new(),
+            status_shown: None,
             call_log_open: false,
             me: None,
             me_lid: None,

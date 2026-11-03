@@ -264,6 +264,11 @@ pub fn handle(app: &mut App, ctx: &egui::Context) {
             && app.gallery.tab.is_some()
         {
             actions.push(Action::GalleryTab(None));
+        } else if matches!(app.dialog, Some(crate::model::Dialog::Statuses))
+            && app.status_shown.is_some()
+        {
+            // The first Escape leaves the viewer for its authors' list.
+            actions.push(Action::StatusClose);
         } else if app.dialog.is_some() {
             actions.push(Action::CloseDialog);
         } else if app.recording.is_some() {
@@ -1101,6 +1106,25 @@ mod tests {
             app.actions.as_slice(),
             [Action::Open(Page::Chats)]
         ));
+    }
+
+    #[test]
+    fn escape_leaves_the_status_viewer_before_closing_its_dialog() {
+        let root = tempfile::tempdir().unwrap();
+        let mut app = App::headless(
+            crate::paths::AppDirs::under(root.path()),
+            crate::settings::Settings::default(),
+        )
+        .0;
+        let ctx = egui::Context::default();
+        app.dialog = Some(Dialog::Statuses);
+        app.status_shown = Some("ana:new".into());
+        escape(&mut app, &ctx);
+        assert!(matches!(app.actions.as_slice(), [Action::StatusClose]));
+        app.actions.clear();
+        app.status_shown = None;
+        escape(&mut app, &ctx);
+        assert!(matches!(app.actions.as_slice(), [Action::CloseDialog]));
     }
 
     #[test]

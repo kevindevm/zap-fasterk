@@ -3691,7 +3691,12 @@ impl App {
             }
             Event::CallDevices(devices) => self.call_devices = *devices,
             Event::CallLog(records) => self.call_records = records,
-            Event::Statuses(rows) => self.statuses = rows,
+            Event::Statuses(rows) => {
+                self.statuses = rows;
+                if live {
+                    self.status_heal();
+                }
+            }
 
             Event::Link(status) => {
                 if live && status != self.link {
@@ -5594,6 +5599,72 @@ impl App {
             token: self.gallery.token,
             anchor,
         });
+    }
+    /// The worker's key for one status update: `sender:id`.
+    pub(crate) fn status_key(sender: &str, id: &str) -> String {
+        format!("{sender}:{id}")
+    }
+    /// One sender's updates, newest first.
+    fn status_entries(&self, sender: &str) -> Vec<Message> {
+        let mut entries: Vec<_> = self
+            .statuses
+            .iter()
+            .filter(|row| row.sender == sender)
+            .cloned()
+            .collect();
+        entries.sort_by_key(|row| std::cmp::Reverse(row.timestamp));
+        entries
+    }
+    /// Opens the Status viewer on one update. It counts as seen here: the
+    /// phone is not told. A photo or video fetches on its own when it has
+    /// none yet; the worker ignores the ask when there is nothing to do.
+    fn status_open(&mut self, key: String) {
+        self.status_shown = Some(key.clone());
+        self.backend.send(Command::StatusRead(key.clone()));
+        self.backend.send(Command::DownloadStatus(key));
+    }
+    /// In the viewer, the author's previous (`back`, older) or next update,
+    /// wrapping at the ends so nothing dead-ends. The update it lands on
+    /// counts as seen here.
+    fn status_step(&mut self, back: bool) {
+        let Some(shown) = self.status_shown.clone() else {
+            return;
+        };
+        let Some(current) = self
+            .statuses
+            .iter()
+            .find(|row| Self::status_key(&row.sender, &row.id) == shown)
+            .cloned()
+        else {
+            return;
+        };
+        let entries = self.status_entries(&current.sender);
+        let Some(at) = entries
+            .iter()
+            .position(|row| Self::status_key(&row.sender, &row.id) == shown)
+        else {
+            return;
+        };
+        let to = if back {
+            (at + 1) % entries.len()
+        } else if at == 0 {
+            entries.len() - 1
+        } else {
+            at - 1
+        };
+        self.status_open(Self::status_key(&entries[to].sender, &entries[to].id));
+    }
+    /// Keeps the Status viewer on an update it is showing while the list
+    /// moves under it: when its own update is gone, the viewer closes.
+    fn status_heal(&mut self) {
+        if let Some(shown) = self.status_shown.clone()
+            && !self
+                .statuses
+                .iter()
+                .any(|row| Self::status_key(&row.sender, &row.id) == shown)
+        {
+            self.status_shown = None;
+        }
     }
     fn hydrate_gallery_message(&mut self, chat: &str, id: &str) {
         if !self.gallery_accessible(chat)
@@ -7721,6 +7792,11 @@ impl App {
             }
             Action::DownloadStatus(key) => {
                 self.backend.send(Command::DownloadStatus(key));
+            }
+            Action::StatusOpen(key) => self.status_open(key),
+            Action::StatusStep { back } => self.status_step(back),
+            Action::StatusClose => {
+                self.status_shown = None;
             }
             Action::CloseImagePreview => {
                 self.video.stop();
@@ -11831,6 +11907,79 @@ mod tests {
         ));
         app.flush_undo(now, &egui::Context::default());
         assert!(commands.try_recv().is_err());
+    }
+
+    #[test]
+    fn status_viewer_steps_through_one_author_and_heals_when_its_update_leaves() {
+        fn story(sender: &str, id: &str, timestamp: i64) -> crate::model::Message {
+            crate::model::Message {
+                id: id.into(),
+                chat: sender.into(),
+                sender: sender.into(),
+                sender_name: None,
+                from_me: false,
+                timestamp,
+                history_order: None,
+                content: crate::model::Content::Text {
+                    text: id.into(),
+                    preview: None,
+                },
+                status: crate::model::Delivery::None,
+                delivered_at: None,
+                read_at: None,
+                quoted: None,
+                reactions: Vec::new(),
+                edited: false,
+                mentions: Vec::new(),
+                forwarded: false,
+                thumbnail: None,
+            }
+        }
+        let mut app = app();
+        let (backend, mut commands) = crate::backend::Backend::recording();
+        app.backend = backend;
+        let ctx = egui::Context::default();
+        app.statuses = vec![
+            story("ana", "old", 100),
+            story("ana", "new", 200),
+            story("bea", "only", 150),
+        ];
+        app.apply(Action::StatusOpen(App::status_key("ana", "new")), &ctx);
+        assert_eq!(app.status_shown.as_deref(), Some("ana:new"));
+        assert!(
+            matches!(commands.try_recv().unwrap(), crate::backend::Command::StatusRead(key) if key == "ana:new"),
+            "opening counts the update as seen here"
+        );
+        assert!(
+            matches!(commands.try_recv().unwrap(), crate::backend::Command::DownloadStatus(key) if key == "ana:new"),
+            "opening fetches a photo or video on its own"
+        );
+        app.apply(Action::StatusStep { back: true }, &ctx);
+        assert_eq!(
+            app.status_shown.as_deref(),
+            Some("ana:old"),
+            "previous is the older update"
+        );
+        app.apply(Action::StatusStep { back: true }, &ctx);
+        assert_eq!(
+            app.status_shown.as_deref(),
+            Some("ana:new"),
+            "steps wrap around instead of dead-ending"
+        );
+        app.apply(Action::StatusStep { back: false }, &ctx);
+        assert_eq!(app.status_shown.as_deref(), Some("ana:old"));
+        app.statuses.retain(|row| row.id != "only");
+        app.status_heal();
+        assert!(
+            app.status_shown.is_some(),
+            "another author's update leaving keeps the viewer"
+        );
+        app.statuses.retain(|row| row.sender != "ana");
+        app.status_heal();
+        assert!(
+            app.status_shown.is_none(),
+            "the viewer closes when its update is gone"
+        );
     }
 
     use super::*;
