@@ -6,6 +6,14 @@ protocol. These notes are for coding agents and new contributors.
 This fork targets Windows only: do not add code, tests, packaging, or docs
 for Linux or macOS, and do not verify other platforms.
 
+
+## Rules from the owner
+- Commits, PRs and issue comments read like a person wrote them: short, plain, no em dashes in new text.
+- GitHub issue comments are short and non-technical. Fix things properly instead of documenting a partial fix.
+- Do not publish a release or push without the user asking for it.
+- After each feature or fix, build the release exe and deploy it to the local install, closing the app first if it is open.
+
+
 ## Product boundaries
 
 - Keep it a small native client. No browser engine, no telemetry, no
