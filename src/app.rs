@@ -2914,7 +2914,7 @@ impl App {
             "Message yourself",
         ]
         .iter()
-        .any(|text| crate::util::search_key(text).contains(needle))
+        .any(|text| crate::util::search_matches(&crate::util::search_key(text), needle))
             || crate::model::phone_of(me).is_some_and(|phone| phone.contains(needle))
     }
 
@@ -6354,6 +6354,9 @@ impl App {
         let text = text.trim().to_owned();
         if text.is_empty() {
             return;
+        }
+        if self.picker == Some(PickerTab::Emoji) {
+            self.picker = None;
         }
         if let Some(id) = self.editing.as_ref() {
             let eligible = self.open_chat.as_ref() == Some(&chat)
@@ -11170,11 +11173,62 @@ impl App {
         egui::Id::new("drop-chat-rows")
     }
 
+    /// Maps the OS cursor from screen pixels to window points.
+    fn cursor_to_window(
+        cursor: (i32, i32),
+        pixels_per_point: f32,
+        origin: egui::Pos2,
+    ) -> egui::Pos2 {
+        egui::pos2(
+            cursor.0 as f32 / pixels_per_point - origin.x,
+            cursor.1 as f32 / pixels_per_point - origin.y,
+        )
+    }
+
+    /// The pointer position for a file being dragged, in window points.
+    /// winit's Windows drop handler never reports the position during the
+    /// drag, so egui's hover stays frozen where it was: read the OS cursor
+    /// instead and map it through the content rectangle while files hover.
+    /// Without a placed window (tests, headless runs) this falls back to
+    /// egui's own hover position.
+    pub(crate) fn drop_pointer_pos(ctx: &egui::Context) -> Option<egui::Pos2> {
+        let dragging = ctx.input(|input| {
+            !input.raw.hovered_files.is_empty() || !input.raw.dropped_files.is_empty()
+        });
+        if !dragging {
+            return ctx.input(|input| input.pointer.hover_pos());
+        }
+        #[cfg(windows)]
+        if let Some(pos) = Self::os_cursor_pos(ctx) {
+            return Some(pos);
+        }
+        ctx.input(|input| input.pointer.hover_pos())
+    }
+
+    /// The OS cursor in window points, or `None` without a placed window.
+    #[cfg(windows)]
+    fn os_cursor_pos(ctx: &egui::Context) -> Option<egui::Pos2> {
+        use windows::Win32::Foundation::POINT;
+        use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+        // SAFETY: GetCursorPos only writes its out-param on success, which
+        // the returned status reports; a lost window simply keeps the old
+        // hover position.
+        let mut point = POINT::default();
+        unsafe { GetCursorPos(&raw mut point).ok()? };
+        let origin = ctx.input(|input| input.viewport().inner_rect.map(|rect| rect.min))?;
+        let pixels_per_point = ctx.pixels_per_point();
+        Some(Self::cursor_to_window(
+            (point.x, point.y),
+            pixels_per_point,
+            origin,
+        ))
+    }
+
     /// The chat row under the pointer for a file being dragged, if any.
     pub(crate) fn drop_target_chat(&self, ctx: &egui::Context) -> Option<ChatId> {
         let rows =
             ctx.data(|data| data.get_temp::<Vec<(ChatId, egui::Rect)>>(Self::drop_chat_rows_id()))?;
-        let pos = ctx.input(|input| input.pointer.hover_pos())?;
+        let pos = Self::drop_pointer_pos(ctx)?;
         rows.into_iter()
             .find(|(_, rect)| rect.contains(pos))
             .map(|(id, _)| id)
@@ -15891,6 +15945,19 @@ mod tests {
         app.handle_events();
         assert_eq!(app.scheduled["kevin"].len(), 1);
         assert_eq!(app.scheduled["kevin"][0].id, 2);
+    }
+
+    #[test]
+    fn os_cursor_maps_through_the_content_rectangle() {
+        let origin = egui::pos2(100.0, 50.0);
+        assert_eq!(
+            App::cursor_to_window((300, 250), 2.0, origin),
+            egui::pos2(50.0, 75.0)
+        );
+        assert_eq!(
+            App::cursor_to_window((100, 50), 1.0, origin),
+            egui::pos2(0.0, 0.0)
+        );
     }
 
     #[test]

@@ -1710,10 +1710,14 @@ fn row(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> egui::Response {
         )
     });
     super::accessibility::result_item(&response);
-    // A file drag arms the hovered row as its drop target: dropping there
-    // opens this chat first. The armed row carries the accent.
+    // A file drag arms the row under the pointer as its drop target:
+    // dropping there opens this chat first. The armed row carries the
+    // accent. egui's hover stays frozen during an OS drag, so the row is
+    // hit-tested against the OS cursor instead.
     let files_hover = ui.input(|input| !input.raw.hovered_files.is_empty());
-    if files_hover && response.hovered() {
+    let drop_armed = files_hover
+        && crate::app::App::drop_pointer_pos(ui.ctx()).is_some_and(|pos| rect.contains(pos));
+    if drop_armed {
         ui.ctx().data_mut(|data| {
             let mut rows = data
                 .get_temp::<Vec<(ChatId, Rect)>>(crate::app::App::drop_chat_rows_id())
@@ -1725,8 +1729,8 @@ fn row(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> egui::Response {
     if ui.is_rect_visible(rect) {
         if selected {
             widgets::row_highlight(ui, &palette, rect, palette.surface_active);
-        } else if response.hovered() {
-            let tint = if files_hover {
+        } else if response.hovered() || drop_armed {
+            let tint = if files_hover && drop_armed {
                 palette.accent
             } else {
                 palette.surface_hover
