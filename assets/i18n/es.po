@@ -4174,3 +4174,79 @@ msgstr ""
 #: src/ui/dialogs.rs
 msgid "Download update"
 msgstr ""
+
+#: src/ui/conversation.rs:2074
+msgid "Schedule message"
+msgstr "Programar mensaje"
+
+#: src/ui/scheduled.rs:45
+msgid "Tonight 9 PM"
+msgstr "Esta noche 21:00"
+
+#: src/ui/scheduled.rs:59
+msgid "Tomorrow 8 AM"
+msgstr "Mañana 8:00"
+
+#: src/ui/scheduled.rs:57 src/ui/scheduled.rs:59 src/ui/scheduled.rs:61
+msgid "Day"
+msgstr "Día"
+
+#: src/ui/scheduled.rs:57
+msgid "Month"
+msgstr "Mes"
+
+#: src/ui/scheduled.rs:59
+msgid "Year"
+msgstr "Año"
+
+#: src/ui/scheduled.rs:61 src/ui/scheduled.rs:63
+msgid "Hour"
+msgstr "Hora"
+
+#: src/ui/scheduled.rs:79
+msgid "Sends {stamp}"
+msgstr "Se envía {stamp}"
+
+#: src/ui/scheduled.rs:122
+msgid "Enter a day, month, year, hour and minute."
+msgstr "Ingresa día, mes, año, hora y minutos."
+
+#: src/ui/scheduled.rs:130
+msgid "Pick a time in the future."
+msgstr "Elige una hora futura."
+
+#: src/ui/scheduled.rs:138
+msgid "No more than a year out."
+msgstr "Como máximo dentro de un año."
+
+#: src/ui/scheduled.rs:147
+msgid "The open reply goes along."
+msgstr "La respuesta abierta va también."
+
+#: src/ui/scheduled.rs:158
+msgid "Schedule"
+msgstr "Programar"
+
+#: src/ui/scheduled.rs:175
+msgid "Scheduled messages"
+msgstr "Mensajes programados"
+
+#: src/ui/settings.rs:2341 src/ui/chats.rs:2540 src/ui/labels.rs:381
+msgid "Ding"
+msgstr "Ding"
+
+#: src/ui/settings.rs:2342 src/ui/chats.rs:2541 src/ui/labels.rs:382
+msgid "Pop"
+msgstr "Pop"
+
+#: src/ui/settings.rs:2343 src/ui/chats.rs:2542 src/ui/labels.rs:383
+msgid "Bubble"
+msgstr "Burbuja"
+
+#: src/ui/settings.rs:2344 src/ui/chats.rs:2543 src/ui/labels.rs:384
+msgid "Chord"
+msgstr "Acorde"
+
+#: src/ui/mod.rs:449
+msgid "Drop to send to {name}"
+msgstr "Suelta para enviar a {name}"
