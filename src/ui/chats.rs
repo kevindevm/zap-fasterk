@@ -1676,6 +1676,17 @@ fn has_unseen_status(app: &App, chat: &str) -> bool {
         .any(|row| row.sender == chat && row.read_at.is_none() && row.timestamp > now - 86400)
 }
 
+/// The sender's newest update as a `sender:id` key, if it has not expired.
+/// The ring's click target opens it instead of the chat.
+fn newest_status_key(app: &App, sender: &str) -> Option<String> {
+    let now = crate::util::now();
+    app.statuses
+        .iter()
+        .filter(|row| row.sender == sender && row.timestamp > now - 86400)
+        .max_by_key(|row| row.timestamp)
+        .map(|row| crate::app::App::status_key(&row.sender, &row.id))
+}
+
 /// Draws one chat's title, draft or message preview, badges and queued selection actions.
 fn row(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> egui::Response {
     let palette = app.palette;
@@ -1736,6 +1747,7 @@ fn row(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> egui::Response {
             data.insert_temp(crate::app::App::drop_chat_rows_id(), rows);
         });
     }
+    let mut opened_status = false;
     if ui.is_rect_visible(rect) {
         if selected {
             widgets::row_highlight(ui, &palette, rect, palette.surface_active);
@@ -1769,6 +1781,29 @@ fn row(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> egui::Response {
                 egui::Stroke::new(2.5, palette.accent),
             );
         }
+        // The ring's click target opens the sender's newest update instead
+        // of the chat, as on WhatsApp Web. It goes after the row's own
+        // target, so the row's click below yields to it.
+        let status_target = (!hidden_avatar && has_unseen_status(app, &chat.id))
+            .then(|| newest_status_key(app, &chat.id))
+            .flatten()
+            .map(|key| {
+                let target = ui.interact(
+                    avatar_rect,
+                    chat_row_id(&chat.id).with("status"),
+                    Sense::click(),
+                );
+                (target, key)
+            });
+        let opened_here = status_target.as_ref().is_some_and(|(target, key)| {
+            if target.clicked() {
+                app.actions.push(Action::StatusOpen(key.clone()));
+                true
+            } else {
+                false
+            }
+        });
+        opened_status = opened_here;
         if chat.disappearing_timer().is_some() {
             widgets::paint_disappearing_badge(ui, &palette, avatar_rect);
         }
@@ -1967,7 +2002,7 @@ fn row(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> egui::Response {
     if let Some((area, prefix, full)) = full_preview {
         full_preview_tooltip(app, ui, &chat.id, area, &prefix, &full);
     }
-    if response.clicked() {
+    if response.clicked() && !opened_status {
         app.actions.push(Action::OpenChat(chat.id.clone()));
     }
     let menu_palette = palette;
@@ -2288,6 +2323,7 @@ fn compact_row(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> egui::Response 
             unread_announcement(if hidden_name { "Chat" } else { &title }, chat),
         )
     });
+    let mut opened_status = false;
     if ui.is_rect_visible(rect) {
         if response.hovered() {
             ui.painter().rect_filled(
@@ -2316,6 +2352,27 @@ fn compact_row(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> egui::Response 
                 egui::Stroke::new(2.5, palette.accent),
             );
         }
+        // As in a full row, the ring's click target opens the sender's
+        // newest update instead of the chat.
+        let status_target = (!hidden_avatar && has_unseen_status(app, &chat.id))
+            .then(|| newest_status_key(app, &chat.id))
+            .flatten()
+            .map(|key| {
+                let target = ui.interact(
+                    avatar_rect,
+                    chat_row_id(&chat.id).with("status"),
+                    Sense::click(),
+                );
+                (target, key)
+            });
+        opened_status = status_target.as_ref().is_some_and(|(target, key)| {
+            if target.clicked() {
+                app.actions.push(Action::StatusOpen(key.clone()));
+                true
+            } else {
+                false
+            }
+        });
         if chat.disappearing_timer().is_some() {
             widgets::paint_disappearing_badge(ui, &palette, avatar_rect);
         }
@@ -2350,7 +2407,7 @@ fn compact_row(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> egui::Response 
     if !hidden_name {
         response = response.on_hover_text(title);
     }
-    if response.clicked() {
+    if response.clicked() && !opened_status {
         app.actions.push(Action::OpenChat(chat.id.clone()));
     }
     response
@@ -2804,6 +2861,12 @@ mod tests {
             !has_unseen_status(&app, "bea"),
             "another sender's update is not this chat's ring"
         );
+        assert_eq!(
+            newest_status_key(&app, "ana"),
+            Some("ana:fresh".into()),
+            "the ring opens the sender's newest update"
+        );
+        assert_eq!(newest_status_key(&app, "bea"), None);
     }
 
     use crate::paths::AppDirs;
