@@ -6637,7 +6637,7 @@ impl Worker {
             Command::Statuses => self.emit_statuses(),
             Command::DownloadStatus(key) => self.download_status(key),
             Command::StatusRead(key) => {
-                if self.stories.mark_read(&key) {
+                if self.mark_status_read(&key) {
                     self.emit_statuses();
                 }
             }

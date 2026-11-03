@@ -35,11 +35,35 @@ impl Stories {
     pub(super) fn rows_empty(&self) -> bool {
         self.rows.is_empty()
     }
-
+}
+impl Worker {
     /// Marks one update seen here, stamping its local row. The phone is
     /// not told. True when the update was still unseen.
-    pub(super) fn mark_read(&mut self, key: &str) -> bool {
-        let Some((row, _)) = self.rows.get_mut(key) else {
+    ///
+    /// The key's sender is canonicalized before comparing: a privacy-id
+    /// mapping learned after delivery changes the sender a later key
+    /// carries, while the stored row keeps the earlier one.
+    pub(super) fn mark_status_read(&mut self, key: &str) -> bool {
+        let Some((sender, id)) = key.split_once(':') else {
+            return false;
+        };
+        let wanted = self.canonical_str(sender);
+        let found = self
+            .stories
+            .rows
+            .keys()
+            .find(|stored| {
+                stored
+                    .split_once(':')
+                    .is_some_and(|(stored_sender, stored_id)| {
+                        stored_id == id && self.canonical_str(stored_sender) == wanted
+                    })
+            })
+            .cloned();
+        let Some(found) = found else {
+            return false;
+        };
+        let Some((row, _)) = self.stories.rows.get_mut(&found) else {
             return false;
         };
         if row.read_at.is_some() {
@@ -48,8 +72,6 @@ impl Stories {
         row.read_at = Some(crate::util::now());
         true
     }
-}
-impl Worker {
     pub(super) fn ingest_status(&mut self, raw: &Arc<wa::Message>, info: &MessageInfo) {
         let timestamp = info.timestamp.timestamp();
         let now = crate::util::now();
@@ -411,7 +433,7 @@ mod tests {
                 .read_at
                 .is_none()
         );
-        assert!(worker.stories.mark_read(&key));
+        assert!(worker.mark_status_read(&key));
         assert!(
             worker
                 .stories
@@ -423,8 +445,19 @@ mod tests {
                 .read_at
                 .is_some()
         );
-        assert!(!worker.stories.mark_read(&key), "a repeat changes nothing");
-        assert!(!worker.stories.mark_read("nobody:missing"));
+        assert!(!worker.mark_status_read(&key), "a repeat changes nothing");
+        assert!(!worker.mark_status_read("nobody:missing"));
+        // A privacy-id mapping learned after delivery changes the sender a
+        // later key carries; the stored row keeps the earlier one.
+        let (mut worker, _, _, _) = super::super::receipt_tests::worker();
+        let (raw, mut info) = delivery("story", crate::util::now());
+        info.source.sender = "98765@lid".parse().unwrap();
+        worker.ingest(&raw, &info);
+        let stored = worker.stories.rows.keys().next().unwrap().clone();
+        worker.lid_to_pn.insert("98765".into(), "12345".into());
+        let later = format!("12345@s.whatsapp.net:{}", stored.split_once(':').unwrap().1);
+        assert_ne!(stored, later);
+        assert!(worker.mark_status_read(&later));
     }
     #[test]
     fn revocations_survive_duplicate_delivery_and_later_privacy_id_mapping() {
