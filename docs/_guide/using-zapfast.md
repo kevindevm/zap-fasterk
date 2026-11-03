@@ -127,6 +127,16 @@ waiting messages survive a restart in that account's encrypted archive. A later
 text cannot overtake an attachment already being prepared. Reconnecting does not
 cancel an unclaimed prepared message.
 
+## Scheduled messages
+
+**Schedule message** in the plus menu beside the message field sends the
+composer's text later: pick tonight, tomorrow morning, or a date and time up
+to a year out. The dialog also lists that chat's pending scheduled texts for
+cancellation. Scheduling only takes text; attachments and edits still send at
+once. Unlike Telegram, which holds the message server-side, scheduling here
+is client-side: the text goes out only while this client runs linked, and an
+offline computer keeps it for the next connection.
+
 Once transmission starts, a timeout or interrupted connection can leave delivery
 uncertain. **Send unconfirmed** means the message may have reached WhatsApp; Zap
 Faster never resends it automatically. Later receipts still update its status.

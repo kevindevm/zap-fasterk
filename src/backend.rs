@@ -243,6 +243,24 @@ pub enum Command {
         quoting: Option<crate::model::ReplyTarget>,
         mentions: Vec<String>,
     },
+    /// Stores a text for a later send; the worker files it once due.
+    ScheduleText {
+        chat: ChatId,
+        text: String,
+        /// Same-chat message id the composer quoted, if any.
+        quoted: Option<String>,
+        mentions: Vec<String>,
+        /// Unix seconds when the text may go out.
+        due_at: i64,
+    },
+    /// Drops a scheduled text before it sends.
+    CancelScheduled {
+        id: i64,
+    },
+    /// Lists a chat's pending scheduled texts for its schedule dialog.
+    LoadScheduled {
+        chat: ChatId,
+    },
     SendLocation {
         chat: ChatId,
         latitude: f64,
@@ -1249,6 +1267,15 @@ pub enum Event {
         chat: ChatId,
         message: String,
         pinned: bool,
+    },
+    /// A chat's pending scheduled texts, earliest first.
+    Scheduled {
+        chat: ChatId,
+        items: Vec<crate::archive::ScheduledMessage>,
+    },
+    /// A scheduled text the reader cancelled before it sent.
+    ScheduledCancelled {
+        id: i64,
     },
     /// Chat messages in ascending order. `older` prepends them; `complete`
     /// means the archive has no earlier rows.

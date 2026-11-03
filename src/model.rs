@@ -1988,6 +1988,8 @@ pub enum Dialog {
     CreatePoll(ChatId),
     /// Picks the spot to send, from coordinates or a map link.
     SendLocation(ChatId),
+    /// Picks when the composer's text goes out and lists pending ones.
+    ScheduleMessage(ChatId),
     PollResults {
         chat: ChatId,
         message: String,
@@ -2236,6 +2238,25 @@ pub enum Action {
         text: String,
         /// Quoted message id.
         quoting: Option<crate::model::ReplyTarget>,
+    },
+    /// Opens the schedule dialog for the composer's text.
+    ScheduleMessage {
+        chat: ChatId,
+    },
+    /// Fills the schedule dialog with tonight or tomorrow morning.
+    SchedulePreset {
+        chat: ChatId,
+        tonight: bool,
+    },
+    /// Stores the composer's text for a later send.
+    SendScheduled {
+        chat: ChatId,
+        /// Unix seconds when the text may go out.
+        due_at: i64,
+    },
+    /// Drops a scheduled text before it sends.
+    CancelScheduled {
+        id: i64,
     },
     /// Sends a spot as a location message.
     SendLocation {

@@ -36,7 +36,7 @@ fn image_uri_for_platform(path: &str, windows: bool) -> String {
 }
 
 /// The local time zone.
-fn zone() -> jiff::tz::TimeZone {
+pub(crate) fn zone() -> jiff::tz::TimeZone {
     #[cfg(test)]
     if let Some(clock) = fixed_clock::get() {
         return clock.zone;

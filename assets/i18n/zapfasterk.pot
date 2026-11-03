@@ -447,6 +447,62 @@ msgstr ""
 msgid "Create poll"
 msgstr ""
 
+#: src/ui/conversation.rs:2074
+msgid "Schedule message"
+msgstr ""
+
+#: src/ui/scheduled.rs:29
+msgid "Tonight 9 PM"
+msgstr ""
+
+#: src/ui/scheduled.rs:43
+msgid "Tomorrow 8 AM"
+msgstr ""
+
+#: src/ui/scheduled.rs:57 src/ui/scheduled.rs:59 src/ui/scheduled.rs:61
+msgid "Day"
+msgstr ""
+
+#: src/ui/scheduled.rs:57
+msgid "Month"
+msgstr ""
+
+#: src/ui/scheduled.rs:59
+msgid "Year"
+msgstr ""
+
+#: src/ui/scheduled.rs:61 src/ui/scheduled.rs:63
+msgid "Hour"
+msgstr ""
+
+#: src/ui/scheduled.rs:79
+msgid "Sends {stamp}"
+msgstr ""
+
+#: src/ui/scheduled.rs:88
+msgid "Enter a day, month, year, hour and minute."
+msgstr ""
+
+#: src/ui/scheduled.rs:96
+msgid "Pick a time in the future."
+msgstr ""
+
+#: src/ui/scheduled.rs:104
+msgid "No more than a year out."
+msgstr ""
+
+#: src/ui/scheduled.rs:112
+msgid "The open reply goes along."
+msgstr ""
+
+#: src/ui/scheduled.rs:118
+msgid "Schedule"
+msgstr ""
+
+#: src/ui/scheduled.rs:137
+msgid "Scheduled messages"
+msgstr ""
+
 #: src/ui/conversation.rs:2128
 #, rust-format
 msgid "Voice message ({duration}) not sent"

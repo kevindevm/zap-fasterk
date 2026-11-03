@@ -71,6 +71,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 }
                 Dialog::CreatePoll(_) => 420.0,
                 Dialog::SendLocation(_) => 420.0,
+                Dialog::ScheduleMessage(_) => 420.0,
                 Dialog::PollResults { .. }
                 | Dialog::Reactions { .. }
                 | Dialog::InteractiveList { .. }
@@ -85,6 +86,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             let draw = |ui: &mut egui::Ui| match dialog {
                 Dialog::CreatePoll(chat) => super::polls::create(app, ui, &chat),
                 Dialog::SendLocation(chat) => super::locations::send(app, ui, &chat),
+                Dialog::ScheduleMessage(chat) => super::scheduled::show(app, ui, &chat),
                 Dialog::PollResults { chat, message } => {
                     super::polls::results(app, ui, &chat, &message)
                 }

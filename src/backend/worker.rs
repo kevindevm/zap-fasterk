@@ -61,6 +61,7 @@ mod link_watch;
 mod outgoing;
 mod poll_history;
 mod polls;
+mod scheduled;
 mod star_recovery;
 mod statuses;
 mod sticker_pace;
@@ -948,6 +949,7 @@ pub async fn run(
                 worker.pump_favorite_chats();
                 worker.pump_poll_votes();
                 worker.pump_poll_history();
+                worker.pump_scheduled();
                 worker.pump_background_history();
                 worker.pump_background_media().await;
                 worker.expire_unreferenced_cache().await;
@@ -6848,6 +6850,15 @@ impl Worker {
             }
             Command::LoadChat { chat, before } => self.load_chat(chat, before),
             Command::LoadPins(chat) => self.emit_pins(&chat),
+            Command::ScheduleText {
+                chat,
+                text,
+                quoted,
+                mentions,
+                due_at,
+            } => self.schedule_text(chat, text, quoted, mentions, due_at),
+            Command::CancelScheduled { id } => self.cancel_scheduled(id),
+            Command::LoadScheduled { chat } => self.emit_scheduled(&chat),
             Command::HistoryRequested {
                 chat,
                 requested,

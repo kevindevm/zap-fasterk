@@ -44,6 +44,8 @@ mod receipts;
 mod reconcile;
 #[cfg(test)]
 mod reconcile_tests;
+mod scheduled;
+pub use scheduled::ScheduledMessage;
 mod stars;
 mod stickers;
 pub use polls::PollVote;
@@ -536,6 +538,7 @@ impl Archive {
         connection.execute_batch(archive_sync::SCHEMA)?;
         connection.execute_batch(stars::SCHEMA)?;
         connection.execute_batch(pins::SCHEMA)?;
+        connection.execute_batch(scheduled::SCHEMA)?;
         for (table, column, definition) in MIGRATIONS {
             let exists = connection
                 .prepare(&format!("PRAGMA table_info({table})"))?
@@ -2351,6 +2354,7 @@ impl Archive {
             "star_changes",
             "message_pins",
             "pin_notices",
+            "scheduled_messages",
         ] {
             self.connection.execute(
                 &format!("DELETE FROM {table} WHERE chat = ?1"),

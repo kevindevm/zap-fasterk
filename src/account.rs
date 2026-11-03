@@ -120,6 +120,8 @@ pub struct Account {
     /// Active pins of each chat, for the line under its header.
     pub chat_pins: HashMap<ChatId, Vec<crate::archive::Pinned>>,
     pub pin_notices: HashMap<ChatId, Vec<crate::archive::Pinned>>,
+    /// Pending scheduled texts of each chat, for its schedule dialog.
+    pub scheduled: HashMap<ChatId, Vec<crate::archive::ScheduledMessage>>,
     /// Demo/test: keep this starred row's context menu open.
     #[cfg(any(test, feature = "demo"))]
     pub open_list_menu: Option<(ChatId, String)>,
@@ -253,6 +255,7 @@ impl Account {
             pins: HashMap::new(),
             chat_pins: HashMap::new(),
             pin_notices: HashMap::new(),
+            scheduled: HashMap::new(),
             #[cfg(any(test, feature = "demo"))]
             open_list_menu: None,
             reply_when_loaded: None,

@@ -629,6 +629,12 @@ pub struct App {
     pub forward_limit: usize,
 
     pub location_draft: String,
+    /// The schedule dialog's date and time fields, as typed.
+    pub schedule_day: String,
+    pub schedule_month: String,
+    pub schedule_year: String,
+    pub schedule_hour: String,
+    pub schedule_minute: String,
     /// The group name being typed in the group info dialog.
     pub group_name_edit: Option<String>,
 
@@ -856,6 +862,17 @@ pub enum Pending {
         mentions: Vec<String>,
         composer_owned: bool,
     },
+}
+
+/// Why the schedule dialog's date and time cannot be used.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ScheduleDueError {
+    /// Not a calendar date and time.
+    NotADate,
+    /// Not in the future.
+    NotFuture,
+    /// More than a year out, which the phone would not hold either.
+    TooFar,
 }
 
 #[derive(Clone, Debug)]
@@ -1327,6 +1344,11 @@ impl App {
             forward_limit: crate::model::FORWARD_LIMIT,
 
             location_draft: String::new(),
+            schedule_day: String::new(),
+            schedule_month: String::new(),
+            schedule_year: String::new(),
+            schedule_hour: String::new(),
+            schedule_minute: String::new(),
             group_name_edit: None,
 
             new_contact_to_phone: true,
@@ -2608,6 +2630,7 @@ impl App {
                 Dialog::ChatInfo(chat)
                     | Dialog::CreatePoll(chat)
                     | Dialog::SendLocation(chat)
+                    | Dialog::ScheduleMessage(chat)
                     | Dialog::ConfirmDeleteChat(chat)
                     | Dialog::ConfirmClearChat(chat)
             ) if chat == id
@@ -3760,6 +3783,19 @@ impl App {
                     ids.insert(message);
                 } else {
                     ids.remove(&message);
+                }
+            }
+            Event::Scheduled { chat, items } => {
+                // Scheduled texts hold our own words, so a locked chat
+                // keeps them off the window until its folder is open.
+                if self.locked_folder_open() || !self.chat(&chat).is_some_and(|known| known.locked)
+                {
+                    self.scheduled.insert(chat, items);
+                }
+            }
+            Event::ScheduledCancelled { id } => {
+                for items in self.scheduled.values_mut() {
+                    items.retain(|item| item.id != id);
                 }
             }
             Event::Messages {
@@ -6127,6 +6163,128 @@ impl App {
         }
     }
 
+    /// Stores the composer's text for a later send. A refusal brings the
+    /// text back, the way an immediate send does.
+    fn send_scheduled(&mut self, chat: ChatId, due_at: i64) {
+        let text = self.take_composer_text();
+        if text.trim().is_empty() {
+            return;
+        }
+        let quoting = self.reply_to.take().filter(|target| {
+            target
+                .chat
+                .as_deref()
+                .is_none_or(|source| source == chat.as_str())
+        });
+        let (text, mentions) = self.encode_composer_mentions(&chat, text);
+        self.emoji_start = None;
+        self.mention_start = None;
+        self.stop_composing(&chat);
+        self.store_draft(&chat, "");
+        self.backend.send(Command::ScheduleText {
+            chat,
+            text,
+            quoted: quoting.map(|target| target.id),
+            mentions,
+            due_at,
+        });
+    }
+
+    /// Prefills the schedule dialog with tomorrow at eight in the morning.
+    fn fill_schedule_fields(&mut self) {
+        let tomorrow = crate::util::today()
+            .tomorrow()
+            .unwrap_or_else(|_| crate::util::today());
+        self.schedule_day = tomorrow.day().to_string();
+        self.schedule_month = tomorrow.month().to_string();
+        self.schedule_year = tomorrow.year().to_string();
+        self.schedule_hour = "8".to_owned();
+        self.schedule_minute = "0".to_owned();
+    }
+
+    /// Prefills the schedule dialog with tonight or tomorrow morning.
+    fn fill_schedule_preset(&mut self, tonight: bool) {
+        let now = crate::util::now();
+        let zone = crate::util::zone();
+        let evening = |day: jiff::civil::Date| {
+            day.at(21, 0, 0, 0)
+                .to_zoned(zone.clone())
+                .map(|zoned| zoned.timestamp().as_second())
+                .unwrap_or(now)
+        };
+        let today = crate::util::today();
+        let due = if tonight && evening(today) > now {
+            evening(today)
+        } else if tonight {
+            evening(today.tomorrow().unwrap_or(today))
+        } else {
+            // Tomorrow morning, always in the future.
+            today
+                .tomorrow()
+                .unwrap_or(today)
+                .at(8, 0, 0, 0)
+                .to_zoned(zone.clone())
+                .map(|zoned| zoned.timestamp().as_second())
+                .unwrap_or(now + 86_400)
+        };
+        let zoned = jiff::Timestamp::from_second(due)
+            .map(|stamp| stamp.to_zoned(zone))
+            .unwrap_or_else(|_| jiff::Zoned::now());
+        self.schedule_day = zoned.date().day().to_string();
+        self.schedule_month = zoned.date().month().to_string();
+        self.schedule_year = zoned.date().year().to_string();
+        self.schedule_hour = zoned.time().hour().to_string();
+        self.schedule_minute = zoned.time().minute().to_string();
+    }
+
+    /// Reads day/month/year/hour/minute fields as a Unix time in the local
+    /// zone. The dialog only offers the schedule button when this parses to
+    /// a future within a year.
+    pub(crate) fn parse_schedule_due(
+        day: &str,
+        month: &str,
+        year: &str,
+        hour: &str,
+        minute: &str,
+    ) -> Result<i64, ScheduleDueError> {
+        let day: i8 = day.trim().parse().map_err(|_| ScheduleDueError::NotADate)?;
+        let month: i8 = month
+            .trim()
+            .parse()
+            .map_err(|_| ScheduleDueError::NotADate)?;
+        let year: i16 = year
+            .trim()
+            .parse()
+            .map_err(|_| ScheduleDueError::NotADate)?;
+        let hour: i8 = hour
+            .trim()
+            .parse()
+            .map_err(|_| ScheduleDueError::NotADate)?;
+        let minute: i8 = minute
+            .trim()
+            .parse()
+            .map_err(|_| ScheduleDueError::NotADate)?;
+        if !(0..24).contains(&hour) || !(0..60).contains(&minute) {
+            return Err(ScheduleDueError::NotADate);
+        }
+        let date =
+            jiff::civil::Date::new(year, month, day).map_err(|_| ScheduleDueError::NotADate)?;
+        let due = date
+            .at(hour, minute, 0, 0)
+            .to_zoned(crate::util::zone())
+            .map_err(|_| ScheduleDueError::NotADate)?
+            .timestamp()
+            .as_second();
+        let now = crate::util::now();
+        if due <= now {
+            return Err(ScheduleDueError::NotFuture);
+        }
+        if due > now + 366 * 86_400 {
+            return Err(ScheduleDueError::TooFar);
+        }
+        Ok(due)
+    }
+
     /// Dispatches composed text with its explicit quote target and restores it on refusal.
     fn send_text(
         &mut self,
@@ -7141,6 +7299,23 @@ impl App {
             } => {
                 self.send_text(chat, text, quoting);
                 self.reply_to = None;
+            }
+            Action::ScheduleMessage { chat } => {
+                self.fill_schedule_fields();
+                self.dialog = Some(Dialog::ScheduleMessage(chat.clone()));
+                self.backend.send(Command::LoadScheduled { chat });
+            }
+            Action::SchedulePreset { chat, tonight } => {
+                self.fill_schedule_preset(tonight);
+                self.dialog = Some(Dialog::ScheduleMessage(chat.clone()));
+                self.backend.send(Command::LoadScheduled { chat });
+            }
+            Action::SendScheduled { chat, due_at } => {
+                self.send_scheduled(chat, due_at);
+                self.reply_to = None;
+            }
+            Action::CancelScheduled { id } => {
+                self.backend.send(Command::CancelScheduled { id });
             }
             Action::SendLocation {
                 chat,
@@ -15491,6 +15666,140 @@ mod tests {
         output.textures_delta.clear();
         assert!(app.dropping);
         assert_eq!(app.pending.len(), 0);
+    }
+
+    /// Pins the clock for schedule tests: 14:00 UTC on Wednesday 11 March 2026.
+    fn schedule_clock() -> crate::util::fixed_clock::Guard {
+        crate::util::fixed_clock::set(crate::util::fixed_clock::Clock {
+            now: 1_773_237_600,
+            zone: jiff::tz::TimeZone::UTC,
+            twelve_hour: false,
+        })
+    }
+
+    #[test]
+    fn schedule_fields_parse_to_a_future_unix_time() {
+        let _clock = schedule_clock();
+        // 16 March 2026 at 08:00 UTC.
+        assert_eq!(
+            App::parse_schedule_due("16", "3", "2026", "8", "0"),
+            Ok(1_773_648_000)
+        );
+        // Not a calendar date or time.
+        assert_eq!(
+            App::parse_schedule_due("32", "3", "2026", "8", "0"),
+            Err(ScheduleDueError::NotADate)
+        );
+        assert_eq!(
+            App::parse_schedule_due("16", "3", "2026", "25", "0"),
+            Err(ScheduleDueError::NotADate)
+        );
+        assert_eq!(
+            App::parse_schedule_due("16", "xy", "2026", "8", "0"),
+            Err(ScheduleDueError::NotADate)
+        );
+        // Earlier the same day is not in the future.
+        assert_eq!(
+            App::parse_schedule_due("11", "3", "2026", "8", "0"),
+            Err(ScheduleDueError::NotFuture)
+        );
+        // More than a year out is refused.
+        assert_eq!(
+            App::parse_schedule_due("11", "3", "2028", "8", "0"),
+            Err(ScheduleDueError::TooFar)
+        );
+    }
+
+    #[test]
+    fn scheduling_sends_the_composer_text_for_later() {
+        let mut app = app();
+        let (backend, mut commands) = crate::backend::Backend::recording();
+        app.backend = backend;
+        let ctx = egui::Context::default();
+        app.composer = "see you".into();
+        app.apply(
+            Action::ScheduleMessage {
+                chat: "kevin".into(),
+            },
+            &ctx,
+        );
+        assert!(matches!(
+            app.dialog,
+            Some(Dialog::ScheduleMessage(ref chat)) if chat == "kevin"
+        ));
+        assert!(!app.schedule_day.is_empty());
+        assert!(matches!(
+            commands.try_recv(),
+            Ok(Command::LoadScheduled { .. })
+        ));
+        let due = crate::util::now() + 3_600;
+        app.apply(
+            Action::SendScheduled {
+                chat: "kevin".into(),
+                due_at: due,
+            },
+            &ctx,
+        );
+        assert!(matches!(commands.try_recv(), Ok(Command::SaveDraft { .. })));
+        match commands.try_recv() {
+            Ok(Command::ScheduleText {
+                chat,
+                text,
+                quoted,
+                mentions,
+                due_at,
+            }) => {
+                assert_eq!(chat, "kevin");
+                assert_eq!(text, "see you");
+                assert_eq!(quoted, None);
+                assert!(mentions.is_empty());
+                assert_eq!(due_at, due);
+            }
+            command => panic!("a scheduled text goes out, got {command:?}"),
+        }
+        assert!(app.composer.is_empty());
+        assert!(app.reply_to.is_none());
+    }
+
+    #[test]
+    fn cancelling_a_scheduled_text_asks_the_worker() {
+        let mut app = app();
+        let (backend, mut commands) = crate::backend::Backend::recording();
+        app.backend = backend;
+        let ctx = egui::Context::default();
+        app.apply(Action::CancelScheduled { id: 7 }, &ctx);
+        assert!(matches!(
+            commands.try_recv(),
+            Ok(Command::CancelScheduled { id: 7 })
+        ));
+    }
+
+    #[test]
+    fn scheduled_events_fill_and_clear_the_dialog_list() {
+        let mut app = app();
+        let (backend, events) = crate::backend::Backend::detached();
+        app.backend = backend;
+        let item = |id| crate::archive::ScheduledMessage {
+            id,
+            chat: "kevin".into(),
+            text: "later".into(),
+            quoted: None,
+            mentions: Vec::new(),
+            due_at: crate::util::now() + 3_600,
+            created_at: crate::util::now(),
+        };
+        events
+            .send(Event::Scheduled {
+                chat: "kevin".into(),
+                items: vec![item(1), item(2)],
+            })
+            .unwrap();
+        app.handle_events();
+        assert_eq!(app.scheduled["kevin"].len(), 2);
+        events.send(Event::ScheduledCancelled { id: 1 }).unwrap();
+        app.handle_events();
+        assert_eq!(app.scheduled["kevin"].len(), 1);
+        assert_eq!(app.scheduled["kevin"][0].id, 2);
     }
 
     #[test]

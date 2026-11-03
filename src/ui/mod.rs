@@ -23,6 +23,7 @@ pub(crate) mod notification_overlay;
 pub mod pane;
 pub mod picker;
 pub mod polls;
+pub mod scheduled;
 pub mod settings;
 mod statuses;
 pub mod update;

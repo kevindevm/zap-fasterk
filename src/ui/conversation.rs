@@ -2101,6 +2101,18 @@ fn composer_tools_menu(app: &mut App, chat: &Chat, plus: &egui::Response) {
                     app.actions
                         .push(Action::ShowDialog(Dialog::CreatePoll(chat.id.clone())));
                 }
+                // Text only: attachments and edits send at once, as before.
+                if app.editing.is_none()
+                    && app.pending.is_empty()
+                    && !app.composer.trim().is_empty()
+                {
+                    let schedule = crate::i18n::gettext(app.locale, "Schedule message");
+                    if widgets::menu_item(ui, &app.palette, Some(Icon::Clock), &schedule) {
+                        app.actions.push(Action::ScheduleMessage {
+                            chat: chat.id.clone(),
+                        });
+                    }
+                }
             });
     }
     if draw_open != app.composer_tools_open {
