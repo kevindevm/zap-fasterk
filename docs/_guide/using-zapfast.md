@@ -25,6 +25,8 @@ Enter sends and Shift+Enter adds a line. Turn off **Enter sends** in Settings
 to make Enter add a line and send with Ctrl+Enter (Command+Enter on macOS).
 `*bold*`, `_italic_`, `~strike~`, and ```` ```monospace ```` ```` format
 like WhatsApp, and a message of nothing but emoji shows large.
+A line beginning with `> ` (greater-than and a space) is a block quote.
+Without the space, text such as `>.<` stays literal.
 Mentions in a group are written with `@`; the smiley opens emoji
 (searchable), GIFs, and stickers, including the stickers used on the
 phone.
