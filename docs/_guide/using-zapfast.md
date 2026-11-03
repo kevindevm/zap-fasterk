@@ -513,6 +513,11 @@ any caption; their files are not copied. Copying keeps the selection open.
 
 ## Chats
 
+To find a contact in **New chat**, type part of their name or number. Each
+word you type matches the start of a word in the name, in order: `will shak`
+finds William Shakespeare, and `j d` finds John Doe. A plain part of the name
+also works, such as `liam`.
+
 To contact someone without saving their number, open **New chat** and choose
 **Message a number**. Enter an international number, including its country
 code. Spaces, hyphens and balanced parentheses are allowed. Zap Fasterk checks
