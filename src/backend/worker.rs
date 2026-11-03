@@ -2151,6 +2151,9 @@ impl Worker {
         }
         self.emit(Event::Contacts(self.contacts.values().cloned().collect()));
         self.emit_chats();
+        // Remembered statuses come back too, so a restart still shows the
+        // unexpired ones. Runs on every reveal: already loaded rows win.
+        self.load_statuses();
     }
 
     /// Re-derives archived rows from raw protobufs after parser changes. Also

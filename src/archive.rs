@@ -153,6 +153,19 @@ CREATE TABLE IF NOT EXISTS motion_clips (
     child_id TEXT,
     PRIMARY KEY (chat, parent, sender)
 );
+-- Stories received while linked, so a restart still shows the unexpired
+-- ones. `message` is the full row as JSON; `raw` is its protobuf, whose
+-- keys fetch an attachment again. Media paths are not reused: a restart
+-- drops the temporary download directory, so loading resets them.
+CREATE TABLE IF NOT EXISTS status_updates (
+    key TEXT PRIMARY KEY,
+    sender TEXT NOT NULL,
+    timestamp INTEGER NOT NULL,
+    read_at INTEGER,
+    message TEXT NOT NULL,
+    raw BLOB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS status_updates_by_time ON status_updates (timestamp);
 CREATE TRIGGER IF NOT EXISTS delete_motion_clips AFTER DELETE ON messages BEGIN
     DELETE FROM motion_clips WHERE chat = OLD.chat AND parent = OLD.id;
 END;
@@ -507,6 +520,16 @@ fn kind_from_name(name: &str) -> ChatKind {
         "broadcast" => ChatKind::Broadcast,
         _ => ChatKind::Direct,
     }
+}
+
+/// One persisted status update: the full row as JSON plus its raw protobuf.
+pub struct StoredStatus {
+    pub key: String,
+    pub sender: String,
+    pub timestamp: i64,
+    pub read_at: Option<i64>,
+    pub message: String,
+    pub raw: Vec<u8>,
 }
 
 impl Archive {
@@ -1319,6 +1342,68 @@ impl Archive {
                 |row| row.get(0),
             )
             .optional()
+    }
+
+    /// Remembers one received status update, replacing its earlier copy.
+    pub fn put_status(
+        &self,
+        key: &str,
+        sender: &str,
+        timestamp: i64,
+        read_at: Option<i64>,
+        message: &str,
+        raw: &[u8],
+    ) -> Result<()> {
+        self.connection.execute(
+            "INSERT OR REPLACE INTO status_updates (key, sender, timestamp, read_at, message, raw)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![key, sender, timestamp, read_at, message, raw],
+        )?;
+        Ok(())
+    }
+
+    /// Stamps one remembered update seen here.
+    pub fn read_status(&self, key: &str, read_at: i64) -> Result<()> {
+        self.connection.execute(
+            "UPDATE status_updates SET read_at = ?2 WHERE key = ?1",
+            params![key, read_at],
+        )?;
+        Ok(())
+    }
+
+    /// Forgets one remembered update.
+    pub fn remove_status_update(&self, key: &str) -> Result<()> {
+        self.connection
+            .execute("DELETE FROM status_updates WHERE key = ?1", params![key])?;
+        Ok(())
+    }
+
+    /// Forgets updates posted at or before `before` (Unix seconds).
+    pub fn remove_expired_statuses(&self, before: i64) -> Result<()> {
+        self.connection.execute(
+            "DELETE FROM status_updates WHERE timestamp <= ?1",
+            params![before],
+        )?;
+        Ok(())
+    }
+
+    /// Every remembered update, oldest first.
+    pub fn status_updates(&self) -> Result<Vec<StoredStatus>> {
+        let mut statement = self.connection.prepare(
+            "SELECT key, sender, timestamp, read_at, message, raw
+             FROM status_updates ORDER BY timestamp",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(StoredStatus {
+                key: row.get(0)?,
+                sender: row.get(1)?,
+                timestamp: row.get(2)?,
+                read_at: row.get(3)?,
+                message: row.get(4)?,
+                raw: row.get(5)?,
+            })
+        })?;
+        rows.collect()
     }
 
     /// Returns only a protocol identity whose sender matches the photo.
@@ -2979,6 +3064,42 @@ impl Archive {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    #[test]
+    fn remembered_statuses_round_trip_with_read_marks_and_expiry() {
+        let archive = Archive::in_memory().unwrap();
+        archive
+            .put_status(
+                "ana:one",
+                "ana",
+                100,
+                None,
+                "{\"id\":\"ana:one\"}",
+                b"raw-one",
+            )
+            .unwrap();
+        archive
+            .put_status(
+                "ana:two",
+                "ana",
+                200,
+                None,
+                "{\"id\":\"ana:two\"}",
+                b"raw-two",
+            )
+            .unwrap();
+        let rows = archive.status_updates().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].key, "ana:one");
+        assert!(rows[0].read_at.is_none());
+        archive.read_status("ana:one", 150).unwrap();
+        assert_eq!(archive.status_updates().unwrap()[0].read_at, Some(150));
+        archive.remove_expired_statuses(150).unwrap();
+        let rows = archive.status_updates().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].key, "ana:two");
+        archive.remove_status_update("ana:two").unwrap();
+        assert!(archive.status_updates().unwrap().is_empty());
+    }
     #[test]
     fn only_new_live_nonempty_reactions_promote_chat_activity_atomically() {
         let archive = Archive::in_memory().unwrap();

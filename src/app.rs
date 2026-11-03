@@ -5617,8 +5617,11 @@ impl App {
     /// Opens the Status viewer on one update. It counts as seen here: the
     /// phone is not told. A photo or video fetches on its own when it has
     /// none yet; the worker ignores the ask when there is nothing to do.
+    /// The Status dialog opens with it, so a ring click from the chat list
+    /// lands on the viewer instead of marking silently.
     fn status_open(&mut self, key: String) {
         self.status_shown = Some(key.clone());
+        self.dialog = Some(crate::model::Dialog::Statuses);
         self.backend.send(Command::StatusRead(key.clone()));
         self.backend.send(Command::DownloadStatus(key));
     }
@@ -11936,6 +11939,10 @@ mod tests {
         ];
         app.apply(Action::StatusOpen("ana:new".into()), &ctx);
         assert_eq!(app.status_shown.as_deref(), Some("ana:new"));
+        assert!(
+            matches!(app.dialog, Some(crate::model::Dialog::Statuses)),
+            "opening from the chat list lands on the viewer"
+        );
         assert!(
             matches!(commands.try_recv().unwrap(), crate::backend::Command::StatusRead(key) if key == "ana:new"),
             "opening counts the update as seen here"

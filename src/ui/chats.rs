@@ -1676,6 +1676,19 @@ fn has_unseen_status(app: &App, chat: &str) -> bool {
         .any(|row| row.sender == chat && row.read_at.is_none() && row.timestamp > now - 86400)
 }
 
+/// One entry per unexpired update of the sender, oldest first: true while
+/// the update is not seen here yet. Drives the ring's segments.
+fn status_segments(app: &App, sender: &str) -> Vec<bool> {
+    let now = crate::util::now();
+    let mut entries: Vec<_> = app
+        .statuses
+        .iter()
+        .filter(|row| row.sender == sender && row.timestamp > now - 86400)
+        .collect();
+    entries.sort_by_key(|row| row.timestamp);
+    entries.iter().map(|row| row.read_at.is_none()).collect()
+}
+
 /// The sender's newest update, named by its row id, if it has not expired.
 /// The ring's click target opens it instead of the chat.
 fn newest_status_key(app: &App, sender: &str) -> Option<String> {
@@ -1685,6 +1698,34 @@ fn newest_status_key(app: &App, sender: &str) -> Option<String> {
         .filter(|row| row.sender == sender && row.timestamp > now - 86400)
         .max_by_key(|row| row.timestamp)
         .map(|row| row.id.clone())
+}
+
+/// WhatsApp Web's ring, split into one arc per update: accent while the
+/// update is unseen, dim once seen.
+fn paint_status_ring(ui: &egui::Ui, palette: &Palette, rect: Rect, segments: &[bool]) {
+    use std::f32::consts::TAU;
+    let n = segments.len() as f32;
+    if n == 0.0 {
+        return;
+    }
+    let gap = 0.12_f32.min(TAU / n / 3.0);
+    let span = (TAU - gap * n) / n;
+    for (i, &fresh) in segments.iter().enumerate() {
+        let start = -std::f32::consts::FRAC_PI_2 + i as f32 * (span + gap);
+        // This egui has no arc primitive: short chords stand in for one.
+        let steps = 8;
+        let mut at = start;
+        for _ in 0..steps {
+            let next = (at + span / steps as f32).min(start + span);
+            let point =
+                |angle: f32| rect.center() + egui::Vec2::angled(angle) * (rect.width() / 2.0 + 3.0);
+            ui.painter().line_segment(
+                [point(at), point(next)],
+                egui::Stroke::new(2.5, if fresh { palette.accent } else { palette.dim }),
+            );
+            at = next;
+        }
+    }
 }
 
 /// Draws one chat's title, draft or message preview, badges and queued selection actions.
@@ -1774,12 +1815,8 @@ fn row(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> egui::Response {
             widgets::privacy_cover(ui, avatar_rect, palette.surface_hover, 24.0);
         }
         if !hidden_avatar && has_unseen_status(app, &chat.id) {
-            // WhatsApp Web's green ring: this sender has a status not seen here yet.
-            ui.painter().circle_stroke(
-                avatar_rect.center(),
-                avatar_rect.width() / 2.0 + 3.0,
-                egui::Stroke::new(2.5, palette.accent),
-            );
+            // WhatsApp Web's ring, split into one arc per update.
+            paint_status_ring(ui, &palette, avatar_rect, &status_segments(app, &chat.id));
         }
         // The ring's click target opens the sender's newest update instead
         // of the chat, as on WhatsApp Web. It goes after the row's own
@@ -2346,11 +2383,7 @@ fn compact_row(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> egui::Response 
             widgets::privacy_cover(ui, avatar_rect, palette.surface_hover, 24.0);
         }
         if !hidden_avatar && has_unseen_status(app, &chat.id) {
-            ui.painter().circle_stroke(
-                avatar_rect.center(),
-                avatar_rect.width() / 2.0 + 3.0,
-                egui::Stroke::new(2.5, palette.accent),
-            );
+            paint_status_ring(ui, &palette, avatar_rect, &status_segments(app, &chat.id));
         }
         // As in a full row, the ring's click target opens the sender's
         // newest update instead of the chat.
@@ -2867,6 +2900,16 @@ mod tests {
             "the ring opens the sender's newest update"
         );
         assert_eq!(newest_status_key(&app, "bea"), None);
+        app.statuses = vec![
+            story("old", now - 300, Some(now - 200)),
+            story("fresh", now - 100, None),
+        ];
+        assert_eq!(
+            status_segments(&app, "ana"),
+            vec![false, true],
+            "segments run oldest first with their own seen state"
+        );
+        assert!(status_segments(&app, "bea").is_empty());
     }
 
     use crate::paths::AppDirs;

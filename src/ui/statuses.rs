@@ -232,7 +232,7 @@ fn viewer(app: &mut App, ui: &mut egui::Ui, key: &str) {
             if entries.len() > 1 {
                 let at = entries.iter().position(|row| row.id == key);
                 let where_they_stand = match at {
-                    Some(at) => format!("{} of {}", at + 1, entries.len()),
+                    Some(at) => format!("{}/{}", at + 1, entries.len()),
                     None => format!("{}", entries.len()),
                 };
                 ui.add_space(8.0);
@@ -304,26 +304,43 @@ fn status_entry(app: &mut App, ui: &mut egui::Ui, row: &Message) {
             {
                 return;
             }
-            use std::hash::{Hash, Hasher};
-            let mut key = std::collections::hash_map::DefaultHasher::new();
-            (app.account().id.as_str(), &row.id).hash(&mut key);
-            let uri = format!("status/{:016x}", key.finish());
-            let (rect, _) = ui.allocate_exact_size(
-                egui::vec2(ui.available_width().min(340.0), 200.0),
-                egui::Sense::hover(),
-            );
-            super::gallery::thumbnail(ui, &palette, rect, row, Some(&uri));
             if let Some(path) = &media.path {
                 if matches!(row.content, Content::Image { .. })
                     && crate::safety::can_preview_image(path)
                 {
-                    // Stay in this account's filtered Status view. A generic
-                    // image preview would lose this sender's expiry/lock scope.
-                    ui.add(
+                    // One photo, clickable like the chat's: the system viewer
+                    // opens it. A generic image preview would lose this
+                    // sender's expiry/lock scope, so the Status view keeps
+                    // its own.
+                    let shown = ui.add(
                         egui::Image::new(crate::util::image_uri(path))
                             .max_size(egui::vec2(ui.available_width().min(640.0), 480.0)),
                     );
-                } else if super::widgets::menu_item(
+                    if ui
+                        .interact(
+                            shown.rect,
+                            egui::Id::new(("status-photo", &row.id)),
+                            Sense::click(),
+                        )
+                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                        .clicked()
+                    {
+                        app.actions.push(Action::OpenFile(path.clone()));
+                    }
+                    return;
+                }
+                if matches!(row.content, Content::Video { .. }) {
+                    use std::hash::{Hash, Hasher};
+                    let mut key = std::collections::hash_map::DefaultHasher::new();
+                    (app.account().id.as_str(), &row.id).hash(&mut key);
+                    let uri = format!("status/{:016x}", key.finish());
+                    let (rect, _) = ui.allocate_exact_size(
+                        egui::vec2(ui.available_width().min(340.0), 200.0),
+                        egui::Sense::hover(),
+                    );
+                    super::gallery::thumbnail(ui, &palette, rect, row, Some(&uri));
+                }
+                if super::widgets::menu_item(
                     ui,
                     &palette,
                     None,

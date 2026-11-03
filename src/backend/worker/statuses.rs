@@ -69,8 +69,55 @@ impl Worker {
         if row.read_at.is_some() {
             return false;
         }
-        row.read_at = Some(crate::util::now());
+        let read_at = crate::util::now();
+        row.read_at = Some(read_at);
+        if let Err(error) = self.archive.read_status(&found, read_at) {
+            log::warn!("could not remember a seen status: {error}");
+        }
         true
+    }
+    /// Restores the unexpired updates remembered from earlier sessions, so a
+    /// restart still shows them. Already loaded rows win over the archive,
+    /// so a repeated reveal keeps this session's read marks.
+    pub(super) fn load_statuses(&mut self) {
+        let now = crate::util::now();
+        let stored = match self.archive.status_updates() {
+            Ok(rows) => rows,
+            Err(error) => {
+                log::warn!("could not load remembered statuses: {error}");
+                return;
+            }
+        };
+        for stored in stored {
+            if stored.timestamp <= now - LIFETIME || self.stories.rows.contains_key(&stored.key) {
+                continue;
+            }
+            let Ok(mut row): Result<Message, _> = serde_json::from_str(&stored.message) else {
+                log::warn!("could not read a remembered status; forgetting it");
+                let _ = self.archive.remove_status_update(&stored.key);
+                continue;
+            };
+            let Ok(raw) = wa::Message::decode_from_slice(&stored.raw) else {
+                log::warn!("could not read a remembered status; forgetting it");
+                let _ = self.archive.remove_status_update(&stored.key);
+                continue;
+            };
+            // The row id already is the worker's `sender:id` key.
+            row.sender = self.canonical_str(&row.sender);
+            row.chat = row.sender.clone();
+            // The JSON predates later read marks: the column is newer.
+            row.read_at = stored.read_at;
+            if let Some(media) = row.content.media_mut() {
+                // The temporary download directory is gone with the restart:
+                // a photo or video fetches again on view.
+                media.path = None;
+            }
+            self.stories.rows.insert(stored.key, (row, Arc::new(raw)));
+        }
+        if let Err(error) = self.archive.remove_expired_statuses(now - LIFETIME) {
+            log::warn!("could not forget expired statuses: {error}");
+        }
+        self.emit_statuses();
     }
     pub(super) fn ingest_status(&mut self, raw: &Arc<wa::Message>, info: &MessageInfo) {
         let timestamp = info.timestamp.timestamp();
@@ -185,7 +232,21 @@ impl Worker {
             forwarded: false,
             thumbnail: thumbnail_of(base),
         };
-        self.stories.rows.insert(key, (row, raw.clone()));
+        self.stories.rows.insert(key.clone(), (row, raw.clone()));
+        // A restart still shows the unexpired updates.
+        if let Some((row, _)) = self.stories.rows.get(&key)
+            && let Ok(message) = serde_json::to_string(row)
+            && let Err(error) = self.archive.put_status(
+                &key,
+                &row.sender,
+                timestamp,
+                None,
+                &message,
+                &raw.encode_to_vec(),
+            )
+        {
+            log::warn!("could not remember a status: {error}");
+        }
         // Coalesce arrival bursts. Scheduled worker refresh and an explicit Status
         // request always publish the newest list, while revocation remains immediate.
         if self
@@ -206,6 +267,9 @@ impl Worker {
             && let Some(path) = row.content.media().and_then(|media| media.path.as_ref())
         {
             let _ = std::fs::remove_file(path);
+        }
+        if let Err(error) = self.archive.remove_status_update(key) {
+            log::warn!("could not forget a status: {error}");
         }
     }
     pub(super) fn emit_statuses(&mut self) {
@@ -461,6 +525,24 @@ mod tests {
         let later = format!("12345@s.whatsapp.net:{}", stored.split_once(':').unwrap().1);
         assert_ne!(stored, later);
         assert!(worker.mark_status_read(&later));
+    }
+    #[test]
+    fn remembered_statuses_survive_a_worker_restart() {
+        let (mut worker, _, _, _) = super::super::receipt_tests::worker();
+        let (raw, info) = delivery("story", crate::util::now());
+        worker.ingest(&raw, &info);
+        let key = worker.stories.rows.keys().next().unwrap().clone();
+        assert_eq!(worker.archive.status_updates().unwrap().len(), 1);
+        assert!(worker.mark_status_read(&key));
+        // A restart drops the shelf but keeps the archive.
+        worker.stories.rows.clear();
+        worker.load_statuses();
+        let row = &worker.stories.rows.get(&key).unwrap().0;
+        assert_eq!(row.id, key);
+        assert!(
+            row.read_at.is_some(),
+            "the seen mark comes back from the archive"
+        );
     }
     #[test]
     fn revocations_survive_duplicate_delivery_and_later_privacy_id_mapping() {

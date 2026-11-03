@@ -896,9 +896,9 @@ embedded as interactive-message actions have separate unsupported-action rules.
 
 ## Status (development builds)
 
-The **Status** chip beside the chat filters opens stories received while this
-instance is running. Stories expire 24 hours after their original timestamp and
-are not added to the permanent conversation archive. The authors' list shows
+The **Status** chip beside the chat filters opens stories received while linked,
+including ones remembered from earlier sessions. Stories expire 24 hours after
+their original timestamp and are not added to the permanent conversation archive. The authors' list shows
 each sender's newest update with a dot while any of theirs is unseen; opening
 an update, or stepping to it, marks it seen here. The phone is not told, so no
 read receipt is sent. A green ring on a chat's avatar means that sender has an

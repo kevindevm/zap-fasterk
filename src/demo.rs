@@ -3902,6 +3902,29 @@ mod tests {
         }
     }
 
+    /// The Status viewer keeps showing its update while it is still listed.
+    #[test]
+    fn status_viewer_keeps_showing_its_update() {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        app.attach(&ctx);
+        super::apply_flags(&mut app, Some("statuses"));
+        render(&mut app, &ctx);
+        let key = app
+            .statuses
+            .iter()
+            .map(|row| row.id.clone())
+            .max()
+            .expect("demo statuses");
+        app.status_shown = Some(key.clone());
+        render(&mut app, &ctx);
+        assert_eq!(app.status_shown.as_deref(), Some(key.as_str()));
+        assert!(
+            matches!(app.dialog, Some(crate::model::Dialog::Statuses)),
+            "the viewer stays inside its dialog"
+        );
+    }
+
     #[test]
     fn hovering_minimize_does_not_reveal_a_private_caller_name() {
         let mut app = app();
