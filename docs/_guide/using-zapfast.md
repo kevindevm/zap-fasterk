@@ -683,7 +683,8 @@ it, and `Ctrl+B` brings the full list back.
 ## Notifications and the tray
 
 Closing the window keeps Zap Fasterk linked in the tray. Click the tray icon or
-launch the app again to reopen it. To quit, use **Quit** in the tray menu, or on
+launch the app again to reopen it, and on Windows click it again to hide a
+window that is in front. To quit, use **Quit** in the tray menu, or on
 Linux **Quit Zap Fasterk** in the launcher's right-click menu (KDE Plasma's task
 manager and application menu, GNOME's Dash), which runs `zapfasterk quit`.
 Launchers that support the Unity Launcher API
