@@ -1,0 +1,77 @@
+name: Windows build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Baked into the binary by settings.rs; builds without the secret
+  # simply ship keyless and the picker asks for one.
+  ZAPFAST_GIPHY_KEY: ${{ secrets.ZAPFAST_GIPHY_KEY || secrets.FASTSAPP_GIPHY_KEY }}
+
+jobs:
+  build:
+    name: portable and installer (x86_64-pc-windows-msvc)
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - run: rustup target add x86_64-pc-windows-msvc
+      # No compiler cache: published binaries never build from outputs
+      # restored from an Actions cache.
+      - run: cargo build --locked --release --target x86_64-pc-windows-msvc
+
+      - name: Portable package
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          short=$(git rev-parse --short HEAD)
+          name="zap-fasterk-$version-windows-x64-$short"
+          mkdir -p "dist/$name"
+          cp "target/x86_64-pc-windows-msvc/release/zap-fasterk.exe" "dist/$name/"
+          cp README.md LICENSE THIRD-PARTY-NOTICES.md packaging/zap-fasterk-portable.txt "dist/$name/"
+          cd dist
+          7z a "$name.zip" "$name"
+
+      # The Windows installer: a per-user Windows Installer package, as the
+      # release workflow builds it (PACKAGING.md, "Windows installer").
+      - uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
+        with:
+          ruby-version: '4.0'
+      - name: Windows Installer package
+        shell: pwsh
+        run: |
+          gem install native-packages --version 0.9.0 --no-document
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add --global WixToolset.Util.wixext/5.0.2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:Path += ";$env:USERPROFILE\.dotnet\tools"
+          $payload = "dist\windows-input-x86_64-pc-windows-msvc"
+          New-Item -ItemType Directory -Force $payload | Out-Null
+          Copy-Item "target\x86_64-pc-windows-msvc\release\zap-fasterk.exe", README.md, LICENSE, THIRD-PARTY-NOTICES.md, `
+            packaging\windows\zap-fasterk-installer.txt $payload
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.*)"$').Matches[0].Groups[1].Value
+          native-packages build --version $version --target windows-amd64 `
+            --defer-recipes --output "$env:RUNNER_TEMP\windows-packages"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item "$env:RUNNER_TEMP\windows-packages\packages\windows-amd64\msi\*.msi" dist\
+          Remove-Item -LiteralPath ([IO.Path]::GetFullPath($payload)) -Recurse
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-x86_64
+          path: |
+            dist/*.zip
+            dist/*.msi
+          if-no-files-found: error
