@@ -1666,6 +1666,16 @@ fn person_row(
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
+/// Whether the chat's sender has an unexpired status update not seen here
+/// yet. Locked chats never have one: the worker already keeps their senders
+/// out of the list.
+fn has_unseen_status(app: &App, chat: &str) -> bool {
+    let now = crate::util::now();
+    app.statuses
+        .iter()
+        .any(|row| row.sender == chat && row.read_at.is_none() && row.timestamp > now - 86400)
+}
+
 /// Draws one chat's title, draft or message preview, badges and queued selection actions.
 fn row(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> egui::Response {
     let palette = app.palette;
@@ -1750,6 +1760,14 @@ fn row(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> egui::Response {
         );
         if hidden_avatar {
             widgets::privacy_cover(ui, avatar_rect, palette.surface_hover, 24.0);
+        }
+        if !hidden_avatar && has_unseen_status(app, &chat.id) {
+            // WhatsApp Web's green ring: this sender has a status not seen here yet.
+            ui.painter().circle_stroke(
+                avatar_rect.center(),
+                avatar_rect.width() / 2.0 + 3.0,
+                egui::Stroke::new(2.5, palette.accent),
+            );
         }
         if chat.disappearing_timer().is_some() {
             widgets::paint_disappearing_badge(ui, &palette, avatar_rect);
@@ -2291,6 +2309,13 @@ fn compact_row(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> egui::Response 
         if hidden_avatar {
             widgets::privacy_cover(ui, avatar_rect, palette.surface_hover, 24.0);
         }
+        if !hidden_avatar && has_unseen_status(app, &chat.id) {
+            ui.painter().circle_stroke(
+                avatar_rect.center(),
+                avatar_rect.width() / 2.0 + 3.0,
+                egui::Stroke::new(2.5, palette.accent),
+            );
+        }
         if chat.disappearing_timer().is_some() {
             widgets::paint_disappearing_badge(ui, &palette, avatar_rect);
         }
@@ -2731,6 +2756,54 @@ mod tests {
         assert!(!title_fits(100.0, 221.0, 3, 8.0));
         assert!(!title_fits(100.0, 222.0, 4, 8.0));
         assert!(title_fits(100.0, 260.0, 4, 8.0));
+    }
+
+    #[test]
+    fn unseen_status_ring_needs_a_fresh_unread_update() {
+        use crate::model::{Content, Delivery, Message};
+        let directory = tempfile::tempdir().unwrap();
+        let (mut app, _events) =
+            App::headless(AppDirs::under(directory.path()), Settings::default());
+        let story = |id: &str, timestamp: i64, read_at: Option<i64>| Message {
+            id: id.into(),
+            chat: "ana".into(),
+            sender: "ana".into(),
+            sender_name: None,
+            from_me: false,
+            timestamp,
+            history_order: None,
+            content: Content::Text {
+                text: id.into(),
+                preview: None,
+            },
+            status: Delivery::None,
+            delivered_at: None,
+            read_at,
+            quoted: None,
+            reactions: Vec::new(),
+            edited: false,
+            mentions: Vec::new(),
+            forwarded: false,
+            thumbnail: None,
+        };
+        let now = crate::util::now();
+        assert!(!has_unseen_status(&app, "ana"), "no statuses, no ring");
+        app.statuses = vec![story("old", now - 90000, None)];
+        assert!(
+            !has_unseen_status(&app, "ana"),
+            "an expired update earns no ring"
+        );
+        app.statuses = vec![story("seen", now - 100, Some(now - 50))];
+        assert!(
+            !has_unseen_status(&app, "ana"),
+            "a seen update earns no ring"
+        );
+        app.statuses = vec![story("fresh", now - 100, None)];
+        assert!(has_unseen_status(&app, "ana"));
+        assert!(
+            !has_unseen_status(&app, "bea"),
+            "another sender's update is not this chat's ring"
+        );
     }
 
     use crate::paths::AppDirs;
