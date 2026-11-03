@@ -32,8 +32,6 @@ pub mod i18n;
 pub mod image_cache;
 pub mod image_preview;
 pub mod local_avatars;
-#[cfg(target_os = "macos")]
-pub mod macos;
 pub mod markup;
 pub mod media_pause;
 pub mod model;

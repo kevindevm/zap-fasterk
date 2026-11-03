@@ -1292,26 +1292,11 @@ impl eframe::App for Shell {
 }
 
 fn app_icon() -> egui::IconData {
-    #[cfg(target_os = "macos")]
-    {
-        // eframe replaces the bundle's Dock icon with this viewport icon.
-        let image = image::load_from_memory(include_bytes!("../packaging/macos/icon-1024.png"))
-            .expect("bundled macOS icon")
-            .into_rgba8();
-        egui::IconData {
-            width: image.width(),
-            height: image.height(),
-            rgba: image.into_raw(),
-        }
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        const SIZE: usize = 128;
-        egui::IconData {
-            rgba: zapfasterk::util::app_icon_rgba(SIZE),
-            width: SIZE as u32,
-            height: SIZE as u32,
-        }
+    const SIZE: usize = 128;
+    egui::IconData {
+        rgba: zapfasterk::util::app_icon_rgba(SIZE),
+        width: SIZE as u32,
+        height: SIZE as u32,
     }
 }
 

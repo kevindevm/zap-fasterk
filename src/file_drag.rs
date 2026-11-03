@@ -39,10 +39,6 @@ pub fn start(path: &Path) -> Result<(), Failure> {
     {
         native::start(path).map_err(|error| Failure::Native(error.to_string()))
     }
-    #[cfg(not(windows))]
-    {
-        Err(Failure::Unsupported)
-    }
 }
 
 #[cfg(windows)]

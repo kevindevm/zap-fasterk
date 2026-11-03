@@ -557,8 +557,6 @@ fn managed_file_missing(root: &std::path::Path, path: &std::path::Path) -> std::
             use std::os::windows::fs::MetadataExt;
             metadata.file_attributes() & 0x400 != 0
         };
-        #[cfg(not(windows))]
-        let is_link = metadata.file_type().is_symlink();
         if is_link {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,

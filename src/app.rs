@@ -748,11 +748,6 @@ pub struct App {
     pub hide_intent: bool,
     /// Whether a headless app should create a window.
     pub wants_show: bool,
-    /// Whether this session draws through Wayland, where a compositor ignores
-    /// a programmatic focus or unminimize request and the window is closed and
-    /// reopened instead.
-    wayland: bool,
-    niri_focus_pending: Option<std::sync::mpsc::Receiver<bool>>,
     /// Whether the current window close should reopen a fresh one at once
     /// (`Closed::Reopen`) rather than stop drawing.
     reopen: bool,
@@ -913,23 +908,6 @@ impl Pending {
     }
 }
 
-/// Whether this session draws through Wayland, where a compositor ignores an
-/// app's request to focus or unminimize one of its own windows: winit's
-/// Wayland `focus_window` is a no-op and `set_minimized(false)` only warns.
-/// Mirrors winit's own choice: Wayland when either variable is non-empty.
-#[cfg(target_os = "linux")]
-fn wayland_session() -> bool {
-    ["WAYLAND_DISPLAY", "WAYLAND_SOCKET"]
-        .into_iter()
-        .any(|name| std::env::var_os(name).is_some_and(|value| !value.is_empty()))
-}
-
-/// Wayland is Linux-only; elsewhere a window focuses and restores normally.
-#[cfg(not(target_os = "linux"))]
-fn wayland_session() -> bool {
-    false
-}
-
 /// The app outlives its window: closing it with "keep running" on hides
 /// Zap Fasterk, and the tray, a notification or another launch brings it back.
 impl fastframe_shell::Resident for App {
@@ -937,8 +915,7 @@ impl fastframe_shell::Resident for App {
         if self.quit_requested {
             fastframe_shell::Closed::Quit
         } else if self.reopen {
-            // The window was closed only to make a fresh one, which is how a
-            // Wayland session brings a minimized or covered window forward.
+            // The window was closed only to make a fresh one at once.
             fastframe_shell::Closed::Reopen
         } else if self.hide_intent {
             fastframe_shell::Closed::Hide
@@ -965,14 +942,6 @@ impl fastframe_shell::Resident for App {
     /// Without a tray there is no way back to a hidden window, so show it.
     fn start_hidden(&mut self) -> bool {
         if !self.hides_to_tray() {
-            #[cfg(target_os = "linux")]
-            if self.tray.is_some() && self.settings.keep_running_in_background {
-                self.tray_start_deadline =
-                    Some(std::time::Instant::now() + std::time::Duration::from_secs(15));
-            } else {
-                return false;
-            }
-            #[cfg(not(target_os = "linux"))]
             return false;
         }
         App::start_hidden(self);
@@ -1423,8 +1392,6 @@ impl App {
             tray_start_deadline: None,
             hide_intent: false,
             wants_show: false,
-            wayland: wayland_session(),
-            niri_focus_pending: None,
             reopen: false,
             automation: None,
             control_commands: None,
@@ -2504,10 +2471,6 @@ impl App {
 
     /// Initializes a newly created window.
     pub fn attach(&mut self, ctx: &egui::Context) {
-        #[cfg(target_os = "linux")]
-        if !cfg!(test) && self.pauses_media {
-            ctx.add_plugin(crate::opener::BrowserLauncher);
-        }
         // Register transcript copy formatting once per egui context.
         ctx.add_plugin(crate::transcript::CopyAnnotator {
             rows: std::sync::Arc::clone(&self.copy_rows),
@@ -2557,8 +2520,6 @@ impl App {
         // Before the tray: muda keeps the first menu handler it is given, and
         // the tray installs one when it makes its item on the first window.
         // Ours hands the tray its own events (#215).
-        #[cfg(target_os = "macos")]
-        crate::macos::attach(ctx);
         if let Some(tray) = &mut self.tray {
             tray.attach();
         }
@@ -10017,22 +9978,9 @@ impl App {
                 if self.window_hidden {
                     // The headless loop in `main` will create the window.
                     self.wants_show = true;
-                } else if self.wayland
-                    && !closing_to_hide
-                    && (self.niri_focus_pending.is_some() || {
-                        self.niri_focus_pending = crate::window::start_niri_focus(ctx.clone());
-                        self.niri_focus_pending.is_some()
-                    })
-                {
-                    // The compositor request completes off the interface thread.
-                } else if self.wayland || closing_to_hide {
-                    // A previous hide already queued Close, so every platform
-                    // must recreate the window when Show supersedes that hide.
-                    // Wayland drops a programmatic focus or unminimize
-                    // request, so a minimized or covered window cannot come
-                    // forward that way. Close it and let the shell open a
-                    // fresh one at once: the compositor raises a new toplevel,
-                    // and a notification click lands on a visible window.
+                } else if closing_to_hide {
+                    // A previous hide already queued Close, so the window
+                    // must be recreated when Show supersedes that hide.
                     self.reopen = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 } else {
@@ -10377,27 +10325,6 @@ impl App {
             }
         }
 
-        if let Some(pending) = &self.niri_focus_pending {
-            match pending.try_recv() {
-                Ok(focused) => {
-                    self.niri_focus_pending = None;
-                    if !focused && !self.window_hidden && !self.hide_intent && !self.quit_requested
-                    {
-                        self.reopen = true;
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
-                }
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    self.niri_focus_pending = None;
-                    if !self.window_hidden && !self.hide_intent && !self.quit_requested {
-                        self.reopen = true;
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
-                }
-                Err(std::sync::mpsc::TryRecvError::Empty) => {}
-            }
-        }
-
         if let Some(deadline) = self.tray_start_deadline {
             if self.tray_shown() {
                 self.tray_start_deadline = None;
@@ -10426,12 +10353,6 @@ impl App {
         self.handle_power();
         self.track_focus(ctx, Instant::now());
         self.handle_tray();
-        #[cfg(target_os = "macos")]
-        {
-            let close = crate::ui::keys::close_shortcut_action(self, ctx);
-            self.actions
-                .extend(crate::macos::drain(self.window_hidden, close));
-        }
         self.handle_control_commands();
         self.poll_custom_themes();
         let wallpaper = self.account().settings.wallpaper_image.clone();
@@ -10516,17 +10437,8 @@ impl App {
     /// [`Self::request_attention`] on a desktop that is GNOME or not, which
     /// shows its own "is ready" notice instead of marking the taskbar (#466).
     fn request_attention_on(&mut self, ctx: &egui::Context, gnome: bool) {
-        if std::mem::take(&mut self.wants_attention)
-            && cfg!(target_os = "linux")
-            && !gnome
-            && !self.window_hidden
-            && !self.window_focused
-            && ctx.input(|input| input.viewport().focused) != Some(true)
-        {
-            ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(
-                egui::UserAttentionType::Informational,
-            ));
-        }
+        let _ = std::mem::take(&mut self.wants_attention);
+        let _ = (ctx, gnome);
     }
 
     /// Collects a finished password check, and locks once Zap Fasterk has gone
@@ -15290,78 +15202,6 @@ mod tests {
         assert_eq!(app.deferred_account_actions[0].0.as_str(), "2");
     }
 
-    /// A trackpad gesture keeps its pane while fastframe-scroll says it goes
-    /// on: a frame that is slow to draw is no pause, and the gesture's glide
-    /// stays with the pane too. A pause in the input itself ends the gesture.
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn a_trackpad_gesture_keeps_its_pane_through_a_slow_frame_and_its_glide() {
-        let mut app = app();
-        let ctx = egui::Context::default();
-        let run = |app: &mut App, time: f64, delta: egui::Vec2| {
-            let events = if delta == egui::Vec2::ZERO {
-                Vec::new()
-            } else {
-                vec![egui::Event::MouseWheel {
-                    unit: egui::MouseWheelUnit::Point,
-                    delta,
-                    modifiers: egui::Modifiers::NONE,
-                    phase: egui::TouchPhase::Move,
-                }]
-            };
-            let mut output = ctx.run_ui(
-                egui::RawInput {
-                    time: Some(time),
-                    events,
-                    ..Default::default()
-                },
-                |ui| {
-                    let ctx = ui.ctx().clone();
-                    app.scrolling.apply(&ctx);
-                    app.route_scroll(&ctx);
-                },
-            );
-            output.textures_delta.clear();
-        };
-        for frame in 0..6 {
-            run(&mut app, f64::from(frame) / 60.0, egui::vec2(0.0, 30.0));
-        }
-        assert!(app.scrolling.from_trackpad());
-        app.scroll_route.owner = Some(ScrollPane::Messages);
-        // A frame that takes a quarter of a second to draw, 16 ms of input
-        // time after the last: nothing about the gesture has changed.
-        std::thread::sleep(Duration::from_millis(250));
-        run(&mut app, 6.0 / 60.0, egui::Vec2::ZERO);
-        assert!(
-            !app.scrolling.gliding(),
-            "a slow frame lets the gesture glide"
-        );
-        assert_eq!(
-            app.scroll_route.owner,
-            Some(ScrollPane::Messages),
-            "a slow frame lets go of the gesture's pane"
-        );
-        // A pause in the input itself ends the gesture, which glides, still
-        // with its pane.
-        run(&mut app, 6.0 / 60.0 + 0.2, egui::Vec2::ZERO);
-        assert!(app.scrolling.gliding(), "the lifted gesture glides");
-        run(&mut app, 6.0 / 60.0 + 0.25, egui::Vec2::ZERO);
-        assert_eq!(
-            app.scroll_route.owner,
-            Some(ScrollPane::Messages),
-            "the glide lets go of the gesture's pane"
-        );
-        // Once the glide is over, the pane is free for the next gesture.
-        let mut time = 6.0 / 60.0 + 0.25;
-        while app.scrolling.gliding() && time < 10.0 {
-            time += 1.0 / 60.0;
-            run(&mut app, time, egui::Vec2::ZERO);
-        }
-        assert!(!app.scrolling.gliding(), "the glide stops");
-        run(&mut app, time + 1.0, egui::Vec2::ZERO);
-        assert_eq!(app.scroll_route.owner, None, "the next gesture picks");
-    }
-
     /// A chat that is gone or emptied takes its confirmation with it: a modal
     /// left behind for a chat that no longer exists still dispatches its
     /// action, and after a remote clear that action would take what arrived
@@ -17093,48 +16933,32 @@ mod tests {
         assert_eq!(app.closed(), Closed::Quit);
     }
 
-    /// A Wayland compositor ignores an app's focus and unminimize requests, so
-    /// a notification click or a second launch closes the window and asks the
-    /// shell for a fresh one, which the compositor raises. Elsewhere the
-    /// window is only told to restore and focus.
+    /// A notification click or a second launch only tells the window to
+    /// restore and focus.
     #[test]
-    fn a_wayland_show_reopens_the_window_instead_of_focusing_it() {
+    fn a_show_reopens_the_window_only_after_a_hide() {
         use fastframe_shell::{Closed, Resident};
         let ctx = egui::Context::default();
-
         let mut app = app();
-        app.wayland = true;
         app.apply(Action::ShowWindow, &ctx);
-        assert!(app.reopen, "Wayland closes the window to make a fresh one");
-        assert_eq!(app.closed(), Closed::Reopen);
-
-        let mut app = self::app();
-        app.wayland = false;
-        app.apply(Action::ShowWindow, &ctx);
-        assert!(!app.reopen, "elsewhere the window is only focused");
+        assert!(!app.reopen, "the window is only focused");
         assert_ne!(app.closed(), Closed::Reopen);
     }
 
-    /// A later hide wins over Wayland recreation; a subsequent explicit show still works.
+    /// A later hide wins over recreation; a subsequent explicit show still works.
     #[test]
     fn window_visibility_follows_the_latest_explicit_request() {
         use fastframe_shell::{Closed, Resident};
         let ctx = egui::Context::default();
-        for wayland in [true, false] {
-            let mut app = app();
-            app.wayland = wayland;
-            app.apply(Action::ShowWindow, &ctx);
-            if wayland {
-                assert_eq!(app.closed(), Closed::Reopen);
-            }
-            app.wants_show = true;
-            app.hide_window(&ctx);
-            assert_eq!(app.closed(), Closed::Hide);
-            assert!(!app.reopen && !app.wants_show);
-            app.apply(Action::ShowWindow, &ctx);
-            assert_eq!(app.closed(), Closed::Reopen);
-            assert!(!app.hide_intent);
-        }
+        let mut app = app();
+        app.apply(Action::ShowWindow, &ctx);
+        app.wants_show = true;
+        app.hide_window(&ctx);
+        assert_eq!(app.closed(), Closed::Hide);
+        assert!(!app.reopen && !app.wants_show);
+        app.apply(Action::ShowWindow, &ctx);
+        assert_eq!(app.closed(), Closed::Reopen);
+        assert!(!app.hide_intent);
     }
 
     #[test]
@@ -23370,73 +23194,6 @@ mod app_lock_tests {
                 .iter()
                 .any(|command| matches!(command, egui::ViewportCommand::RequestUserAttention(_)))
         })
-    }
-
-    /// A notification highlights the taskbar entry of an open, unfocused
-    /// window, once; a hidden window has no entry to highlight.
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn a_notification_highlights_an_unfocused_window_in_the_taskbar() {
-        let ctx = egui::Context::default();
-        let mut app = unlocked_app();
-        let message = incoming(&mut app);
-        app.window_hidden = false;
-        app.window_focused = false;
-        app.maybe_notify(CHAT, &message);
-        app.request_attention_on(&ctx, false);
-        assert!(attention_requested(&ctx));
-
-        let ctx = egui::Context::default();
-        app.request_attention_on(&ctx, false);
-        assert!(!attention_requested(&ctx), "only once per notification");
-
-        app.window_hidden = true;
-        app.maybe_notify(CHAT, &message);
-        app.request_attention_on(&ctx, false);
-        assert!(!attention_requested(&ctx));
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn gnome_gets_no_duplicate_window_attention_notification() {
-        let ctx = egui::Context::default();
-        let mut app = unlocked_app();
-        let message = incoming(&mut app);
-        app.window_hidden = false;
-        app.window_focused = false;
-        app.maybe_notify(CHAT, &message);
-        app.request_attention_on(&ctx, true);
-        assert!(!attention_requested(&ctx));
-        app.request_attention_on(&ctx, false);
-        assert!(
-            !attention_requested(&ctx),
-            "the suppressed request is spent"
-        );
-    }
-
-    /// Behind the app lock `window_focused` stays false, but a lock screen
-    /// that has the focus is no window to point at.
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn a_focused_lock_screen_is_not_highlighted() {
-        let ctx = egui::Context::default();
-        let mut input = egui::RawInput::default();
-        input.viewports.insert(
-            egui::ViewportId::ROOT,
-            egui::ViewportInfo {
-                focused: Some(true),
-                ..Default::default()
-            },
-        );
-        ctx.run_ui(input, |_| {}).textures_delta.clear();
-        let mut app = unlocked_app();
-        let message = incoming(&mut app);
-        app.window_hidden = false;
-        app.lock_app();
-        assert!(!app.window_focused);
-        app.maybe_notify(CHAT, &message);
-        app.request_attention(&ctx);
-        assert!(!attention_requested(&ctx));
     }
 
     #[test]

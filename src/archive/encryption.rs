@@ -395,6 +395,7 @@ fn identity_for_resolved(parent: &Path) -> String {
 const TEXT_KEY_PREFIX: &[u8] = b"zapfasterk-key-v1:";
 const PREVIOUS_TEXT_KEY_PREFIX: &[u8] = b"zapfast-key-v1:";
 
+#[cfg(test)]
 fn text_key(key: &[u8; 32]) -> Zeroizing<Vec<u8>> {
     use std::fmt::Write;
     let mut text =
@@ -406,11 +407,7 @@ fn text_key(key: &[u8; 32]) -> Zeroizing<Vec<u8>> {
 }
 
 fn stored_key(key: &[u8; 32]) -> Zeroizing<Vec<u8>> {
-    if cfg!(target_os = "linux") {
-        text_key(key)
-    } else {
-        Zeroizing::new(key.to_vec())
-    }
+    Zeroizing::new(key.to_vec())
 }
 
 fn decoded_key(secret: Vec<u8>) -> Result<Zeroizing<[u8; 32]>> {
@@ -435,21 +432,10 @@ fn decoded_key(secret: Vec<u8>) -> Result<Zeroizing<[u8; 32]>> {
 }
 
 fn keyring_recovery() -> &'static str {
-    #[cfg(target_os = "linux")]
-    {
-        "Start a Secret Service provider in your desktop session (GNOME Keyring, or KWallet with Secret Service support), unlock its login collection, then choose Try again. Zap Fasterk needs the session D-Bus service org.freedesktop.secrets; the archive has not been replaced"
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        "Unlock your OS keyring, then choose Try again"
-    }
+    "Unlock your OS keyring, then choose Try again"
 }
 
 fn platform_store() -> Result<std::sync::Arc<dyn CredentialStoreApi>> {
-    #[cfg(target_os = "linux")]
-    let store = zbus_secret_service_keyring_store::Store::new();
-    #[cfg(target_os = "macos")]
-    let store = apple_native_keyring_store::keychain::Store::new();
     #[cfg(windows)]
     let store = windows_native_keyring_store::Store::new();
     Ok(store.map_err(keyring_error).context(keyring_recovery())?
@@ -553,11 +539,6 @@ pub(super) fn keyed(path: &Path, key: &[u8; 32]) -> Result<Connection> {
 fn private_file(path: &Path) -> Result<()> {
     let mut options = fs::OpenOptions::new();
     options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
     options.open(path)?.sync_all()?;
     Ok(())
 }
@@ -616,10 +597,6 @@ pub(super) fn open(path: &Path, key: &[u8; 32]) -> Result<Connection> {
             .sync_all()?;
         fs::rename(&staging, path)
             .context("Could not replace the archive with its encrypted copy")?;
-        #[cfg(unix)]
-        if let Some(parent) = path.parent() {
-            fs::File::open(parent)?.sync_all()?;
-        }
     }
     let connection = keyed(path, key)?;
     if staging.try_exists()? {
@@ -731,8 +708,6 @@ mod tests {
             .unwrap()
             .get_secret()
             .unwrap();
-        #[cfg(target_os = "linux")]
-        assert!(secret.starts_with(b"zapfasterk-key-v1:"));
         assert_eq!(*decoded_key(secret).unwrap(), [9; 32]);
     }
 

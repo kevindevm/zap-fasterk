@@ -117,13 +117,7 @@ impl Snapshot {
         // where it places the content; mirror that when remembering. A
         // missing position (Wayland) leaves the last one alone.
         let pos = match (self.inner, self.outer) {
-            #[cfg(target_os = "macos")]
-            (Some(inner), _) => Some(inner.min),
-            #[cfg(target_os = "macos")]
-            (None, Some(outer)) => Some(outer.min),
-            #[cfg(not(target_os = "macos"))]
             (_, Some(outer)) => Some(outer.min),
-            #[cfg(not(target_os = "macos"))]
             (Some(inner), None) => Some(inner.min),
             (None, None) => None,
         };
@@ -160,83 +154,13 @@ pub fn viewport(
     }
 }
 
-/// Ask niri to focus the existing window without blocking the interface.
-/// The worker wakes egui when a reply or failure is ready for the fallback.
-#[cfg(target_os = "linux")]
-pub fn start_niri_focus(ctx: egui::Context) -> Option<std::sync::mpsc::Receiver<bool>> {
-    let socket = std::env::var_os("NIRI_SOCKET").filter(|path| !path.is_empty())?;
-    let (sender, receiver) = std::sync::mpsc::channel();
-    std::thread::Builder::new()
-        .name("niri-focus".into())
-        .spawn(move || {
-            let focused = focus_niri_socket(std::path::Path::new(&socket), std::process::id())
-                .unwrap_or(false);
-            let _ = sender.send(focused);
-            ctx.request_repaint();
-        })
-        .ok()?;
-    Some(receiver)
-}
-
-#[cfg(not(target_os = "linux"))]
 pub fn start_niri_focus(_ctx: egui::Context) -> Option<std::sync::mpsc::Receiver<bool>> {
     None
-}
-
-#[cfg(target_os = "linux")]
-fn focus_niri_socket(path: &std::path::Path, pid: u32) -> std::io::Result<bool> {
-    let windows = niri_request(path, &serde_json::json!("Windows"))?;
-    let Some(id) = niri_window_id(&windows["Ok"]["Windows"], pid) else {
-        return Ok(false);
-    };
-    let reply = niri_request(
-        path,
-        &serde_json::json!({"Action": {"FocusWindow": {"id": id}}}),
-    )?;
-    Ok(reply["Ok"] == "Handled")
-}
-
-/// Niri documents one JSON request and reply per line. Bound both the wait
-/// and reply size, and never collect or log another application's titles.
-#[cfg(target_os = "linux")]
-fn niri_request(
-    path: &std::path::Path,
-    request: &serde_json::Value,
-) -> std::io::Result<serde_json::Value> {
-    use std::io::{BufRead, BufReader, Read, Write};
-    let mut stream = std::os::unix::net::UnixStream::connect(path)?;
-    let timeout = Some(std::time::Duration::from_millis(500));
-    stream.set_read_timeout(timeout)?;
-    stream.set_write_timeout(timeout)?;
-    serde_json::to_writer(&mut stream, request)?;
-    stream.write_all(b"\n")?;
-    let mut reply = String::new();
-    BufReader::new(stream)
-        .take(1024 * 1024)
-        .read_line(&mut reply)?;
-    serde_json::from_str(&reply).map_err(std::io::Error::other)
-}
-
-#[cfg(any(target_os = "linux", test))]
-fn niri_window_id(windows: &serde_json::Value, pid: u32) -> Option<u64> {
-    windows
-        .as_array()?
-        .iter()
-        .find(|window| window["pid"].as_u64() == Some(u64::from(pid)))?["id"]
-        .as_u64()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn niri_window_id_selects_only_this_process() {
-        let windows = serde_json::json!([{"id": 7, "pid": 100}, {"id": 226, "pid": 16363}, {"id": 9, "pid": null}]);
-        assert_eq!(niri_window_id(&windows, 16363), Some(226));
-        assert_eq!(niri_window_id(&windows, 1), None);
-        assert_eq!(niri_window_id(&serde_json::json!(null), 1), None);
-    }
 
     use crate::settings::Settings;
 
@@ -357,15 +281,9 @@ mod tests {
         );
         assert_eq!(settings.window_width, Some(1280.0));
         assert_eq!(settings.window_height, Some(800.0));
-        #[cfg(not(target_os = "macos"))]
         assert_eq!(
             (settings.window_x, settings.window_y),
             (Some(96.0), Some(46.0))
-        );
-        #[cfg(target_os = "macos")]
-        assert_eq!(
-            (settings.window_x, settings.window_y),
-            (Some(100.0), Some(50.0))
         );
         assert!(!settings.window_maximized);
 

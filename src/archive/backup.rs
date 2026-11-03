@@ -133,11 +133,6 @@ impl Cipher {
 fn private_create(path: &Path) -> Result<File> {
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
     Ok(options.open(path)?)
 }
 
@@ -783,9 +778,6 @@ fn present(path: &Path) -> Result<bool> {
 }
 
 fn sync_directory(path: &Path) -> Result<()> {
-    #[cfg(unix)]
-    File::open(path)?.sync_all()?;
-    #[cfg(not(unix))]
     let _ = path;
     Ok(())
 }
@@ -815,55 +807,6 @@ pub(crate) fn durable_move(source: &Path, destination: &Path, replace: bool) -> 
         if unsafe { MoveFileExW(source.as_ptr(), destination.as_ptr(), flags) } == 0 {
             return Err(std::io::Error::last_os_error().into());
         }
-    }
-    #[cfg(target_os = "linux")]
-    {
-        if replace {
-            fs::rename(source, destination)?;
-        } else {
-            use std::os::unix::ffi::OsStrExt;
-            let source = std::ffi::CString::new(source.as_os_str().as_bytes())?;
-            let destination = std::ffi::CString::new(destination.as_os_str().as_bytes())?;
-            // SAFETY: terminated paths; AT_FDCWD supplies the standard working directory.
-            if unsafe {
-                libc::renameat2(
-                    libc::AT_FDCWD,
-                    source.as_ptr(),
-                    libc::AT_FDCWD,
-                    destination.as_ptr(),
-                    libc::RENAME_NOREPLACE,
-                )
-            } != 0
-            {
-                return Err(std::io::Error::last_os_error().into());
-            }
-        }
-    }
-    #[cfg(target_os = "macos")]
-    {
-        if replace {
-            fs::rename(source, destination)?;
-        } else {
-            use std::os::unix::ffi::OsStrExt;
-            unsafe extern "C" {
-                fn renamex_np(
-                    from: *const std::ffi::c_char,
-                    to: *const std::ffi::c_char,
-                    flags: u32,
-                ) -> i32;
-            }
-            let source = std::ffi::CString::new(source.as_os_str().as_bytes())?;
-            let destination = std::ffi::CString::new(destination.as_os_str().as_bytes())?;
-            // SAFETY: terminated paths. Darwin RENAME_EXCL atomically refuses an existing target.
-            if unsafe { renamex_np(source.as_ptr(), destination.as_ptr(), 0x00000004) } != 0 {
-                return Err(std::io::Error::last_os_error().into());
-            }
-        }
-    }
-    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
-    {
-        let _ = (source, destination, replace);
-        anyhow::bail!("Durable restore publication is unsupported on this operating system");
     }
     sync_directory(
         source

@@ -393,52 +393,6 @@ mod tests {
         assert!(check_export_roots(&cache, &[exports.join("missing")]).is_err());
     }
 
-    #[cfg(unix)]
-    #[test]
-    fn aliased_export_roots_block_cleanup() {
-        let temporary = tempfile::tempdir().unwrap();
-        let root = temporary.path().canonicalize().unwrap();
-        let cache = root.join("cache");
-        let alias = root.join("exports-alias");
-        std::fs::create_dir(&cache).unwrap();
-        std::os::unix::fs::symlink(&cache, &alias).unwrap();
-        assert!(check_export_roots(&cache, &[alias]).is_err());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn linked_roots_and_files_are_never_traversed_or_removed() {
-        let temporary = tempfile::tempdir().unwrap();
-        let root = temporary.path().canonicalize().unwrap();
-        let outside = old_file(&root, "fixture-outside.jpg");
-        let account = root.join("account");
-        std::fs::create_dir(&account).unwrap();
-        std::os::unix::fs::symlink(&outside, account.join("fixture-link.jpg")).unwrap();
-        std::os::unix::fs::symlink(&account, root.join("linked-account")).unwrap();
-        assert!(
-            find_candidates(
-                &root.join("linked-account"),
-                30,
-                SystemTime::UNIX_EPOCH + DAY * 100,
-                &HashSet::new(),
-                &HashSet::new()
-            )
-            .is_err()
-        );
-        assert!(
-            find_candidates(
-                &account,
-                30,
-                SystemTime::UNIX_EPOCH + DAY * 100,
-                &HashSet::new(),
-                &HashSet::new()
-            )
-            .unwrap()
-            .is_empty()
-        );
-        assert!(outside.exists());
-    }
-
     #[tokio::test]
     async fn previous_export_folder_remains_protected_after_changing_downloads() {
         let (mut worker, _, _, _) = super::super::offline_worker("fixture@s.whatsapp.net");

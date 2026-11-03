@@ -266,11 +266,6 @@ impl AppDirs {
         for name in pending {
             std::fs::rename(self.state.join(name), dest.state.join(name))?;
         }
-        // Make the renames durable before anything opens the databases.
-        #[cfg(unix)]
-        for dir in [&self.state, &dest.state] {
-            std::fs::File::open(dir)?.sync_all()?;
-        }
         Ok(())
     }
 
@@ -341,12 +336,6 @@ impl AppDirs {
         for dir in [&self.config, &self.state, &self.cache] {
             let mut builder = std::fs::DirBuilder::new();
             builder.recursive(true);
-            // Create new directories privately, even with a permissive umask.
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::DirBuilderExt;
-                builder.mode(0o700);
-            }
             builder.create(dir)?;
             restrict_directory(dir)?;
         }
@@ -367,11 +356,6 @@ impl AccountDirs {
         for dir in [&self.state, &self.cache] {
             let mut builder = std::fs::DirBuilder::new();
             builder.recursive(true);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::DirBuilderExt;
-                builder.mode(0o700);
-            }
             builder.create(dir)?;
             restrict_directory(dir)?;
         }
@@ -432,13 +416,6 @@ fn move_file(from: &Path, to: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-#[cfg(unix)]
-fn restrict_directory(path: &Path) -> std::io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
-}
-
 #[cfg(not(unix))]
 fn restrict_directory(_path: &Path) -> std::io::Result<()> {
     Ok(())
@@ -449,15 +426,6 @@ fn restrict_directory(_path: &Path) -> std::io::Result<()> {
 /// beside the state directory rather than inside it, because the state
 /// directory must not exist before an earlier name's data is adopted.
 fn runtime_dir(project: &ProjectDirs, state: &Path) -> PathBuf {
-    // Flatpak gives each sandbox a private runtime directory and shares only
-    // this one between instances of the app.
-    #[cfg(target_os = "linux")]
-    if let (Some(runtime), Some(id)) = (
-        project.runtime_dir().and_then(Path::parent),
-        std::env::var_os("FLATPAK_ID"),
-    ) {
-        return runtime.join("app").join(id);
-    }
     if let Some(runtime) = project.runtime_dir() {
         return runtime.to_path_buf();
     }
@@ -488,46 +456,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         root
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn ensure_restricts_base_directories() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let root = root("permissions");
-        let dirs = AppDirs::under(&root);
-        dirs.ensure().unwrap();
-        for path in [&dirs.config, &dirs.state, &dirs.cache] {
-            assert_eq!(
-                std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
-                0o700
-            );
-        }
-        std::fs::remove_dir_all(root).unwrap();
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn ensure_repairs_existing_directory_permissions_without_changing_data() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let root = root("existing-permissions");
-        let dirs = AppDirs::under(&root);
-        for path in [&dirs.config, &dirs.state, &dirs.cache] {
-            std::fs::create_dir_all(path).unwrap();
-            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
-            std::fs::write(path.join("fixture"), b"preserved").unwrap();
-        }
-        dirs.ensure().unwrap();
-        for path in [&dirs.config, &dirs.state, &dirs.cache] {
-            assert_eq!(
-                std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
-                0o700
-            );
-            assert_eq!(std::fs::read(path.join("fixture")).unwrap(), b"preserved");
-        }
-        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

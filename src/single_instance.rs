@@ -321,12 +321,6 @@ mod tests {
     /// Sends `line` the way a copy from before fastframe-instance does, with
     /// `token` first on Windows, and returns the raw reply.
     fn raw_request(dir: &Path, line: &str, token: Option<&str>) -> String {
-        #[cfg(unix)]
-        let mut stream = {
-            let _ = token;
-            std::os::unix::net::UnixStream::connect(dir.join("instance.sock")).unwrap()
-        };
-        #[cfg(not(unix))]
         let mut stream = {
             let key = std::fs::read_to_string(dir.join("instance.key")).unwrap();
             let mut key = key.lines();
@@ -376,7 +370,6 @@ mod tests {
             "fastsapp!declined\n",
             "which an older copy reads as no answer"
         );
-        #[cfg(not(unix))]
         assert_eq!(
             raw_request(&dir, "fastsapp:show", Some(&"0".repeat(64))),
             "",

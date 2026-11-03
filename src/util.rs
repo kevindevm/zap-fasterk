@@ -89,70 +89,6 @@ fn pattern_is_twelve_hour(pattern: &str) -> bool {
     false
 }
 
-#[cfg(target_os = "linux")]
-mod clock_preference {
-    pub fn twelve_hour() -> bool {
-        gnome().unwrap_or_else(locale)
-    }
-
-    /// GNOME keeps its own clock format, independent of the locale. It is
-    /// read through the desktop portal, which works inside a Flatpak too.
-    fn gnome() -> Option<bool> {
-        if !fastframe_desktop::is_gnome() {
-            return None;
-        }
-        clock_format(
-            fastframe_desktop::setting("org.gnome.desktop.interface", "clock-format").as_deref(),
-        )
-    }
-
-    /// Whether GNOME's `clock-format` names a 12-hour clock, or `None` for
-    /// anything but its two values.
-    pub(super) fn clock_format(value: Option<&str>) -> Option<bool> {
-        match value? {
-            "12h" => Some(true),
-            "24h" => Some(false),
-            _ => None,
-        }
-    }
-
-    /// The time locale's own format, read without changing the process locale.
-    fn locale() -> bool {
-        // SAFETY: an empty name selects the environment's LC_TIME; the locale
-        // is freed after its format string has been copied.
-        unsafe {
-            let locale = libc::newlocale(libc::LC_TIME_MASK, c"".as_ptr(), std::ptr::null_mut());
-            if locale.is_null() {
-                return false;
-            }
-            let format = libc::nl_langinfo_l(libc::T_FMT, locale);
-            let twelve = !format.is_null()
-                && super::pattern_is_twelve_hour(
-                    &std::ffi::CStr::from_ptr(format).to_string_lossy(),
-                );
-            libc::freelocale(locale);
-            twelve
-        }
-    }
-}
-
-#[cfg(target_os = "macos")]
-mod clock_preference {
-    use objc2_foundation::{NSDateFormatter, NSLocale, NSString};
-
-    /// The "j" template asks for the locale's preferred hour, which follows
-    /// the 24-hour switch in System Settings.
-    pub fn twelve_hour() -> bool {
-        let locale = NSLocale::currentLocale();
-        NSDateFormatter::dateFormatFromTemplate_options_locale(
-            &NSString::from_str("j"),
-            0,
-            Some(&locale),
-        )
-        .is_some_and(|pattern| super::pattern_is_twelve_hour(&pattern.to_string()))
-    }
-}
-
 #[cfg(windows)]
 mod clock_preference {
     use windows_sys::Win32::Globalization::{GetLocaleInfoEx, LOCALE_STIMEFORMAT};
@@ -174,13 +110,6 @@ mod clock_preference {
             && super::pattern_is_twelve_hour(&String::from_utf16_lossy(
                 &buffer[..written as usize - 1],
             ))
-    }
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
-mod clock_preference {
-    pub fn twelve_hour() -> bool {
-        false
     }
 }
 
@@ -839,19 +768,6 @@ mod tests {
                 second("2018-11-05T02:00:00Z")
             ))
         );
-    }
-
-    /// GNOME's clock format comes from the portal as the bare value, not
-    /// the quoted text `gsettings` printed.
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn gnome_clock_formats_are_recognized() {
-        use super::clock_preference::clock_format;
-        assert_eq!(clock_format(Some("12h")), Some(true));
-        assert_eq!(clock_format(Some("24h")), Some(false));
-        assert_eq!(clock_format(Some("'12h'")), None);
-        assert_eq!(clock_format(Some("")), None);
-        assert_eq!(clock_format(None), None);
     }
 
     #[test]

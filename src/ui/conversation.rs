@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-#[cfg(any(target_os = "linux", test))]
+#[cfg(test)]
 use egui::Pos2;
 use egui::{
     Align, Align2, Color32, CornerRadius, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers,
@@ -2631,13 +2631,6 @@ fn messages(app: &mut App, ui: &mut egui::Ui, chat: &Chat, under: f32) {
     }
     let names_or = |id: &str, hint: Option<&str>| app.display_name_or(id, hint);
     let mention_names = |id: &str| app.mention_name(id);
-    #[cfg(target_os = "linux")]
-    let middle_owner = egui::Id::new(("middle-transcript", &app.account().id, &chat.id));
-    #[cfg(target_os = "linux")]
-    let middle_allowed = app.dialog.is_none()
-        && app.picker.is_none()
-        && app.selection.is_none()
-        && app.reaction_target.is_none();
     let keyboard_navigation = std::cell::Cell::new(false);
     // The list's name says whose messages it holds. Built only while a screen
     // reader is attached, like the rows' labels, once the list's node exists.
@@ -3681,50 +3674,6 @@ fn messages(app: &mut App, ui: &mut egui::Ui, chat: &Chat, under: f32) {
                     egui::style::ScrollAnimation::none(),
                 );
                 ui.ctx().request_repaint();
-            }
-            #[cfg(target_os = "linux")]
-            {
-                if !middle_allowed {
-                    stop_middle_scroll(ui.ctx());
-                }
-                // Middle paste keeps working over text, media, and the composer.
-                // Only the empty transcript gutter starts this local scroll.
-                let pointer = ui.input(|input| {
-                    input
-                        .pointer
-                        .button_pressed(egui::PointerButton::Middle)
-                        .then(|| input.pointer.hover_pos())
-                        .flatten()
-                });
-                let over_bubble = pointer.is_some_and(|pointer| {
-                    ui.ctx().data(|data| {
-                        conversation.messages.iter().any(|message| {
-                            data.get_temp::<Rect>(bubble_id(&chat.id, &message.id).with("rect"))
-                                .is_some_and(|rect| rect.contains(pointer))
-                        })
-                    })
-                });
-                let (step, anchor) = middle_scroll_step(
-                    ui.ctx(),
-                    middle_owner,
-                    viewport,
-                    middle_allowed && !over_bubble,
-                );
-                if let Some(anchor) = anchor {
-                    key_scroll = None;
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::AllScroll);
-                    ui.painter().circle_filled(anchor, 10.0, palette.panel);
-                    ui.painter()
-                        .circle_stroke(anchor, 10.0, Stroke::new(1.0, palette.secondary));
-                    ui.painter().circle_filled(anchor, 2.0, palette.secondary);
-                }
-                if step != 0.0 {
-                    ui.scroll_with_delta_animation(
-                        vec2(0.0, -step),
-                        egui::style::ScrollAnimation::none(),
-                    );
-                    ui.ctx().request_repaint();
-                }
             }
         });
     app.scroll_route
@@ -9083,98 +9032,6 @@ fn thumbnail_uri(ctx: &egui::Context, chat: &str, id: &str, bytes: &[u8]) -> Str
 const PICTURE_WIDTH: f32 = CARD_WIDTH;
 
 /// A touch gesture belongs to the enclosing scroll area, including its release.
-#[cfg(any(target_os = "linux", test))]
-#[derive(Clone)]
-struct MiddleScroll {
-    owner: egui::Id,
-    anchor: Pos2,
-    frame: u64,
-}
-
-#[cfg(target_os = "linux")]
-pub(crate) fn stop_middle_scroll(ctx: &egui::Context) -> bool {
-    ctx.data_mut(|data| {
-        let id = egui::Id::new("middle-scroll");
-        let active = data.get_temp::<MiddleScroll>(id).is_some();
-        data.remove::<MiddleScroll>(id);
-        active
-    })
-}
-
-#[cfg(any(target_os = "linux", test))]
-fn middle_scroll_step(
-    ctx: &egui::Context,
-    owner: egui::Id,
-    viewport: Rect,
-    may_start: bool,
-) -> (f32, Option<Pos2>) {
-    let id = egui::Id::new("middle-scroll");
-    let frame = ctx.cumulative_frame_nr();
-    let mut state = ctx.data(|data| data.get_temp::<MiddleScroll>(id));
-    if state
-        .as_ref()
-        .is_some_and(|state| state.owner != owner || frame > state.frame + 1)
-    {
-        state = None;
-    }
-    let processed = ctx.data(|data| data.get_temp::<u64>(id.with("processed"))) == Some(frame);
-    let (cancel, middle, pointer, dt) = ctx.input(|input| {
-        let cancel = !input.raw.focused
-            || input.events.iter().any(|event| match event {
-                egui::Event::Touch { .. }
-                | egui::Event::MouseWheel { .. }
-                | egui::Event::PointerGone => true,
-                egui::Event::PointerButton {
-                    button,
-                    pressed: true,
-                    ..
-                } => *button != egui::PointerButton::Middle,
-                egui::Event::Key {
-                    key: egui::Key::Escape,
-                    pressed: true,
-                    ..
-                } => true,
-                _ => false,
-            });
-        (
-            cancel,
-            input.pointer.button_pressed(egui::PointerButton::Middle),
-            input.pointer.hover_pos(),
-            input.stable_dt.min(0.1),
-        )
-    });
-    if cancel {
-        state = None;
-    } else if middle && !processed {
-        state = if state.is_some() {
-            None
-        } else {
-            pointer
-                .filter(|pointer| may_start && viewport.contains(*pointer))
-                .map(|anchor| MiddleScroll {
-                    owner,
-                    anchor,
-                    frame,
-                })
-        };
-    }
-    let anchor = state.as_ref().map(|state| state.anchor);
-    let step = anchor.zip(pointer).map_or(0.0, |(anchor, pointer)| {
-        let distance = pointer.y - anchor.y;
-        distance.signum() * ((distance.abs() - 12.0).max(0.0) * 8.0).min(1500.0) * dt
-    });
-    ctx.data_mut(|data| {
-        data.insert_temp(id.with("processed"), frame);
-        if let Some(mut state) = state {
-            state.frame = frame;
-            data.insert_temp(id, state);
-        } else {
-            data.remove::<MiddleScroll>(id);
-        }
-    });
-    (step, anchor)
-}
-
 fn touchscreen_input(ctx: &egui::Context) -> bool {
     ctx.input(|input| {
         input.any_touches()
@@ -12162,72 +12019,6 @@ mod reaction_tests {
             "opening an action menu does not reply, react or select"
         );
         assert!(app.selection.is_none());
-    }
-
-    #[test]
-    fn middle_scroll_starts_only_in_gutter_and_stops_for_other_input_or_owner() {
-        let ctx = egui::Context::default();
-        let viewport = Rect::from_min_size(Pos2::ZERO, vec2(400.0, 300.0));
-        let owner = egui::Id::new("account-one-chat-one");
-        let start = pos2(20.0, 120.0);
-        let middle = |pressed| egui::Event::PointerButton {
-            pos: start,
-            button: egui::PointerButton::Middle,
-            pressed,
-            modifiers: Modifiers::NONE,
-        };
-        let mut time = 0.0;
-        let mut frame = |events, owner, may_start| {
-            time += 0.05;
-            let mut result = (0.0, None);
-            let mut output = ctx.run_ui(
-                egui::RawInput {
-                    screen_rect: Some(viewport),
-                    time: Some(time),
-                    events,
-                    ..Default::default()
-                },
-                |_| result = middle_scroll_step(&ctx, owner, viewport, may_start),
-            );
-            output.textures_delta.clear();
-            result
-        };
-        assert!(
-            frame(
-                vec![egui::Event::PointerMoved(start), middle(true)],
-                owner,
-                false
-            )
-            .1
-            .is_none()
-        );
-        frame(vec![middle(false)], owner, true);
-        assert_eq!(frame(vec![middle(true)], owner, true).1, Some(start));
-        frame(vec![middle(false)], owner, true);
-        assert!(
-            frame(
-                vec![egui::Event::PointerMoved(start + vec2(0.0, 80.0))],
-                owner,
-                true
-            )
-            .0 > 0.0
-        );
-        assert!(
-            frame(Vec::new(), egui::Id::new("account-two-chat-one"), true)
-                .1
-                .is_none()
-        );
-        frame(
-            vec![egui::Event::PointerMoved(start), middle(true)],
-            owner,
-            true,
-        );
-        frame(vec![middle(false)], owner, true);
-        assert!(
-            frame(vec![egui::Event::PointerGone], owner, true)
-                .1
-                .is_none()
-        );
     }
 
     #[test]

@@ -71,7 +71,7 @@ impl Default for LinkWatch {
 }
 
 /// Whether fastframe-power reports the wake on this platform.
-const RESUME_REPORTED: bool = cfg!(any(target_os = "linux", target_os = "windows"));
+const RESUME_REPORTED: bool = cfg!(windows);
 
 impl LinkWatch {
     /// Checks the link at a tick. `frames_received` is the library's

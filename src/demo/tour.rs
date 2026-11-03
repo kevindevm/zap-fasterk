@@ -219,8 +219,8 @@ struct Cue {
 fn command() -> Modifiers {
     Modifiers {
         command: true,
-        ctrl: !cfg!(target_os = "macos"),
-        mac_cmd: cfg!(target_os = "macos"),
+        ctrl: true,
+        mac_cmd: false,
         ..Modifiers::NONE
     }
 }

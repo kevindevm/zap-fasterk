@@ -666,22 +666,6 @@ fn capture(
     if stop.load(Ordering::Acquire) {
         return Ok(());
     }
-    #[cfg(target_os = "macos")]
-    {
-        let (permission, permitted) = std::sync::mpsc::channel();
-        nokhwa::nokhwa_initialize(move |allowed| {
-            let _ = permission.send(allowed);
-        });
-        if !permitted
-            .recv_timeout(Duration::from_secs(20))
-            .unwrap_or(false)
-        {
-            return Err(CaptureFailure(9).into());
-        }
-    }
-    if stop.load(Ordering::Acquire) {
-        return Ok(());
-    }
     let requested = RequestedFormat::new::<RgbFormat>(RequestedFormatType::Closest(
         CameraFormat::new(Resolution::new(WIDTH, HEIGHT), FrameFormat::MJPEG, FPS),
     ));

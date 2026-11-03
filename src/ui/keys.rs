@@ -162,15 +162,7 @@ pub fn handle(app: &mut App, ctx: &egui::Context) {
             && app.recording.is_none()
             && messages_key_free
         {
-            key(
-                if cfg!(target_os = "macos") {
-                    Modifiers::CTRL
-                } else {
-                    Modifiers::ALT
-                },
-                Key::Num2,
-                Action::FocusMessages,
-            );
+            key(Modifiers::ALT, Key::Num2, Action::FocusMessages);
         }
     });
     drop_shortcut_text(ctx);
@@ -251,10 +243,6 @@ pub fn handle(app: &mut App, ctx: &egui::Context) {
     let escape = (!menu_open || app.reaction_target.is_some())
         && ctx.input_mut(|input| input.consume_key(Modifiers::NONE, Key::Escape));
     if escape {
-        #[cfg(target_os = "linux")]
-        if super::conversation::stop_middle_scroll(ctx) {
-            return;
-        }
         if app.show_update {
             actions.push(Action::CloseUpdate);
         } else if app.dialog.is_some() && app.group_name_edit.is_some() {
@@ -426,11 +414,7 @@ fn accessibility_shortcuts(app: &mut App, ctx: &egui::Context) {
     {
         return;
     }
-    let modifiers = if cfg!(target_os = "macos") {
-        Modifiers::CTRL
-    } else {
-        Modifiers::ALT
-    };
+    let modifiers = Modifiers::ALT;
     let section = ctx.input_mut(|input| {
         // Alt+2 (Control+2 on macOS) belongs to the message list: it focuses
         // the list rather than opening its newest message.
@@ -481,7 +465,7 @@ pub(crate) fn take_exact(input: &mut egui::InputState, expected: Modifiers, key:
     input.events.retain(|event| {
         if matches!(event, egui::Event::Key { key: actual, pressed: true, modifiers, .. }
             if *actual == key && modifiers.shift == expected.shift && modifiers.alt == expected.alt
-                && if expected.command { modifiers.command } else { modifiers.ctrl == expected.ctrl && (!cfg!(target_os = "macos") || !modifiers.command) }) {
+                && if expected.command { modifiers.command } else { modifiers.ctrl == expected.ctrl }) {
             taken = true;
             false
         } else { true }
@@ -652,13 +636,7 @@ fn escape_keeps_focus(ctx: &egui::Context) -> bool {
 /// would still reach a focused field and be typed there. Control with a
 /// digit types nothing.
 fn drop_shortcut_text(ctx: &egui::Context) {
-    let held = |modifiers: &Modifiers| {
-        if cfg!(target_os = "macos") {
-            modifiers.ctrl
-        } else {
-            modifiers.alt
-        }
-    };
+    let held = |modifiers: &Modifiers| modifiers.alt;
     ctx.input_mut(|input| {
         // Taken: in this frame's input, but no longer among its events.
         let taken: Vec<&str> = input
@@ -823,28 +801,14 @@ fn next_account_action(app: &App) -> Option<Action> {
     Some(Action::SwitchAccount(app.accounts[next].id.clone()))
 }
 
-/// Control held with no other modifier: on macOS, Command+Control is
-/// Command's, which `consume_key` would also match as Control.
-fn control_alone(modifiers: Modifiers) -> bool {
-    modifiers.ctrl && !modifiers.command && !modifiers.mac_cmd && !modifiers.alt && !modifiers.shift
-}
-
 /// The message list's modifier held alone: Control on macOS, Alt elsewhere.
 fn messages_modifier_alone(modifiers: Modifiers) -> bool {
-    if cfg!(target_os = "macos") {
-        control_alone(modifiers)
-    } else {
-        modifiers.matches_exact(Modifiers::ALT)
-    }
+    modifiers.matches_exact(Modifiers::ALT)
 }
 
 /// The message list's shortcut: Alt+2, but Control+2 on macOS, where
 /// Command with a digit opens a chat. `label` shows "Control" as ⌃ there.
-const MESSAGES_KEYS: &str = if cfg!(target_os = "macos") {
-    "Control+2"
-} else {
-    "Alt+2"
-};
+const MESSAGES_KEYS: &str = "Alt+2";
 
 /// Shortcuts shown in the help dialog.
 pub const SHORTCUTS: &[(&str, &str)] = &[
@@ -923,20 +887,7 @@ pub const SHORTCUTS: &[(&str, &str)] = &[
 
 /// Uses Command and Option labels on macOS.
 pub fn label(keys: &str) -> String {
-    if cfg!(target_os = "macos") {
-        if keys == "Alt+1 / 2 / 3" {
-            return "⌃1 / 2 / 3".to_owned();
-        }
-        if keys == "Ctrl+← / Ctrl+→" {
-            return "⌃← / ⌃→".to_owned();
-        }
-        keys.replace("Control", "⌃")
-            .replace("Ctrl", "⌘")
-            .replace("Strg", "⌘")
-            .replace("Alt", "⌥")
-    } else {
-        keys.to_owned()
-    }
+    keys.to_owned()
 }
 
 #[cfg(test)]
@@ -947,11 +898,7 @@ mod tests {
     fn section_shortcuts_leave_numbered_chats_and_text_input_alone() {
         let (_root, mut app, ids) = app_with_chats(2);
         let ctx = egui::Context::default();
-        let modifiers = if cfg!(target_os = "macos") {
-            Modifiers::CTRL
-        } else {
-            Modifiers::ALT
-        };
+        let modifiers = Modifiers::ALT;
         assert!(!press(&mut app, &ctx, Key::Num1, modifiers));
         assert!(
             app.actions
@@ -1424,8 +1371,8 @@ mod tests {
         ] {
             let modifiers = if modifiers.command {
                 Modifiers {
-                    ctrl: !cfg!(target_os = "macos"),
-                    mac_cmd: cfg!(target_os = "macos"),
+                    ctrl: true,
+                    mac_cmd: false,
                     ..modifiers
                 }
             } else {
@@ -1433,8 +1380,7 @@ mod tests {
             };
             for key in [Key::Num1, Key::Num4] {
                 let unconsumed = press(&mut app, &ctx, key, modifiers);
-                let section_shortcut =
-                    !cfg!(target_os = "macos") && modifiers == Modifiers::ALT && key == Key::Num1;
+                let section_shortcut = modifiers == Modifiers::ALT && key == Key::Num1;
                 assert_eq!(unconsumed, !section_shortcut, "{key:?}, {modifiers:?}");
                 assert!(app.actions.is_empty());
             }
@@ -1705,11 +1651,7 @@ mod tests {
         let (_root, mut app, ids) = app_with_chats(1);
         app.open_chat = Some(ids[0].clone());
         let ctx = egui::Context::default();
-        let modifiers = if cfg!(target_os = "macos") {
-            Modifiers::CTRL
-        } else {
-            Modifiers::ALT
-        };
+        let modifiers = Modifiers::ALT;
         assert!(!press(&mut app, &ctx, Key::Num2, modifiers));
         assert_eq!(app.actions, [Action::FocusMessages]);
         // Under a dialog the shortcut leaves focus where it was.

@@ -11,57 +11,16 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-#[cfg(target_os = "linux")]
-mod badge;
 #[cfg(target_os = "windows")]
 mod badge_windows;
-#[cfg(target_os = "macos")]
-mod macos;
 #[cfg(target_os = "windows")]
 mod popups_windows;
 #[cfg(target_os = "windows")]
 mod windows;
-#[cfg(target_os = "linux")]
-pub use badge::Badge;
 #[cfg(target_os = "windows")]
 pub use badge_windows::{Badge, Taskbar};
 #[cfg(target_os = "windows")]
 pub(crate) use popups_windows::NativePopups;
-
-/// A no-op taskbar badge on platforms without a taskbar badge implementation.
-#[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
-#[derive(Default)]
-pub struct Badge;
-
-#[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
-impl Badge {
-    /// Does nothing; no supported desktop here reads a taskbar badge.
-    pub fn set(&mut self, _count: u32) {}
-}
-
-#[cfg(target_os = "macos")]
-#[derive(Default)]
-pub struct Badge {
-    shown: Option<u32>,
-}
-
-#[cfg(target_os = "macos")]
-impl Badge {
-    /// AppKit badges are updated on the application's main thread.
-    pub fn set(&mut self, count: u32) {
-        if self.shown == Some(count) {
-            return;
-        }
-        let Some(main) = objc2::MainThreadMarker::new() else {
-            return;
-        };
-        let label = (count > 0).then(|| objc2_foundation::NSString::from_str(&count.to_string()));
-        objc2_app_kit::NSApplication::sharedApplication(main)
-            .dockTile()
-            .setBadgeLabel(label.as_deref());
-        self.shown = Some(count);
-    }
-}
 
 /// Chat and message a clicked notification opens. The message id travels with
 /// the click, so the reader lands on what was announced instead of on the end
@@ -72,9 +31,6 @@ pub struct NotificationTarget {
     pub chat: String,
     pub message: String,
 }
-
-#[cfg(test)]
-const MACOS_APPLICATION_ID: &str = "io.github.kevindevm.ZapFasterk";
 
 /// Notifications that may still wait for a click. Each one waiting holds a
 /// thread, a runtime, and a D-Bus connection, about five file descriptors,
@@ -338,16 +294,7 @@ impl Notifications {
                     }
                 };
                 let system_sound = sound == NotificationSound::System;
-                #[cfg(target_os = "macos")]
-                let native_sound = native_sound::prepare(&sound).unwrap_or_else(|_| {
-                    log::warn!(
-                        "notification sound: native preparation failed; using the system sound"
-                    );
-                    Some("NSUserNotificationDefaultSoundName".into())
-                });
-                #[cfg(not(target_os = "macos"))]
                 let native_sound: Option<String> = None;
-                #[cfg(not(target_os = "macos"))]
                 play_sound_on(sound, sound_output);
                 deliver(
                     &title,
@@ -467,94 +414,6 @@ pub fn lines(chat_name: &str, is_group: bool, sender: &str, summary: &str) -> (S
     (chat_name.to_owned(), body)
 }
 
-/// What a Linux notification asks of the desktop's sound. The system sound is
-/// named, because notification servers such as Plasma's play nothing for an
-/// application without its own notification configuration. Zap Fasterk's own sounds
-/// and silence keep the desktop quiet.
-#[cfg(target_os = "linux")]
-fn sound_hint(system_sound: bool) -> notify_rust::Hint {
-    if system_sound {
-        notify_rust::Hint::SoundName("message-new-instant".into())
-    } else {
-        notify_rust::Hint::SuppressSound(true)
-    }
-}
-
-#[cfg(target_os = "linux")]
-#[expect(clippy::too_many_arguments)]
-fn deliver(
-    title: &str,
-    body: &str,
-    picture: Option<&std::path::Path>,
-    system_sound: bool,
-    _native_sound: Option<&str>,
-    target: NotificationTarget,
-    opened: Arc<Mutex<Vec<NotificationTarget>>>,
-    wake: impl Fn() + Send + 'static,
-    mut cancelled: tokio::sync::oneshot::Receiver<Stop>,
-    failed: impl FnOnce(),
-) {
-    let Some(may_wait) = before_showing(&mut cancelled) else {
-        return;
-    };
-    let mut notification = notify_rust::Notification::new();
-    notification
-        .appname("Zap Fasterk")
-        // Ties the notification to the installed application, so desktops
-        // list Zap Fasterk in their notification settings and group by it.
-        .hint(notify_rust::Hint::DesktopEntry(badge::desktop_file()))
-        .summary(title)
-        .body(body)
-        // The freedesktop category for a received instant message, which
-        // notification servers can sort, filter, or style by.
-        .hint(notify_rust::Hint::Category("im.received".into()))
-        .icon("zap-fasterk")
-        .action("default", "Open");
-    notification.hint(sound_hint(system_sound));
-    if let Some(picture) = picture {
-        notification.image_path(&picture.to_string_lossy());
-    }
-    match notification.show() {
-        Ok(handle) => {
-            if !may_wait {
-                // Shown, and left to the desktop: the handle does not close it.
-                return;
-            }
-            let runtime = match tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-            {
-                Ok(runtime) => runtime,
-                Err(error) => {
-                    handle.close();
-                    log::debug!("no notification action runtime: {error}");
-                    return;
-                }
-            };
-            runtime.block_on(async {
-                tokio::select! {
-                    biased;
-                    stop = &mut cancelled => {
-                        if stop != Ok(Stop::Release) {
-                            handle.close_async().await;
-                        }
-                    }
-                    _ = handle.wait_for_action_async(|action| {
-                        if matches!(action, notify_rust::NotificationResponse::Default) {
-                            opened.lock().unwrap_or_else(|p| p.into_inner()).push(target);
-                            wake();
-                        }
-                    }) => {}
-                }
-            });
-        }
-        Err(error) => {
-            log::debug!("no notification: {error}");
-            failed();
-        }
-    }
-}
-
 #[cfg(target_os = "windows")]
 #[expect(clippy::too_many_arguments)]
 fn deliver(
@@ -573,68 +432,6 @@ fn deliver(
         && let Err(error) = windows::show(title, body, picture, system_sound, target, opened, wake)
     {
         log::debug!("no Windows notification: {error}");
-        failed();
-    }
-}
-
-#[cfg(target_os = "macos")]
-#[expect(clippy::too_many_arguments)]
-fn deliver(
-    title: &str,
-    body: &str,
-    _picture: Option<&std::path::Path>,
-    _system_sound: bool,
-    native_sound: Option<&str>,
-    target: NotificationTarget,
-    opened: Arc<Mutex<Vec<NotificationTarget>>>,
-    wake: impl Fn() + Send + 'static,
-    mut cancelled: tokio::sync::oneshot::Receiver<Stop>,
-    failed: impl FnOnce(),
-) {
-    if let Some(may_wait) = before_showing(&mut cancelled) {
-        macos::deliver(
-            title,
-            body,
-            native_sound,
-            target,
-            opened,
-            wake,
-            cancelled,
-            may_wait,
-            failed,
-        );
-    }
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
-#[expect(clippy::too_many_arguments)]
-fn deliver(
-    title: &str,
-    body: &str,
-    picture: Option<&std::path::Path>,
-    system_sound: bool,
-    native_sound: Option<&str>,
-    _target: NotificationTarget,
-    _opened: Arc<Mutex<Vec<NotificationTarget>>>,
-    _wake: impl Fn() + Send + 'static,
-    mut cancelled: tokio::sync::oneshot::Receiver<Stop>,
-    failed: impl FnOnce(),
-) {
-    if before_showing(&mut cancelled).is_none() {
-        return;
-    }
-    let mut notification = notify_rust::Notification::new();
-    notification
-        .appname("Zap Fasterk")
-        .summary(title)
-        .body(body);
-    let _ = (system_sound, native_sound);
-    // Windows uses the image; macOS always uses the app icon.
-    if let Some(picture) = picture {
-        notification.image_path(&picture.to_string_lossy());
-    }
-    if notification.show().is_err() {
-        log::warn!("native notification submission failed");
         failed();
     }
 }
@@ -719,24 +516,6 @@ mod tests {
 
     fn account(id: &str) -> AccountId {
         AccountId(id.into())
-    }
-
-    #[test]
-    fn macos_notification_identity_matches_the_packaged_application() {
-        let plist = include_str!("../packaging/macos/Info.plist");
-        assert!(plist.contains(&format!(
-            "<key>CFBundleIdentifier</key><string>{MACOS_APPLICATION_ID}</string>"
-        )));
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn the_system_sound_names_the_theme_message_sound() {
-        assert_eq!(
-            sound_hint(true),
-            notify_rust::Hint::SoundName("message-new-instant".into())
-        );
-        assert_eq!(sound_hint(false), notify_rust::Hint::SuppressSound(true));
     }
 
     #[test]

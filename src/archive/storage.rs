@@ -94,10 +94,6 @@ pub(crate) fn is_link(metadata: &std::fs::Metadata) -> bool {
         // too, although they are not necessarily reported as symbolic links.
         metadata.file_attributes() & 0x400 != 0
     }
-    #[cfg(not(windows))]
-    {
-        metadata.file_type().is_symlink()
-    }
 }
 
 /// Measure the managed media folder, including staging and orphaned files.

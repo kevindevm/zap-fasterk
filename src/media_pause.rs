@@ -24,7 +24,7 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 /// Whether this platform can pause other apps' media.
-pub const SUPPORTED: bool = cfg!(any(target_os = "linux", windows));
+pub const SUPPORTED: bool = cfg!(windows);
 
 /// Keeps other apps' media paused until dropped.
 #[must_use = "media resumes as soon as the hold is dropped"]
@@ -132,7 +132,7 @@ fn work(jobs: mpsc::Receiver<Job>) {
 }
 
 /// Whether an MPRIS bus name belongs to a player worth pausing.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[cfg(test)]
 fn pausable_player(bus_name: &str) -> bool {
     let Some(player) = bus_name.strip_prefix("org.mpris.MediaPlayer2.") else {
         return false;
@@ -142,118 +142,6 @@ fn pausable_player(bus_name: &str) -> bool {
     // publish MPRIS today, but must never pause itself if it starts to.
     let app = player.split('.').next().unwrap_or_default();
     !player.is_empty() && app != "playerctld" && app != "zapfasterk"
-}
-
-#[cfg(target_os = "linux")]
-mod platform {
-    use zbus::{Connection, Proxy, fdo::DBusProxy};
-
-    const PATH: &str = "/org/mpris/MediaPlayer2";
-    const INTERFACE: &str = "org.mpris.MediaPlayer2.Player";
-
-    /// MPRIS players on the session bus.
-    pub struct Players {
-        runtime: Option<tokio::runtime::Runtime>,
-    }
-
-    impl Players {
-        pub fn new() -> Self {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .inspect_err(|error| log::warn!("could not start the media pause runtime: {error}"))
-                .ok();
-            Self { runtime }
-        }
-
-        /// Pauses players that are playing and returns their bus names.
-        pub fn pause_playing(&mut self) -> Vec<String> {
-            let Some(runtime) = &self.runtime else {
-                return Vec::new();
-            };
-            runtime.block_on(async {
-                let connection = match Connection::session().await {
-                    Ok(connection) => connection,
-                    Err(error) => {
-                        log::warn!("could not reach the session bus to pause media: {error}");
-                        return Vec::new();
-                    }
-                };
-                let names = match list_players(&connection).await {
-                    Ok(names) => names,
-                    Err(error) => {
-                        log::warn!("could not list media players: {error}");
-                        return Vec::new();
-                    }
-                };
-                let mut paused = Vec::new();
-                for name in names {
-                    match status(&connection, &name).await {
-                        Ok(status) if status == "Playing" => {
-                            match call(&connection, &name, "Pause").await {
-                                Ok(()) => paused.push(name),
-                                Err(error) => log::warn!("could not pause {name}: {error}"),
-                            }
-                        }
-                        Ok(_) => {}
-                        Err(error) => log::debug!("could not read {name}'s status: {error}"),
-                    }
-                }
-                if !paused.is_empty() {
-                    log::info!("paused {}", paused.join(", "));
-                }
-                paused
-            })
-        }
-
-        /// Plays the players `pause_playing` paused.
-        pub fn resume(&mut self, names: Vec<String>) {
-            let Some(runtime) = &self.runtime else {
-                return;
-            };
-            if names.is_empty() {
-                return;
-            }
-            runtime.block_on(async {
-                let connection = match Connection::session().await {
-                    Ok(connection) => connection,
-                    Err(error) => {
-                        log::warn!("could not reach the session bus to resume media: {error}");
-                        return;
-                    }
-                };
-                for name in names {
-                    // A player that quit meanwhile, or whose name changed, as
-                    // Chromium's per-process names do, cannot be resumed.
-                    match call(&connection, &name, "Play").await {
-                        Ok(()) => log::info!("resumed {name}"),
-                        Err(error) => log::warn!("could not resume {name}: {error}"),
-                    }
-                }
-            });
-        }
-    }
-
-    /// Lists every MPRIS player on the bus, including ones `playerctl -l`
-    /// leaves out.
-    pub(super) async fn list_players(connection: &Connection) -> zbus::Result<Vec<String>> {
-        let names = DBusProxy::new(connection).await?.list_names().await?;
-        Ok(names
-            .into_iter()
-            .map(|name| name.to_string())
-            .filter(|name| super::pausable_player(name))
-            .collect())
-    }
-
-    async fn status(connection: &Connection, name: &str) -> zbus::Result<String> {
-        let proxy = Proxy::new(connection, name, PATH, INTERFACE).await?;
-        proxy.get_property::<String>("PlaybackStatus").await
-    }
-
-    async fn call(connection: &Connection, name: &str, method: &'static str) -> zbus::Result<()> {
-        let proxy = Proxy::new(connection, name, PATH, INTERFACE).await?;
-        proxy.call::<_, _, ()>(method, &()).await
-    }
 }
 
 #[cfg(windows)]
@@ -341,24 +229,6 @@ mod platform {
     }
 }
 
-#[cfg(not(any(target_os = "linux", windows)))]
-mod platform {
-    /// macOS offers no public API to pause or resume other apps' media.
-    pub struct Players;
-
-    impl Players {
-        pub fn new() -> Self {
-            Self
-        }
-
-        pub fn pause_playing(&mut self) -> Vec<String> {
-            Vec::new()
-        }
-
-        pub fn resume(&mut self, _apps: Vec<String>) {}
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -412,99 +282,5 @@ mod tests {
         assert!(!pausable_player("org.mpris.MediaPlayer2."));
         assert!(!pausable_player("org.freedesktop.Notifications"));
         assert!(!pausable_player(":1.42"));
-    }
-
-    /// Pauses and resumes fake players on a private bus:
-    /// `dbus-run-session -- cargo test media_pause -- --ignored`.
-    /// Refuses to run when any other player is on the bus, so it cannot
-    /// pause real music.
-    #[cfg(target_os = "linux")]
-    #[test]
-    #[ignore = "needs a private D-Bus session"]
-    fn pauses_and_resumes_a_player_on_a_private_bus() {
-        use super::platform::list_players;
-        use std::sync::{Arc, Mutex};
-        use zbus::interface;
-
-        struct Fake(Arc<Mutex<Vec<&'static str>>>, &'static str);
-
-        #[interface(name = "org.mpris.MediaPlayer2.Player")]
-        impl Fake {
-            #[zbus(property)]
-            fn playback_status(&self) -> String {
-                self.1.to_owned()
-            }
-            fn pause(&self) {
-                self.0.lock().unwrap().push("Pause");
-            }
-            fn play(&self) {
-                self.0.lock().unwrap().push("Play");
-            }
-        }
-
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let playing: Arc<Mutex<Vec<&str>>> = Default::default();
-        let stopped: Arc<Mutex<Vec<&str>>> = Default::default();
-        let connections = runtime.block_on(async {
-            let serve = |name: &'static str, fake: Fake| async move {
-                zbus::connection::Builder::session()
-                    .unwrap()
-                    .name(name)
-                    .unwrap()
-                    .serve_at("/org/mpris/MediaPlayer2", fake)
-                    .unwrap()
-                    .build()
-                    .await
-                    .unwrap()
-            };
-            let music = serve(
-                "org.mpris.MediaPlayer2.music",
-                Fake(Arc::clone(&playing), "Playing"),
-            )
-            .await;
-            let podcast = serve(
-                "org.mpris.MediaPlayer2.podcast",
-                Fake(Arc::clone(&stopped), "Paused"),
-            )
-            .await;
-            let mut players = list_players(&music).await.unwrap();
-            players.sort();
-            assert_eq!(
-                players,
-                [
-                    "org.mpris.MediaPlayer2.music",
-                    "org.mpris.MediaPlayer2.podcast"
-                ],
-                "run under dbus-run-session, away from real players"
-            );
-            (music, podcast)
-        });
-        // The fake players answer from the runtime's thread.
-        let (quit, quitting) = tokio::sync::oneshot::channel::<()>();
-        let serving = std::thread::spawn(move || {
-            runtime.block_on(async {
-                let _ = quitting.await;
-            });
-            drop(connections);
-        });
-
-        let first = hold();
-        let second = hold();
-        drop(first);
-        settle(Duration::from_secs(5));
-        assert_eq!(*playing.lock().unwrap(), ["Pause"]);
-        drop(second);
-        settle(Duration::from_secs(5));
-        assert_eq!(*playing.lock().unwrap(), ["Pause", "Play"]);
-        assert!(
-            stopped.lock().unwrap().is_empty(),
-            "a paused player stays paused"
-        );
-
-        let _ = quit.send(());
-        serving.join().unwrap();
     }
 }

@@ -1433,7 +1433,7 @@ pub fn macos_chrome(ctx: &egui::Context) -> bool {
         return true;
     }
     let _ = ctx;
-    cfg!(target_os = "macos")
+    false
 }
 
 #[cfg(any(test, feature = "demo"))]
@@ -1448,11 +1448,7 @@ const TRAFFIC_LIGHTS_WIDTH: f32 = 84.0;
 
 /// Horizontal clearance for native buttons; they do not scale with UI zoom.
 pub fn traffic_light_inset(ctx: &egui::Context) -> f32 {
-    if cfg!(target_os = "macos") && !ctx.input(|input| input.viewport().fullscreen.unwrap_or(false))
-    {
-        TRAFFIC_LIGHTS_WIDTH / ctx.zoom_factor()
-    } else if macos_chrome(ctx) && !ctx.input(|input| input.viewport().fullscreen.unwrap_or(false))
-    {
+    if macos_chrome(ctx) && !ctx.input(|input| input.viewport().fullscreen.unwrap_or(false)) {
         // The demo's preview of the macOS layout on other platforms.
         TRAFFIC_LIGHTS_WIDTH / ctx.zoom_factor()
     } else {
@@ -1603,11 +1599,6 @@ mod tests {
                 palette.dark
             );
             assert_eq!(options.subpixel_binning, rendering.subpixel_positioning);
-            #[cfg(target_os = "linux")]
-            assert_eq!(
-                options.color_transfer_function,
-                egui::epaint::FontColorTransferFunction::Off
-            );
         }
     }
 

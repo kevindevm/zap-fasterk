@@ -22,8 +22,6 @@ pub fn system_directory() -> Option<PathBuf> {
         .join("Fonts");
     let candidates: Vec<PathBuf> = if cfg!(target_os = "windows") {
         vec![windows]
-    } else if cfg!(target_os = "macos") {
-        vec!["/Library/Fonts".into(), "/System/Library/Fonts".into()]
     } else {
         vec!["/usr/share/fonts".into(), "/usr/local/share/fonts".into()]
     };

@@ -27,10 +27,8 @@ pub fn active() -> bool {
 /// trails (#593). Other themes keep the opaque window they had. Transparency
 /// cannot be added to a window later, so a theme chosen while a window is
 /// open turns translucent from the next one.
-pub fn transparent_window(messages: bool, see_through: bool) -> bool {
-    cfg!(target_os = "macos")
-        || (messages && platform::may_show_through())
-        || (see_through && cfg!(target_os = "linux"))
+pub fn transparent_window(messages: bool, _see_through: bool) -> bool {
+    messages && platform::may_show_through()
 }
 
 /// Whether the window on screen was made transparent, so a frame may clear
@@ -58,18 +56,6 @@ pub fn clear_color(window: egui::Color32) -> egui::Color32 {
 pub fn apply(frame: &eframe::Frame, palette: &crate::theme::Palette, transparent: bool) {
     let wanted = palette.vibrant() && transparent;
     ACTIVE.store(platform::apply(frame, palette, wanted), Ordering::Relaxed);
-}
-
-#[cfg(target_os = "macos")]
-mod platform {
-    pub fn may_show_through() -> bool {
-        true
-    }
-
-    pub fn apply(frame: &eframe::Frame, palette: &crate::theme::Palette, wanted: bool) -> bool {
-        crate::macos::vibrancy(frame, palette, wanted);
-        wanted
-    }
 }
 
 #[cfg(windows)]
@@ -153,71 +139,6 @@ mod platform {
     }
 }
 
-#[cfg(target_os = "linux")]
-mod platform {
-    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-
-    /// Translucent only where the compositor is known to blur what shows
-    /// through: Hyprland blurs translucent windows unless told not to. Other
-    /// Wayland compositors blur only windows that ask (KDE's blur protocol,
-    /// which ZapFast does not speak yet) or not at all (GNOME), and an
-    /// unblurred desktop behind the sidebar would cost its text contrast; X11
-    /// may lack a compositor entirely. All of them keep the opaque window.
-    pub fn apply(frame: &eframe::Frame, _palette: &crate::theme::Palette, wanted: bool) -> bool {
-        wanted
-            && may_show_through()
-            && frame
-                .window_handle()
-                .is_ok_and(|handle| matches!(handle.as_raw(), RawWindowHandle::Wayland(_)))
-    }
-
-    pub fn may_show_through() -> bool {
-        blurs(
-            std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some(),
-            std::env::var("XDG_CURRENT_DESKTOP").ok().as_deref(),
-        )
-    }
-
-    /// Whether the session's compositor blurs translucent windows by itself:
-    /// Hyprland, when both its instance signature and the desktop name say
-    /// so, since either alone can be left over from another session.
-    pub fn blurs(signature: bool, desktop: Option<&str>) -> bool {
-        signature
-            && desktop.is_some_and(|desktop| {
-                desktop
-                    .split(':')
-                    .any(|name| name.eq_ignore_ascii_case("Hyprland"))
-            })
-    }
-
-    #[cfg(test)]
-    mod tests {
-        /// Only a compositor known to blur gets the translucent window.
-        #[test]
-        fn only_a_blurring_compositor_gets_translucency() {
-            use super::blurs;
-            assert!(blurs(true, Some("Hyprland")));
-            assert!(blurs(true, Some("Hyprland:wlroots")));
-            // A signature left over, or a desktop name alone, is not enough.
-            assert!(!blurs(true, Some("GNOME")));
-            assert!(!blurs(true, None));
-            assert!(!blurs(false, Some("Hyprland")));
-            assert!(!blurs(false, Some("KDE")));
-        }
-    }
-}
-
-#[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
-mod platform {
-    pub fn may_show_through() -> bool {
-        false
-    }
-
-    pub fn apply(_frame: &eframe::Frame, _palette: &crate::theme::Palette, _wanted: bool) -> bool {
-        false
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -226,10 +147,10 @@ mod tests {
     /// Messages asks for a transparent one only where it can show through.
     #[test]
     fn only_messages_makes_a_window_transparent_off_macos() {
-        assert_eq!(transparent_window(false, false), cfg!(target_os = "macos"));
+        assert!(!transparent_window(false, false));
         assert_eq!(
             transparent_window(true, false),
-            cfg!(target_os = "macos") || platform::may_show_through()
+            platform::may_show_through()
         );
     }
 
@@ -237,10 +158,7 @@ mod tests {
     /// (#593), and an opaque window never clears to alpha.
     #[test]
     fn a_see_through_theme_gets_a_transparent_window_on_linux() {
-        assert_eq!(
-            transparent_window(false, true),
-            cfg!(any(target_os = "macos", target_os = "linux"))
-        );
+        assert!(!transparent_window(false, true));
         let glass = egui::Color32::from_rgba_premultiplied(0, 0, 0, 0);
         set_window_transparent(false);
         assert_eq!(clear_color(glass).a(), 255);
