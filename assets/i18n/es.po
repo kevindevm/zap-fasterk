@@ -3384,31 +3384,43 @@ msgid "Incoming audio cannot be played. Try reconnecting the call."
 msgstr ""
 "No se puede reproducir el audio entrante. Intenta reconectar la llamada."
 
-#: src/ui/statuses.rs:21
+#: src/ui/statuses.rs:84
 msgid ""
 "Statuses received while Zap Fasterk is running. They expire after 24 hours. "
-"Viewing does not send a read receipt."
+"Seen here only; the phone is not told."
 msgstr ""
 "Estados recibidos mientras Zap Fasterk está en ejecución. Caducan a las 24 "
-"horas. Verlos no envía una confirmación de lectura."
+"horas. Solo se ven aquí; al teléfono no se le dice nada."
 
-#: src/ui/statuses.rs:38
+#: src/ui/statuses.rs:108
 msgid "No recent statuses received"
 msgstr "No se han recibido estados recientes"
 
-#: src/ui/statuses.rs:75
+#: src/ui/statuses.rs:116
+msgid "Recent updates"
+msgstr "Actualizaciones recientes"
+
+#: src/ui/statuses.rs:247
+msgid "Previous update"
+msgstr "Actualización anterior"
+
+#: src/ui/statuses.rs:265
+msgid "Next update"
+msgstr "Actualización siguiente"
+
+#: src/ui/statuses.rs:287
 msgid "Content hidden"
 msgstr "Contenido oculto"
 
-#: src/ui/statuses.rs:126
+#: src/ui/statuses.rs:332
 msgid "Open status"
 msgstr "Abrir estado"
 
-#: src/ui/statuses.rs:143
+#: src/ui/statuses.rs:349
 msgid "Could not download status. Click to retry."
 msgstr "No se pudo descargar el estado. Haz clic para reintentar."
 
-#: src/ui/statuses.rs:153
+#: src/ui/statuses.rs:359
 msgid "Download status"
 msgstr "Descargar estado"
 

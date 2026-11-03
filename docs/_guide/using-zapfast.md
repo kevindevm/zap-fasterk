@@ -898,9 +898,13 @@ embedded as interactive-message actions have separate unsupported-action rules.
 
 The **Status** chip beside the chat filters opens stories received while this
 instance is running. Stories expire 24 hours after their original timestamp and
-are not added to the permanent conversation archive. Viewing sends no read
-receipt. Photos stay inside the filtered viewer; downloaded videos open in the
-system player. Locked senders and screen privacy retain their restrictions.
+are not added to the permanent conversation archive. The authors' list shows
+each sender's newest update with a dot while any of theirs is unseen; opening
+an update, or stepping to it, marks it seen here. The phone is not told, so no
+read receipt is sent. A green ring on a chat's avatar means that sender has an
+unseen update. Photos stay inside the filtered viewer; downloaded videos open
+in the system player. Escape leaves the viewer for the authors' list. Locked
+senders and screen privacy retain their restrictions.
 
 ## Automatic exports (development builds)
 
