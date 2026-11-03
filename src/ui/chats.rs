@@ -1676,7 +1676,7 @@ fn has_unseen_status(app: &App, chat: &str) -> bool {
         .any(|row| row.sender == chat && row.read_at.is_none() && row.timestamp > now - 86400)
 }
 
-/// The sender's newest update as a `sender:id` key, if it has not expired.
+/// The sender's newest update, named by its row id, if it has not expired.
 /// The ring's click target opens it instead of the chat.
 fn newest_status_key(app: &App, sender: &str) -> Option<String> {
     let now = crate::util::now();
@@ -1684,7 +1684,7 @@ fn newest_status_key(app: &App, sender: &str) -> Option<String> {
         .iter()
         .filter(|row| row.sender == sender && row.timestamp > now - 86400)
         .max_by_key(|row| row.timestamp)
-        .map(|row| crate::app::App::status_key(&row.sender, &row.id))
+        .map(|row| row.id.clone())
 }
 
 /// Draws one chat's title, draft or message preview, badges and queued selection actions.
@@ -2863,7 +2863,7 @@ mod tests {
         );
         assert_eq!(
             newest_status_key(&app, "ana"),
-            Some("ana:fresh".into()),
+            Some("fresh".into()),
             "the ring opens the sender's newest update"
         );
         assert_eq!(newest_status_key(&app, "bea"), None);

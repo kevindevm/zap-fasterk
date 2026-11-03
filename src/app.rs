@@ -5600,10 +5600,9 @@ impl App {
             anchor,
         });
     }
-    /// The worker's key for one status update: `sender:id`.
-    pub(crate) fn status_key(sender: &str, id: &str) -> String {
-        format!("{sender}:{id}")
-    }
+    /// The worker files one update under a `sender:id` key, and the row
+    /// keeps that key as its id, so the viewer, the ring, and the worker
+    /// all name an update by `row.id` alone.
     /// One sender's updates, newest first.
     fn status_entries(&self, sender: &str) -> Vec<Message> {
         let mut entries: Vec<_> = self
@@ -5630,19 +5629,11 @@ impl App {
         let Some(shown) = self.status_shown.clone() else {
             return;
         };
-        let Some(current) = self
-            .statuses
-            .iter()
-            .find(|row| Self::status_key(&row.sender, &row.id) == shown)
-            .cloned()
-        else {
+        let Some(current) = self.statuses.iter().find(|row| row.id == shown).cloned() else {
             return;
         };
         let entries = self.status_entries(&current.sender);
-        let Some(at) = entries
-            .iter()
-            .position(|row| Self::status_key(&row.sender, &row.id) == shown)
-        else {
+        let Some(at) = entries.iter().position(|row| row.id == shown) else {
             return;
         };
         let to = if back {
@@ -5652,16 +5643,13 @@ impl App {
         } else {
             at - 1
         };
-        self.status_open(Self::status_key(&entries[to].sender, &entries[to].id));
+        self.status_open(entries[to].id.clone());
     }
     /// Keeps the Status viewer on an update it is showing while the list
     /// moves under it: when its own update is gone, the viewer closes.
     fn status_heal(&mut self) {
         if let Some(shown) = self.status_shown.clone()
-            && !self
-                .statuses
-                .iter()
-                .any(|row| Self::status_key(&row.sender, &row.id) == shown)
+            && !self.statuses.iter().any(|row| row.id == shown)
         {
             self.status_shown = None;
         }
@@ -11913,7 +11901,9 @@ mod tests {
     fn status_viewer_steps_through_one_author_and_heals_when_its_update_leaves() {
         fn story(sender: &str, id: &str, timestamp: i64) -> crate::model::Message {
             crate::model::Message {
-                id: id.into(),
+                // The worker files one update under a `sender:id` key, and
+                // the row keeps that key as its id.
+                id: format!("{sender}:{id}"),
                 chat: sender.into(),
                 sender: sender.into(),
                 sender_name: None,
@@ -11944,7 +11934,7 @@ mod tests {
             story("ana", "new", 200),
             story("bea", "only", 150),
         ];
-        app.apply(Action::StatusOpen(App::status_key("ana", "new")), &ctx);
+        app.apply(Action::StatusOpen("ana:new".into()), &ctx);
         assert_eq!(app.status_shown.as_deref(), Some("ana:new"));
         assert!(
             matches!(commands.try_recv().unwrap(), crate::backend::Command::StatusRead(key) if key == "ana:new"),

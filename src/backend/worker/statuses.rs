@@ -422,6 +422,9 @@ mod tests {
         let (raw, info) = delivery("story", crate::util::now());
         worker.ingest(&raw, &info);
         let key = worker.stories.rows.keys().next().unwrap().clone();
+        // The interface names an update by its row id alone: it already is
+        // the worker's `sender:id` key.
+        assert_eq!(worker.stories.rows.values().next().unwrap().0.id, key);
         assert!(
             worker
                 .stories

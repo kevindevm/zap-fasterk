@@ -148,7 +148,7 @@ fn author_row(app: &mut App, ui: &mut egui::Ui, group: &AuthorGroup) {
         )
         .on_hover_cursor(egui::CursorIcon::PointingHand);
     theme::reveal_focus(&response);
-    let key = App::status_key(&group.sender, &newest.id);
+    let key = newest.id.clone();
     if response.clicked() {
         app.actions.push(Action::StatusOpen(key));
     }
@@ -186,11 +186,7 @@ fn author_row(app: &mut App, ui: &mut egui::Ui, group: &AuthorGroup) {
 /// have more, the two buttons that step through them.
 fn viewer(app: &mut App, ui: &mut egui::Ui, key: &str) {
     let palette = app.palette;
-    let shown = app
-        .statuses
-        .iter()
-        .find(|row| App::status_key(&row.sender, &row.id) == key)
-        .cloned();
+    let shown = app.statuses.iter().find(|row| row.id == key).cloned();
     let Some(entry) = shown else {
         // What it showed left the list before a click; nothing to hold on.
         app.status_shown = None;
@@ -234,9 +230,7 @@ fn viewer(app: &mut App, ui: &mut egui::Ui, key: &str) {
             ui.add_space(12.0);
             status_entry(app, ui, &entry);
             if entries.len() > 1 {
-                let at = entries
-                    .iter()
-                    .position(|row| App::status_key(&row.sender, &row.id) == key);
+                let at = entries.iter().position(|row| row.id == key);
                 let where_they_stand = match at {
                     Some(at) => format!("{} of {}", at + 1, entries.len()),
                     None => format!("{}", entries.len()),
@@ -362,10 +356,7 @@ fn status_entry(app: &mut App, ui: &mut egui::Ui, row: &Message) {
                     None,
                     &crate::i18n::gettext(app.locale, "Download status"),
                 ) {
-                    app.actions.push(Action::DownloadStatus(App::status_key(
-                        &row.sender,
-                        &row.id,
-                    )));
+                    app.actions.push(Action::DownloadStatus(row.id.clone()));
                 }
             }
         }
