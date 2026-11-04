@@ -3,6 +3,15 @@
 schema: 1
 tool:
   version: 0.9.0
+  nfpm: 2.47.0
+# The Windows-only releases keep the package metadata the tool expects;
+# the Linux deb/rpm recipes are gone.
+nfpm:
+  name: zap-fasterk
+  maintainer: kevindevm
+  homepage: https://github.com/kevindevm/zap-fasterk
+  description: Fast native WhatsApp client
+  license: MIT
 targets:
   windows-amd64:
     platform: windows
