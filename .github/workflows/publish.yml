@@ -36,6 +36,7 @@ jobs:
 
       - name: Determine release state
         id: determine
+        shell: bash
         run: |
           set -euo pipefail
 
@@ -100,6 +101,7 @@ jobs:
       - name: Generate release notes
         if: steps.determine.outputs.should_release == 'true'
         id: notes
+        shell: bash
         run: |
           set -euo pipefail
           CURRENT_VERSION="${{ steps.determine.outputs.current_version }}"
@@ -115,6 +117,7 @@ jobs:
 
       - name: Create and push git tag
         if: steps.determine.outputs.should_release == 'true'
+        shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"

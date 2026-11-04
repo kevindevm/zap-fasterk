@@ -1,4 +1,4 @@
-﻿﻿; No longer shipped: releases ship only the Windows Installer package
+﻿; No longer shipped: releases ship only the Windows Installer package
 ; (zap-fasterk.wxs), which takes over a copy this script installed.
 ; test-installer.ps1 still builds it to make such a copy to take over.
 ;

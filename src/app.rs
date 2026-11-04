@@ -11196,6 +11196,7 @@ impl App {
     }
 
     /// Maps the OS cursor from screen pixels to window points.
+    #[cfg(any(windows, test))]
     fn cursor_to_window(
         cursor: (i32, i32),
         pixels_per_point: f32,
