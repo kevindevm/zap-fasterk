@@ -491,8 +491,20 @@ msgstr ""
 msgid "No more than a year out."
 msgstr ""
 
-#: src/ui/scheduled.rs:112
+#: src/ui/scheduled.rs:147
 msgid "The open reply goes along."
+msgstr ""
+
+#: src/ui/scheduled.rs:159
+msgid "The staged photo goes along."
+msgstr ""
+
+#: src/app.rs
+msgid "View-once photos cannot be scheduled."
+msgstr ""
+
+#: src/app.rs
+msgid "Could not read the staged photo."
 msgstr ""
 
 #: src/ui/scheduled.rs:118

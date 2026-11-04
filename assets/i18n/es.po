@@ -4235,6 +4235,18 @@ msgstr "Como máximo dentro de un año."
 msgid "The open reply goes along."
 msgstr "La respuesta abierta va también."
 
+#: src/ui/scheduled.rs:159
+msgid "The staged photo goes along."
+msgstr "La foto preparada va también."
+
+#: src/app.rs
+msgid "View-once photos cannot be scheduled."
+msgstr "Las fotos de visualización única no se pueden programar."
+
+#: src/app.rs
+msgid "Could not read the staged photo."
+msgstr "No se pudo leer la foto preparada."
+
 #: src/ui/scheduled.rs:158
 msgid "Schedule"
 msgstr "Programar"

@@ -6874,6 +6874,7 @@ impl Worker {
                 mentions,
                 due_at,
             } => self.schedule_text(chat, text, quoted, mentions, due_at),
+            Command::SchedulePhoto(photo) => self.schedule_photo(photo),
             Command::CancelScheduled { id } => self.cancel_scheduled(id),
             Command::LoadScheduled { chat } => self.emit_scheduled(&chat),
             Command::HistoryRequested {

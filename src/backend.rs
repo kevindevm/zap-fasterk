@@ -149,6 +149,22 @@ pub struct CreatedPoll {
     pub recipients: Vec<String>,
 }
 
+/// One photo staged for a later send, with its caption and send time.
+#[derive(Clone, Debug)]
+pub struct ScheduledPhoto {
+    pub chat: ChatId,
+    /// Caption, possibly empty.
+    pub text: String,
+    /// Same-chat message id the composer quoted, if any.
+    pub quoted: Option<String>,
+    pub mentions: Vec<String>,
+    /// Unix seconds when the photo may go out.
+    pub due_at: i64,
+    /// Original file name, for the staged copy's extension.
+    pub file_name: String,
+    pub bytes: Vec<u8>,
+}
+
 #[derive(Debug)]
 pub enum Command {
     Automation(crate::automation::Pending),
@@ -255,6 +271,10 @@ pub enum Command {
         /// Unix seconds when the text may go out.
         due_at: i64,
     },
+    /// Stores one photo with its caption for a later send. The bytes wait
+    /// in a per-account directory; the worker removes the copy once its
+    /// send is filed or the row is dropped.
+    SchedulePhoto(ScheduledPhoto),
     /// Drops a scheduled text before it sends.
     CancelScheduled {
         id: i64,

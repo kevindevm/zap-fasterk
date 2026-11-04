@@ -1,11 +1,14 @@
-//! Text messages scheduled for a later send, kept in the encrypted archive.
+//! Text messages and one photo with a caption scheduled for a later send,
+//! kept in the encrypted archive.
 //!
 //! Scheduling is client-side: unlike a server-held Telegram reminder, the
 //! message only goes out while this client runs linked. Rows survive
 //! restarts; the worker sends what is due on its maintenance tick and drops
 //! a row once its send is filed, so a delivered message is never repeated.
+//! A scheduled photo's bytes wait in a per-account directory; the worker
+//! removes the copy once its send is filed or the row is dropped.
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 use super::{Archive, Result};
 
@@ -17,7 +20,8 @@ CREATE TABLE IF NOT EXISTS scheduled_messages (
     quoted TEXT,
     mentions TEXT NOT NULL DEFAULT '[]',
     due_at INTEGER NOT NULL,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    media_path TEXT
 );
 CREATE INDEX IF NOT EXISTS scheduled_messages_due ON scheduled_messages (due_at);
 ";
@@ -27,6 +31,7 @@ CREATE INDEX IF NOT EXISTS scheduled_messages_due ON scheduled_messages (due_at)
 pub struct ScheduledMessage {
     pub id: i64,
     pub chat: String,
+    /// Plain text, or a photo's caption.
     pub text: String,
     /// Same-chat message id this answers, if the composer held a quote.
     pub quoted: Option<String>,
@@ -35,6 +40,8 @@ pub struct ScheduledMessage {
     /// Unix seconds when the worker may send it.
     pub due_at: i64,
     pub created_at: i64,
+    /// Staged photo copy waiting for its send time, if any.
+    pub media_path: Option<String>,
 }
 
 fn row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ScheduledMessage> {
@@ -47,10 +54,11 @@ fn row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ScheduledMessage> {
         mentions: serde_json::from_str(&mentions).unwrap_or_default(),
         due_at: row.get(5)?,
         created_at: row.get(6)?,
+        media_path: row.get(7)?,
     })
 }
 
-const COLUMNS: &str = "id, chat, text, quoted, mentions, due_at, created_at";
+const COLUMNS: &str = "id, chat, text, quoted, mentions, due_at, created_at, media_path";
 
 impl Archive {
     /// Stores a scheduled text; returns its row id for cancellation.
@@ -88,6 +96,28 @@ impl Archive {
             .connection
             .execute("DELETE FROM scheduled_messages WHERE id = ?1", [id])?
             > 0)
+    }
+
+    /// Attaches a staged photo copy to a scheduled row.
+    pub fn set_scheduled_media(&self, id: i64, path: &str) -> Result<()> {
+        self.connection.execute(
+            "UPDATE scheduled_messages SET media_path = ?2 WHERE id = ?1",
+            params![id, path],
+        )?;
+        Ok(())
+    }
+
+    /// The staged photo copy of one scheduled row, if any.
+    pub fn scheduled_media(&self, id: i64) -> Result<Option<String>> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT media_path FROM scheduled_messages WHERE id = ?1",
+                [id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten())
     }
 
     /// Deletes a scheduled row once its send is filed; never resends it.
@@ -162,5 +192,25 @@ mod tests {
             1,
             "a later text stays pending"
         );
+    }
+
+    #[test]
+    fn attached_photos_round_trip_with_their_row() {
+        let archive = archive();
+        let id = archive
+            .schedule_message("chat", "look", None, &[], 100, 10)
+            .unwrap();
+        let listed = archive.scheduled_messages("chat").unwrap();
+        assert_eq!(listed.len(), 1);
+        assert!(listed[0].media_path.is_none());
+        archive.set_scheduled_media(id, "1.jpg").unwrap();
+        assert_eq!(
+            archive.scheduled_media(id).unwrap().as_deref(),
+            Some("1.jpg")
+        );
+        let listed = archive.scheduled_messages("chat").unwrap();
+        assert_eq!(listed[0].media_path.as_deref(), Some("1.jpg"));
+        assert!(archive.cancel_scheduled(id).unwrap());
+        assert!(archive.scheduled_media(id).unwrap().is_none());
     }
 }

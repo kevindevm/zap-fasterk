@@ -292,6 +292,7 @@ const MIGRATIONS: &[(&str, &str, &str)] = &[
     ("chats", "group_subject_known", "INTEGER NOT NULL DEFAULT 0"),
     ("chats", "marked_unread", "INTEGER NOT NULL DEFAULT 0"),
     ("chats", "pending_unread", "INTEGER"),
+    ("scheduled_messages", "media_path", "TEXT"),
     // NULL until the group's metadata says whether only admins edit its info.
     ("chats", "info_locked", "INTEGER"),
     ("chats", "group_admin", "INTEGER NOT NULL DEFAULT 0"),

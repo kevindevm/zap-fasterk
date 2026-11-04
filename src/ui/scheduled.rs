@@ -149,6 +149,14 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, chat: &str) {
             palette.secondary,
         );
     }
+    if matches!(app.pending.as_slice(), [crate::app::Pending::File(_)]) && !app.pending_view_once {
+        theme::text(
+            ui,
+            crate::i18n::gettext(locale, "The staged photo goes along."),
+            theme::regular(12.5),
+            palette.secondary,
+        );
+    }
     ui.horizontal(|ui| {
         let cancel = crate::i18n::gettext(locale, "Cancel");
         if theme::soft_button(ui, &palette, None, cancel.as_ref(), false).clicked() {
@@ -183,6 +191,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, chat: &str) {
             .show(ui, |ui| {
                 for item in pending {
                     ui.horizontal(|ui| {
+                        if item.media_path.is_some() {
+                            theme::icon(ui, Icon::Image, 16.0, palette.secondary);
+                        }
                         let snippet: String = item
                             .text
                             .lines()

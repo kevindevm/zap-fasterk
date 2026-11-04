@@ -6287,10 +6287,24 @@ impl App {
     /// Stores the composer's text for a later send. A refusal brings the
     /// text back, the way an immediate send does.
     fn send_scheduled(&mut self, chat: ChatId, due_at: i64) {
-        let text = self.take_composer_text();
-        if text.trim().is_empty() {
+        // One staged file goes along as a photo with the composer text as
+        // its caption. Anything else schedules text only, as before.
+        // View-once has no meaning with a later send.
+        if matches!(self.pending.as_slice(), [Pending::File(_)]) && self.pending_view_once {
+            self.toast_error(
+                crate::i18n::gettext(self.locale, "View-once photos cannot be scheduled.")
+                    .into_owned(),
+            );
             return;
         }
+        let photo = match self.pending.as_slice() {
+            [Pending::File(path)] if !self.pending_view_once => Some(path.clone()),
+            _ => None,
+        };
+        if photo.is_none() && self.composer.trim().is_empty() {
+            return;
+        }
+        let text = self.take_composer_text();
         let quoting = self.reply_to.take().filter(|target| {
             target
                 .chat
@@ -6302,6 +6316,35 @@ impl App {
         self.mention_start = None;
         self.stop_composing(&chat);
         self.store_draft(&chat, "");
+        if let Some(path) = photo {
+            let bytes = match std::fs::read(&path) {
+                Ok(bytes) => bytes,
+                Err(_) => {
+                    self.toast_error(
+                        crate::i18n::gettext(self.locale, "Could not read the staged photo.")
+                            .into_owned(),
+                    );
+                    return;
+                }
+            };
+            let file_name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("photo")
+                .to_owned();
+            self.pending.clear();
+            self.backend
+                .send(Command::SchedulePhoto(crate::backend::ScheduledPhoto {
+                    chat,
+                    text,
+                    quoted: quoting.map(|target| target.id),
+                    mentions,
+                    due_at,
+                    file_name,
+                    bytes,
+                }));
+            return;
+        }
         self.backend.send(Command::ScheduleText {
             chat,
             text,
@@ -16053,6 +16096,40 @@ mod tests {
     }
 
     #[test]
+    fn scheduling_sends_one_staged_photo_with_its_caption() {
+        let mut app = app();
+        let (backend, mut commands) = crate::backend::Backend::recording();
+        app.backend = backend;
+        let ctx = egui::Context::default();
+        let root = tempfile::tempdir().unwrap();
+        let photo = root.path().join("staged.png");
+        std::fs::write(&photo, [1, 2, 3]).unwrap();
+        app.pending.push(Pending::File(photo));
+        app.composer = "look".into();
+        let due = crate::util::now() + 3_600;
+        app.apply(
+            Action::SendScheduled {
+                chat: "kevin".into(),
+                due_at: due,
+            },
+            &ctx,
+        );
+        assert!(matches!(commands.try_recv(), Ok(Command::SaveDraft { .. })));
+        match commands.try_recv() {
+            Ok(Command::SchedulePhoto(photo)) => {
+                assert_eq!(photo.chat, "kevin");
+                assert_eq!(photo.text, "look");
+                assert_eq!(photo.due_at, due);
+                assert_eq!(photo.file_name, "staged.png");
+                assert_eq!(photo.bytes, vec![1, 2, 3]);
+            }
+            command => panic!("a scheduled photo goes out, got {command:?}"),
+        }
+        assert!(app.pending.is_empty(), "the staged file is consumed");
+        assert!(app.composer.is_empty());
+    }
+
+    #[test]
     fn cancelling_a_scheduled_text_asks_the_worker() {
         let mut app = app();
         let (backend, mut commands) = crate::backend::Backend::recording();
@@ -16078,6 +16155,7 @@ mod tests {
             mentions: Vec::new(),
             due_at: crate::util::now() + 3_600,
             created_at: crate::util::now(),
+            media_path: None,
         };
         events
             .send(Event::Scheduled {

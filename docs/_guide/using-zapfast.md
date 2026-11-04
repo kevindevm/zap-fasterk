@@ -139,11 +139,14 @@ cancel an unclaimed prepared message.
 
 **Schedule message** in the plus menu beside the message field sends the
 composer's text later: pick tonight, tomorrow morning, or a date and time up
-to a year out. The dialog also lists that chat's pending scheduled texts for
-cancellation. Scheduling only takes text; attachments and edits still send at
-once. Unlike Telegram, which holds the message server-side, scheduling here
-is client-side: the text goes out only while this client runs linked, and an
-offline computer keeps it for the next connection.
+to a year out. With a single staged file attached, the photo goes along with
+the text as its caption. The dialog also lists that chat's pending scheduled
+messages for cancellation; photos carry a picture mark. Scheduling only takes
+text and one photo; edits still send at once and view-once photos cannot be
+scheduled. Unlike Telegram, which holds the message server-side, scheduling here
+is client-side: the message goes out only while this client runs linked, and an
+offline computer keeps it for the next connection. A photo whose staged copy
+is missing sends its caption as plain text instead of being dropped silently.
 
 Once transmission starts, a timeout or interrupted connection can leave delivery
 uncertain. **Send unconfirmed** means the message may have reached WhatsApp; Zap
