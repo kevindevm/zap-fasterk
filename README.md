@@ -38,6 +38,8 @@ The original project and its contributors made this possible. ZapFasterk builds 
 
 ## Download and run
 
+[![Downloads](https://img.shields.io/github/downloads/kevindevm/zap-fasterk/total)](https://github.com/kevindevm/zap-fasterk/releases)
+
 Download installers and portable builds from **[ZapFasterk releases](https://github.com/kevindevm/zap-fasterk/releases)**. Upstream ZapFast installers, its Homebrew tap, AUR packages and website downloads install the original project.
 
 The current fork release, [v0.30.0](https://github.com/kevindevm/zap-fasterk/releases/tag/v0.30.0), is available for Windows. To build from source, use the toolchain in `rust-toolchain.toml`:
