@@ -293,7 +293,10 @@ pub fn import_archive(path: &Path, packs: &Path) -> Result<String, String> {
         let Ok(mut entry) = archive.by_index(index) else {
             continue;
         };
-        let name = entry.name().to_lowercase();
+        let Ok(raw) = entry.name() else {
+            continue;
+        };
+        let name = raw.to_lowercase();
         let mut bytes = Vec::new();
         if entry.read_to_end(&mut bytes).is_err() {
             continue;
@@ -344,7 +347,10 @@ pub fn extract_whatsapp_pack(
         let Ok(mut entry) = archive.by_index(index) else {
             continue;
         };
-        let file = entry.name().to_owned();
+        let Ok(file) = entry.name() else {
+            continue;
+        };
+        let file = file.into_owned();
         if Some(file.as_str()) == tray || !file.to_lowercase().ends_with(".webp") {
             continue;
         }
@@ -658,7 +664,7 @@ mod tests {
         let webp = webp_bytes(tiny_png()).expect("encodes");
         let file = std::fs::File::create(&archive_path).expect("creates");
         let mut writer = zip::ZipWriter::new(file);
-        let plain: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
+        let plain: zip::write::FileOptions<'_, '_, ()> = zip::write::FileOptions::default();
         writer.start_file("title.txt", plain).expect("entry");
         std::io::Write::write_all(&mut writer, b"Happy Frogs\n").expect("writes");
         writer.start_file("tray.png", plain).expect("entry");
