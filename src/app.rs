@@ -748,6 +748,10 @@ pub struct App {
     pub hide_intent: bool,
     /// Whether a headless app should create a window.
     pub wants_show: bool,
+    /// Whether the shell should bring the window forward through Win32 this
+    /// frame (Windows only): winit's focus presses a synthetic Alt, which
+    /// reaches other apps' global hotkeys as Right Alt.
+    pub raise_window: bool,
     /// Whether the current window close should reopen a fresh one at once
     /// (`Closed::Reopen`) rather than stop drawing.
     reopen: bool,
@@ -1392,6 +1396,7 @@ impl App {
             tray_start_deadline: None,
             hide_intent: false,
             wants_show: false,
+            raise_window: false,
             reopen: false,
             automation: None,
             control_commands: None,
@@ -9983,6 +9988,14 @@ impl App {
                     // must be recreated when Show supersedes that hide.
                     self.reopen = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                } else if cfg!(windows) {
+                    // winit's Windows focus presses and releases a synthetic
+                    // Alt, which arrives as Right Alt and toggles any global
+                    // hotkey bound to it (a voice chat's mute key). The shell
+                    // restores and raises the window through Win32 instead,
+                    // and falls back to egui's focus if Windows refuses.
+                    self.raise_window = true;
+                    ctx.request_repaint();
                 } else {
                     // Focus alone leaves a minimized window where it is on
                     // Windows, so restore it first.
@@ -16944,6 +16957,11 @@ mod tests {
         app.apply(Action::ShowWindow, &ctx);
         assert!(!app.reopen, "the window is only focused");
         assert_ne!(app.closed(), Closed::Reopen);
+        assert_eq!(
+            app.raise_window,
+            cfg!(windows),
+            "Windows raises the window natively, without winit's synthetic Alt"
+        );
     }
 
     /// A later hide wins over recreation; a subsequent explicit show still works.
