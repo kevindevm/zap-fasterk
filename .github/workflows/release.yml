@@ -23,6 +23,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Require the release commit on main
+        shell: bash
         run: |
           git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
           if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
