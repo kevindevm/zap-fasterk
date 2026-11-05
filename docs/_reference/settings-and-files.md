@@ -148,7 +148,9 @@ beside their labels.
   **Groups**, or **Direct messages and groups**. A limited chat sends one
   notification (and its sound), then stays quiet for 10 minutes. Opening the
   chat starts over. In groups, a mention of you or a reply to you always
-  notifies. Settings for this account.
+  notifies. Settings for this account. Even when it is off, messages that
+  arrive within 5 seconds of a notification in the same chat make no new
+  notification or sound.
 
 **Audio devices and calls**
 

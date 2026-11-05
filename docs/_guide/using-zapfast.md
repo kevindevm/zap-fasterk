@@ -711,6 +711,8 @@ To hear less from busy chats, set **Limit repeat notifications** in
 **Settings > Notifications** to direct messages, groups, or both: a chat then
 sends one notification, stays quiet for 10 minutes, and notifies again once you
 open it. In a group, a mention of you or a reply to you always notifies.
+Messages that arrive within 5 seconds of a chat's notification make no new
+notification or sound, so a burst of messages announces itself once.
 
 Press `Ctrl+/` or click the keyboard button under the composer to list all
 shortcuts.

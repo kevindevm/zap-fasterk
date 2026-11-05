@@ -2317,22 +2317,30 @@ impl App {
         if reading {
             return;
         }
-        // A limited chat notifies once, then waits; opening it ends the wait.
-        // A mention of us or a reply to us always notifies and leaves the wait alone.
+        // A chat notifies once for a burst of messages, and a limited chat
+        // once for ten minutes; opening it ends the wait. A mention of us or
+        // a reply to us always notifies and leaves the wait alone.
         let for_us = chat.is_group() && self.addresses_us(message);
         if !self.focus_allows_chat(chat) && !(for_us && self.account().settings.focus_mentions) {
             return;
         }
-        let limited = !for_us
-            && self
-                .account()
-                .settings
-                .limit_notifications
-                .applies(chat.is_group());
+        let quiet = if for_us {
+            crate::notify::Quiet::Never
+        } else if self
+            .account()
+            .settings
+            .limit_notifications
+            .applies(chat.is_group())
+        {
+            crate::notify::Quiet::Limited
+        } else {
+            crate::notify::Quiet::Burst
+        };
+        let waits = quiet != crate::notify::Quiet::Never;
         let account = self.account().id.clone();
         if !self
             .notifications
-            .allow(&account, chat_id, std::time::Instant::now(), limited)
+            .allow(&account, chat_id, std::time::Instant::now(), quiet)
         {
             return;
         }
@@ -2340,7 +2348,7 @@ impl App {
             return;
         };
         if self.app_lock.is_locked() {
-            self.notify_while_locked(chat_id, chat.is_group(), &message.id, limited);
+            self.notify_while_locked(chat_id, chat.is_group(), &message.id, waits);
             return;
         }
         let (name, is_group) = (self.chat_title(chat), chat.is_group());
@@ -2409,7 +2417,7 @@ impl App {
             },
             std::sync::Arc::clone(&self.notification_opens),
             move || waker.wake(),
-            limited,
+            waits,
         );
         self.wants_attention = true;
     }
@@ -2420,7 +2428,7 @@ impl App {
     /// the mention sound would tell who wrote, so only the message sound
     /// plays, still silent for groups when group sounds are off. The click
     /// target stays inside Zap Fasterk: it opens the message once unlocked.
-    fn notify_while_locked(&mut self, chat_id: &str, is_group: bool, message: &str, limited: bool) {
+    fn notify_while_locked(&mut self, chat_id: &str, is_group: bool, message: &str, waits: bool) {
         self.wants_attention = true;
         let (title, body) = crate::notify::locked_lines(self.locale);
         let sound = notification_sound(&self.settings, None, is_group, false);
@@ -2438,7 +2446,7 @@ impl App {
             },
             std::sync::Arc::clone(&self.notification_opens),
             move || waker.wake(),
-            limited,
+            waits,
         );
     }
 
@@ -12566,6 +12574,7 @@ mod tests {
             "hidden settings do not change visible account"
         );
 
+        app.notifications.elapse(crate::notify::BURST_WINDOW);
         app.maybe_notify(chat, &incoming);
         let visible = app.notifications.shown.last().unwrap();
         assert_eq!(visible.title, "Synthetic sender");
@@ -12574,6 +12583,7 @@ mod tests {
         assert_eq!(visible.sound, NotificationSound::Alert);
 
         app.account_mut().settings.notification_content = false;
+        app.notifications.elapse(crate::notify::BURST_WINDOW);
         app.maybe_notify(chat, &incoming);
         let content_hidden = app.notifications.shown.last().unwrap();
         assert_eq!(content_hidden.title, "Synthetic sender");
@@ -15069,6 +15079,7 @@ mod tests {
 
         app.apply(Action::SetAccountNotifications(second, true), &ctx);
         assert!(app.accounts[1].settings.notifications);
+        app.notifications.elapse(crate::notify::BURST_WINDOW);
         arrives(&mut app, "m3");
         assert_eq!(app.notifications.shown.len(), 2);
     }
@@ -23038,6 +23049,7 @@ mod app_lock_tests {
         app.account_mut().settings.notification_sender = false;
         for index in 0..6 {
             message.id = format!("synthetic-{index}");
+            app.notifications.elapse(crate::notify::BURST_WINDOW);
             app.maybe_notify(CHAT, &message);
         }
         assert_eq!(
@@ -23258,6 +23270,7 @@ mod app_lock_tests {
         assert_eq!(shown.body, "the engine is ready");
 
         app.lock_app();
+        app.notifications.elapse(crate::notify::BURST_WINDOW);
         app.maybe_notify(CHAT, &message);
         let shown = app.notifications.shown.last().unwrap();
         assert_eq!(shown.title, "Zap Fasterk");
@@ -23270,15 +23283,37 @@ mod app_lock_tests {
     }
 
     #[test]
+    fn a_burst_of_messages_notifies_once_until_the_chat_is_opened() {
+        let mut app = unlocked_app();
+        let message = incoming(&mut app);
+        app.maybe_notify(CHAT, &message);
+        app.maybe_notify(CHAT, &message);
+        app.maybe_notify(CHAT, &message);
+        assert_eq!(app.notifications.shown.len(), 1);
+
+        app.notifications.elapse(crate::notify::BURST_WINDOW);
+        app.maybe_notify(CHAT, &message);
+        assert_eq!(app.notifications.shown.len(), 2, "the burst is over");
+
+        app.open_chat(CHAT.into());
+        app.chats[0].unread = 1;
+        app.maybe_notify(CHAT, &message);
+        assert_eq!(app.notifications.shown.len(), 3, "opening reset the wait");
+    }
+
+    #[test]
     fn limited_direct_chats_notify_once_until_the_chat_is_opened() {
         let mut app = unlocked_app();
         let message = incoming(&mut app);
         app.maybe_notify(CHAT, &message);
+        app.notifications.elapse(crate::notify::BURST_WINDOW);
         app.maybe_notify(CHAT, &message);
         assert_eq!(app.notifications.shown.len(), 2, "off by default");
 
         app.account_mut().settings.limit_notifications = crate::settings::NotificationLimit::Direct;
         app.notifications.shown.clear();
+        app.notifications
+            .elapse(std::time::Duration::from_secs(10 * 60));
         app.maybe_notify(CHAT, &message);
         app.maybe_notify(CHAT, &message);
         assert_eq!(app.notifications.shown.len(), 1);
@@ -23308,6 +23343,7 @@ mod app_lock_tests {
 
         app.account_mut().settings.limit_notifications = crate::settings::NotificationLimit::Group;
         app.maybe_notify(CHAT, &direct);
+        app.notifications.elapse(crate::notify::BURST_WINDOW);
         app.maybe_notify(CHAT, &direct);
         app.maybe_notify(GROUP, &group);
         app.maybe_notify(GROUP, &group);
@@ -23319,7 +23355,10 @@ mod app_lock_tests {
 
         app.account_mut().settings.limit_notifications = crate::settings::NotificationLimit::Direct;
         app.notifications.shown.clear();
+        app.notifications
+            .elapse(std::time::Duration::from_secs(10 * 60));
         app.maybe_notify(GROUP, &group);
+        app.notifications.elapse(crate::notify::BURST_WINDOW);
         app.maybe_notify(GROUP, &group);
         app.maybe_notify(CHAT, &direct);
         app.maybe_notify(CHAT, &direct);
