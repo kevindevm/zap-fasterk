@@ -309,6 +309,17 @@ const HEADER_TAIL: f32 = 24.0;
 /// Rows of the veil's ease, enough for its curve to look smooth.
 const VEIL_STEPS: usize = 8;
 
+/// The date belongs below the vibrant header's entire frosted tail. The
+/// transcript itself still scrolls behind that header.
+fn date_viewport(viewport: Rect, under: f32) -> Rect {
+    let covered = if under > 0.0 {
+        under + HEADER_TAIL
+    } else {
+        0.0
+    };
+    viewport.with_min_y((viewport.top() + covered).min(viewport.bottom()))
+}
+
 /// The veil over a vibrant header's frost: the palette's at the top, then
 /// easing to nothing over the bottom `ease` points of `rect` along the same
 /// curve as the frost, so the messages under it never stop at a line.
@@ -738,7 +749,7 @@ fn header(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> Rect {
                             18.0,
                             palette.secondary,
                             palette.text,
-                            "Start voice call",
+                            crate::i18n::gettext(app.locale, "Start voice call").as_ref(),
                         )
                         .clicked()
                     {
@@ -751,7 +762,7 @@ fn header(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> Rect {
                             18.0,
                             palette.secondary,
                             palette.text,
-                            "Start video call",
+                            crate::i18n::gettext(app.locale, "Start video call").as_ref(),
                         )
                         .clicked()
                     {
@@ -807,7 +818,7 @@ fn header(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> Rect {
                             18.0,
                             palette.secondary,
                             palette.text,
-                            "Back to chats",
+                            crate::i18n::gettext(app.locale, "Back to chats").as_ref(),
                         )
                         .tab_stop(Stop::Back);
                         if palette.vibrant() {
@@ -1420,7 +1431,7 @@ fn composer(app: &mut App, ui: &mut egui::Ui, chat: &Chat) {
                                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                     if theme::icon_button(
                                         ui, Icon::X, 16.0, palette.secondary, palette.text,
-                                        "Cancel reply (Esc)",
+                                        crate::i18n::gettext(app.locale, "Cancel reply (Esc)").as_ref(),
                                     ).clicked() {
                                         app.actions.push(Action::CancelReply);
                                     }
@@ -2211,7 +2222,12 @@ fn edit_strip(app: &mut App, ui: &mut egui::Ui) {
         ui.set_width(ui.available_width());
         ui.horizontal(|ui| {
             theme::icon(ui, Icon::Pencil, 16.0, palette.accent);
-            theme::text(ui, "Editing message", theme::semibold(12.5), palette.accent);
+            theme::text(
+                ui,
+                crate::i18n::gettext(app.locale, "Editing message"),
+                theme::semibold(12.5),
+                palette.accent,
+            );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if theme::icon_button(
                     ui,
@@ -2219,7 +2235,7 @@ fn edit_strip(app: &mut App, ui: &mut egui::Ui) {
                     16.0,
                     palette.secondary,
                     palette.text,
-                    "Stop editing (Esc)",
+                    crate::i18n::gettext(app.locale, "Stop editing (Esc)").as_ref(),
                 )
                 .clicked()
                 {
@@ -2262,7 +2278,7 @@ fn reply_strip(app: &mut App, ui: &mut egui::Ui, quoted: &Message) {
                     16.0,
                     palette.secondary,
                     palette.text,
-                    "Cancel reply (Esc)",
+                    crate::i18n::gettext(app.locale, "Cancel reply (Esc)").as_ref(),
                 )
                 .clicked()
                 {
@@ -3573,7 +3589,7 @@ fn messages(app: &mut App, ui: &mut egui::Ui, chat: &Chat, under: f32) {
                         }
                         let measured = ui.cursor().top() - before;
                         if visible_day.is_none()
-                            && before + measured > viewport.top()
+                            && before + measured > date_viewport(viewport, under).top()
                             && before < viewport.bottom()
                         {
                             visible_day = Some((message.timestamp, day_separator_top));
@@ -3684,17 +3700,18 @@ fn messages(app: &mut App, ui: &mut egui::Ui, chat: &Chat, under: f32) {
     app.scroll_route
         .place(crate::app::ScrollPane::Messages, output.inner_rect);
     if let Some((timestamp, separator_top)) = visible_day
-        && separator_top < output.inner_rect.top()
+        && separator_top < date_viewport(output.inner_rect, under).top()
     {
         // Paint after the scroll contents, inside their clip, without changing
         // their height or taking clicks away from the messages underneath.
+        let viewport = date_viewport(output.inner_rect, under);
         let mut overlay = ui.new_child(
             egui::UiBuilder::new()
                 .id_salt(("visible-message-date", &chat.id))
-                .max_rect(output.inner_rect.shrink2(vec2(0.0, 8.0)))
+                .max_rect(viewport.shrink2(vec2(0.0, 8.0)))
                 .layout(Layout::top_down(Align::Center)),
         );
-        overlay.set_clip_rect(output.inner_rect);
+        overlay.set_clip_rect(viewport);
         widgets::chip(
             &mut overlay,
             &palette,
@@ -6348,7 +6365,7 @@ fn reactions(ui: &mut egui::Ui, view: &View<'_>, message: &Message, actions: &mu
                 .fill(palette.overlay)
                 .corner_radius(12),
         )
-        .on_hover_text("Show reactions")
+        .on_hover_text(crate::i18n::gettext(view.locale, "Show reactions"))
     } else {
         theme::icon_button(
             ui,
@@ -6356,7 +6373,7 @@ fn reactions(ui: &mut egui::Ui, view: &View<'_>, message: &Message, actions: &mu
             14.0,
             palette.secondary,
             palette.text,
-            "Show reactions",
+            crate::i18n::gettext(view.locale, "Show reactions").as_ref(),
         )
     };
     theme::reveal_focus(&response);
@@ -6992,7 +7009,7 @@ fn context_menu_contents(
                 ) {
                     actions.push(Action::SaveAttachmentAs {
                         path: path.clone(),
-                        name: attachment_name(&message.content, path),
+                        name: attachment_name(&message.content, message.timestamp, path),
                     });
                 }
                 if let Some(folder) = path.parent()
@@ -8081,7 +8098,10 @@ fn album_content(
         .iter()
         .filter_map(|message| {
             let path = message.content.media()?.path.as_ref()?;
-            Some((path.clone(), attachment_name(&message.content, path)))
+            Some((
+                path.clone(),
+                attachment_name(&message.content, message.timestamp, path),
+            ))
         })
         .collect();
     if !files.is_empty()
@@ -10707,6 +10727,41 @@ fn voice_player(
                         );
                     });
                 }
+                // Our voice message carries a microphone beside the length,
+                // as on the phone: grey until they play it, then the read
+                // ticks' blue, so the chat says it was heard and not only seen.
+                if voice_note
+                    && message.from_me
+                    && matches!(
+                        message.status,
+                        Delivery::Sent | Delivery::Delivered | Delivery::Read | Delivery::Played
+                    )
+                    && !matches!(media.state, MediaState::Failed(_))
+                {
+                    let played = message.status == Delivery::Played;
+                    let mic = Rect::from_center_size(
+                        pos2(shown.right() + 10.0, shown.center().y),
+                        Vec2::splat(13.0),
+                    );
+                    let colour = if played {
+                        palette.read
+                    } else {
+                        palette.secondary
+                    };
+                    theme::paint_icon(ui, Icon::Mic, mic, 13.0, colour);
+                    duration = Some(shown.union(mic));
+                    let key = bubble_id(&view.chat.id, &message.id);
+                    let response = ui.interact(mic, key.with("mic-hover"), Sense::hover());
+                    if played {
+                        response.on_hover_text(crate::i18n::gettext(view.locale, "Played"));
+                    }
+                    ui.ctx().data_mut(|data| {
+                        data.insert_temp(key.with("mic"), mic);
+                        if played {
+                            data.insert_temp(key.with("played"), mic);
+                        }
+                    });
+                }
             });
             if !voice_note {
                 let (slot, response) = ui.allocate_exact_size(Vec2::splat(button), Sense::hover());
@@ -10784,10 +10839,19 @@ fn voice_player(
 }
 
 /// Voice-recording controls and live waveform.
+/// Voice-recording controls and live waveform. While paused, the take so
+/// far can be played back and scrubbed, and recording resumed.
 fn recording_strip(app: &mut App, ui: &mut egui::Ui) {
+    use crate::audio::State;
     let palette = app.palette;
-    let (elapsed, levels) = match app.recording.as_ref() {
-        Some(recorder) => (recorder.elapsed(), recorder.levels()),
+    let locale = app.locale;
+    let (elapsed, levels, paused, playback) = match app.recording.as_ref() {
+        Some(recorder) => (
+            recorder.elapsed(),
+            recorder.levels(),
+            recorder.is_paused(),
+            recorder.playback(),
+        ),
         None => return,
     };
     // As tall as the one-line composer it replaces, so the field keeps its
@@ -10802,7 +10866,9 @@ fn recording_strip(app: &mut App, ui: &mut egui::Ui) {
         .max(COMPOSER_CONTROL);
     let button = row_height;
     // As in WhatsApp: discard at the start, the light and the time, the
-    // waveform across the rest, and send at the end.
+    // waveform across the rest, then pause and send at the end. Paused, the
+    // light gives way to playback, the time follows the waveform, and the
+    // microphone records again.
     ui.allocate_ui_with_layout(
         vec2(ui.available_width().max(0.0), row_height),
         egui::Layout::left_to_right(egui::Align::Center),
@@ -10816,40 +10882,175 @@ fn recording_strip(app: &mut App, ui: &mut egui::Ui) {
                 palette.surface,
                 palette.surface_hover,
                 palette.secondary,
-                "Discard",
+                crate::i18n::gettext(locale, "Discard").as_ref(),
             )
             .tab_stop(Stop::RecordCancel)
             .clicked()
             {
                 app.actions.push(Action::CancelRecording);
             }
-            let (dot, _) = ui.allocate_exact_size(Vec2::splat(12.0), Sense::hover());
-            let pulse = 0.55 + 0.45 * (elapsed.as_secs_f32() * 3.0).sin().abs();
-            ui.painter()
-                .circle_filled(dot.center(), 5.0, palette.danger.gamma_multiply(pulse));
-            theme::text(
-                ui,
-                crate::util::duration(elapsed.as_secs() as u32),
-                theme::tabular(fastframe_fonts::Weight::Medium, 14.0),
-                palette.text,
-            );
-            // Recent audio levels, newest on the right against send.
+            let time = theme::tabular(fastframe_fonts::Weight::Medium, 14.0);
+            if paused {
+                let (icon, label) = if playback.state == State::Playing {
+                    (Icon::Pause, crate::i18n::gettext(locale, "Pause playback"))
+                } else {
+                    (Icon::Play, crate::i18n::gettext(locale, "Play recording"))
+                };
+                if theme::circle_button(
+                    ui,
+                    icon,
+                    button,
+                    palette.surface,
+                    palette.surface_hover,
+                    palette.text,
+                    &label,
+                )
+                .clicked()
+                {
+                    app.actions.push(Action::PlayRecording);
+                }
+            } else {
+                // The light pulses red while recording; with no levels yet it
+                // stays dim, and the time at zero.
+                let (dot, _) = ui.allocate_exact_size(Vec2::splat(12.0), Sense::hover());
+                let light = if levels.is_empty() {
+                    palette.secondary.gamma_multiply(0.5)
+                } else {
+                    let pulse = 0.55 + 0.45 * (elapsed.as_secs_f32() * 3.0).sin().abs();
+                    palette.danger.gamma_multiply(pulse)
+                };
+                ui.painter().circle_filled(dot.center(), 5.0, light);
+                theme::text(
+                    ui,
+                    crate::util::duration(elapsed.as_secs() as u32),
+                    time.clone(),
+                    palette.text,
+                );
+            }
             let spacing = ui.spacing().item_spacing.x;
-            let wave_width = (ui.available_width() - button - spacing).max(0.0);
-            let (rect, _) = ui.allocate_exact_size(vec2(wave_width, 28.0), Sense::hover());
+            // Paused, the time sits between the waveform and the controls.
+            let shown_time = if matches!(playback.state, State::Playing | State::Paused) {
+                playback.position
+            } else {
+                elapsed
+            };
+            let time_text = crate::util::duration(shown_time.as_secs() as u32);
+            let time_width = if paused {
+                ui.painter()
+                    .layout_no_wrap(time_text.clone(), time.clone(), palette.text)
+                    .size()
+                    .x
+                    + spacing
+            } else {
+                0.0
+            };
+            let wave_width =
+                (ui.available_width() - 2.0 * (button + spacing) - time_width).max(0.0);
+            let sense = if paused {
+                Sense::click()
+            } else {
+                Sense::hover()
+            };
+            let (rect, response) = ui.allocate_exact_size(vec2(wave_width, 28.0), sense);
             ui.ctx()
                 .data_mut(|data| data.insert_temp(recording_wave_id(), rect));
             let pitch = 3.0;
             let count = (rect.width() / pitch).floor() as usize;
-            let shown = &levels[levels.len().saturating_sub(count)..];
-            for (index, level) in shown.iter().enumerate() {
-                let height = 2.0_f32 + (level * 4.0).min(1.0) * 24.0;
-                let x = rect.right() - (shown.len() - index) as f32 * pitch + 1.0;
-                ui.painter().rect_filled(
-                    Rect::from_center_size(egui::pos2(x, rect.center().y), vec2(2.0, height)),
-                    1.0,
-                    palette.accent,
-                );
+            let bar = |level: f32| 2.0_f32 + (level * 4.0).min(1.0) * 24.0;
+            if paused {
+                // The whole take across the width, the part played in accent.
+                let fraction = if playback.total > Duration::ZERO {
+                    playback.position.as_secs_f32() / playback.total.as_secs_f32()
+                } else {
+                    0.0
+                };
+                let played_until = rect.left() + fraction * rect.width();
+                let active = matches!(playback.state, State::Playing | State::Paused);
+                let quiet = palette.secondary.gamma_multiply(0.7);
+                if count > 0 && !levels.is_empty() {
+                    for index in 0..count {
+                        let from = index * levels.len() / count;
+                        let to = ((index + 1) * levels.len() / count).max(from + 1);
+                        let level = levels[from..to.min(levels.len())]
+                            .iter()
+                            .fold(0.0_f32, |peak, level| peak.max(*level));
+                        let x = rect.left() + index as f32 * pitch + 1.0;
+                        let colour = if active && x <= played_until {
+                            palette.accent
+                        } else {
+                            quiet
+                        };
+                        ui.painter().rect_filled(
+                            Rect::from_center_size(
+                                egui::pos2(x, rect.center().y),
+                                vec2(2.0, bar(level)),
+                            ),
+                            1.0,
+                            colour,
+                        );
+                    }
+                }
+                if active && rect.width() >= 10.0 {
+                    let knob = played_until.clamp(rect.left() + 5.0, rect.right() - 5.0);
+                    ui.painter().circle_filled(
+                        egui::pos2(knob, rect.center().y),
+                        5.0,
+                        palette.accent,
+                    );
+                }
+                let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+                if response.clicked()
+                    && let Some(pointer) = response.interact_pointer_pos()
+                    && rect.width() > 0.0
+                {
+                    let fraction = ((pointer.x - rect.left()) / rect.width()).clamp(0.0, 1.0);
+                    app.actions.push(Action::SeekRecording(fraction));
+                }
+                theme::text(ui, time_text, time, palette.text);
+                if theme::circle_button(
+                    ui,
+                    Icon::Mic,
+                    button,
+                    palette.surface,
+                    palette.surface_hover,
+                    palette.danger,
+                    &crate::i18n::gettext(locale, "Resume recording"),
+                )
+                .clicked()
+                {
+                    app.actions.push(Action::ResumeRecording);
+                }
+            } else {
+                // Recent audio levels, newest on the right against pause.
+                let shown = &levels[levels.len().saturating_sub(count)..];
+                for (index, level) in shown.iter().enumerate() {
+                    let x = rect.right() - (shown.len() - index) as f32 * pitch + 1.0;
+                    ui.painter().rect_filled(
+                        Rect::from_center_size(
+                            egui::pos2(x, rect.center().y),
+                            vec2(2.0, bar(*level)),
+                        ),
+                        1.0,
+                        palette.accent,
+                    );
+                }
+                // Nothing to pause until the microphone delivers sound.
+                let pause = ui
+                    .add_enabled_ui(!levels.is_empty(), |ui| {
+                        theme::circle_button(
+                            ui,
+                            Icon::Pause,
+                            button,
+                            palette.surface,
+                            palette.surface_hover,
+                            palette.text,
+                            &crate::i18n::gettext(locale, "Pause recording"),
+                        )
+                    })
+                    .inner;
+                if pause.clicked() {
+                    app.actions.push(Action::PauseRecording);
+                }
             }
             if theme::circle_button(
                 ui,
@@ -10858,7 +11059,7 @@ fn recording_strip(app: &mut App, ui: &mut egui::Ui) {
                 palette.accent,
                 palette.accent_hover,
                 palette.on_accent,
-                "Send",
+                crate::i18n::gettext(locale, "Send").as_ref(),
             )
             .tab_stop(Stop::RecordSend)
             .clicked()
@@ -10961,17 +11162,28 @@ fn selection_bar(app: &mut App, ui: &mut egui::Ui, chat: &str, selected: &[Strin
 }
 
 /// The file name to suggest when saving an attachment: the sender's name for
-/// documents, the cached file's name otherwise. Path separators are dropped so
-/// a crafted name cannot point the dialog somewhere else.
-fn attachment_name(content: &Content, path: &Path) -> String {
-    let name = match content {
-        Content::Document { file_name, .. } if !file_name.trim().is_empty() => file_name.clone(),
-        _ => path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "attachment".to_owned()),
+/// documents, else its kind and send time, after the names WhatsApp Web gives
+/// its downloads (#801); the cached file's own name is the chat and message
+/// ids, which sort by nothing. Path separators are dropped from a document's
+/// name so a crafted name cannot point the dialog somewhere else.
+fn attachment_name(content: &Content, timestamp: i64, path: &Path) -> String {
+    let kind = match content {
+        Content::Document { file_name, .. } if !file_name.trim().is_empty() => {
+            return file_name.replace(['/', '\\'], "_");
+        }
+        Content::Document { .. } => "Document",
+        Content::Video { .. } => "Video",
+        Content::Audio { .. } => "Audio",
+        Content::Sticker { .. } => "Sticker",
+        // A photo, or an interactive message's card picture.
+        _ => "Image",
     };
-    name.replace(['/', '\\'], "_")
+    crate::util::saved_file_name(kind, timestamp, path).unwrap_or_else(|| {
+        path.file_name().map_or_else(
+            || "attachment".to_owned(),
+            |name| name.to_string_lossy().into_owned(),
+        )
+    })
 }
 
 /// Whether a conversation has visible content. Used by tests.
@@ -11003,6 +11215,14 @@ fn chat_of(chat: &ChatId) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sticky_date_viewport_stays_valid_in_a_short_window() {
+        let viewport = egui::Rect::from_min_max(egui::pos2(0.0, 10.0), egui::pos2(400.0, 40.0));
+        let clear = super::date_viewport(viewport, 80.0);
+        assert_eq!(clear.top(), clear.bottom());
+        assert_eq!(super::date_viewport(viewport, 0.0), viewport);
+    }
 
     #[test]
     fn focused_message_keys_keep_confirmation_and_local_send_boundaries() {
@@ -11379,12 +11599,83 @@ mod tests {
             pages: None,
         };
         let cached = Path::new("/cache/media/abc123.pdf");
-        assert_eq!(attachment_name(&document("Notes.pdf"), cached), "Notes.pdf");
+        let _clock = crate::util::fixed_clock::set(crate::util::fixed_clock::Clock {
+            now: 0,
+            zone: jiff::tz::TimeZone::UTC,
+            twelve_hour: false,
+        });
+        let sent = 1_786_046_869; // 2026-08-06 at 20.07.49 UTC
         assert_eq!(
-            attachment_name(&document("../../.bashrc"), cached),
+            attachment_name(&document("Notes.pdf"), sent, cached),
+            "Notes.pdf"
+        );
+        assert_eq!(
+            attachment_name(&document("../../.bashrc"), sent, cached),
             ".._.._.bashrc"
         );
-        assert_eq!(attachment_name(&document("  "), cached), "abc123.pdf");
+        assert_eq!(
+            attachment_name(&document("  "), sent, cached),
+            "WhatsApp Document 2026-08-06 at 20.07.49.pdf"
+        );
+    }
+
+    /// Anything without a name of its own is named by its kind and send time,
+    /// as WhatsApp Web names its downloads, never by the cache's chat and
+    /// message ids (#801).
+    #[test]
+    fn saved_media_is_named_by_kind_and_send_time() {
+        let _clock = crate::util::fixed_clock::set(crate::util::fixed_clock::Clock {
+            now: 0,
+            zone: jiff::tz::TimeZone::UTC,
+            twelve_hour: false,
+        });
+        let sent = 1_786_046_869; // 2026-08-06 at 20.07.49 UTC
+        let name = |content: &Content, file: &str| {
+            attachment_name(
+                content,
+                sent,
+                &Path::new("/cache/media")
+                    .join(format!("15550101234_s_whatsapp_net-AB1C23.{file}")),
+            )
+        };
+        let voice = Content::Audio {
+            media: media(None, None),
+            seconds: Some(4),
+            voice_note: true,
+            waveform: Vec::new(),
+        };
+        assert_eq!(
+            name(&voice, "ogg"),
+            "WhatsApp Audio 2026-08-06 at 20.07.49.ogg"
+        );
+        let photo = Content::Image {
+            caption: None,
+            media: media(Some(4), Some(3)),
+            motion: None,
+        };
+        assert_eq!(
+            name(&photo, "jpg"),
+            "WhatsApp Image 2026-08-06 at 20.07.49.jpg"
+        );
+        let gif = Content::Video {
+            caption: None,
+            media: media(Some(4), Some(3)),
+            seconds: Some(2),
+            gif: true,
+            note: false,
+        };
+        assert_eq!(
+            name(&gif, "mp4"),
+            "WhatsApp Video 2026-08-06 at 20.07.49.mp4"
+        );
+        let sticker = Content::Sticker {
+            media: media(Some(512), Some(512)),
+            animated: false,
+        };
+        assert_eq!(
+            name(&sticker, "webp"),
+            "WhatsApp Sticker 2026-08-06 at 20.07.49.webp"
+        );
     }
 
     /// Builds synthetic attachment metadata for media-state and album regression tests.

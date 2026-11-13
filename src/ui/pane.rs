@@ -166,6 +166,7 @@ fn search(app: &mut App, ui: &mut egui::Ui, overlay: bool) {
                 let response = widgets::search_field(
                     ui,
                     &palette,
+                    app.locale,
                     field_id(),
                     &mut text,
                     &crate::i18n::gettext(app.locale, "Search"),

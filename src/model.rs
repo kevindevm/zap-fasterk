@@ -2210,6 +2210,7 @@ pub enum Action {
     /// Steps back to the previously visited page, chat, or dialog, as a
     /// browser's back button does.
     NavigateBack,
+    SwitchRecentChat,
     /// Steps forward again after a back step.
     NavigateForward,
     OpenChat(ChatId),
@@ -2385,6 +2386,14 @@ pub enum Action {
     StartRecording,
     CancelRecording,
     SendRecording,
+    /// Pauses the voice recording, keeping what it has so far, or records
+    /// again after a pause.
+    PauseRecording,
+    ResumeRecording,
+    /// Plays or pauses what a paused recording has so far.
+    PlayRecording,
+    /// Plays a paused recording from a fraction from 0 to 1.
+    SeekRecording(f32),
     /// Drops a voice message the worker refused to send.
     DiscardUnsentVoice,
     /// Opens a downloaded image in Zap Fasterk's native preview. Only the file

@@ -802,7 +802,19 @@ fn run() -> eframe::Result<()> {
         log::error!("could not move the linked account into its folder: {error}");
         return Err(eframe::Error::AppCreation(error.into()));
     }
-    let settings = settings::Settings::load(&dirs.settings_file());
+    let (mut settings, settings_loaded) = settings::Settings::load_checked(&dirs.settings_file());
+    // Before anything imports a sound: follow a moved state folder and delete
+    // the copies no setting names. Files of the person's own, saved by
+    // releases before these copies, are copied later, off this path. A
+    // settings file that is missing or failed to load may still name copies
+    // somewhere: keep them.
+    if !demo
+        && settings_loaded
+        && zapfasterk::sounds::tidy(&mut settings, &dirs.state)
+        && let Err(error) = settings.save(&dirs.settings_file())
+    {
+        log::warn!("could not save the notification sounds' copies: {error}");
+    }
     // Configure fastframe-emoji before any renderer wrapper can initialize it.
     zapfasterk::emoji::setup_with_font(
         settings.emoji_renderer,

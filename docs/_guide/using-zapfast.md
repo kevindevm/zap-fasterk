@@ -24,7 +24,8 @@ composer, unless that chat already has other text there.
 Enter sends and Shift+Enter adds a line. Turn off **Enter sends** in Settings
 to make Enter add a line and send with Ctrl+Enter (Command+Enter on macOS).
 The emoji picker stays open while you choose emoji and closes when you send
-the text.
+the text. Press `Ctrl+.` or `Ctrl+;` in the message field to open it with its
+search focused; Escape returns to the message.
 `*bold*`, `_italic_`, `~strike~`, and ```` ```monospace ```` ```` format
 like WhatsApp, and a message of nothing but emoji shows large.
 A line beginning with `> ` (greater-than and a space) is a block quote.
@@ -261,7 +262,8 @@ Pictures and videos sent as a WhatsApp album appear together in a grid. Only
 items with the same protocol album identity, sender and local calendar date
 are grouped. **Download all** uses the normal per-file download limit and
 shows individual failures; **Save all…** copies downloaded files to a folder
-without replacing existing files. Open an item to view it individually.
+without replacing existing files, named by kind and send time as **Save as…**
+names them. Open an item to view it individually.
 
 Videos go as playable video messages only when they are MP4. WhatsApp does
 not deliver a video message in another format, and Zap Fasterk does not
@@ -450,7 +452,12 @@ respects the account's screen privacy and authenticated locked-chat folder.
 The preview closes when its chat is removed, becomes locked outside the unlocked
 folder, or when you close the locked folder.
 **Save as…** in a downloaded attachment's
-right-click menu keeps a copy wherever you choose.
+right-click menu keeps a copy wherever you choose. A document keeps the name
+it was sent with. Anything else, and a document sent without a name, is
+offered a name with its kind and the time it was sent, such as
+`WhatsApp Audio 2026-08-06 at 20.07.49.ogg`, so saved files of one kind sort
+by date. One whose send time is unknown keeps the name the app stored it
+under.
 
 A motion photo has a play button in its corner. Click it to download the short
 clip to the local cache and play it over the photo, muted and in a loop; click
@@ -488,9 +495,15 @@ receipts off in your account privacy, the receipt goes only to your own
 devices and the sender is not told. With **Send read receipts** off in
 Zap Fasterk's settings, no played receipt is sent. A voice message you have not
 heard yet shows a dot beside its length; it goes away once you play it here or
-on another device. When the composer is empty, the send button becomes a
-microphone. Press Enter or the send button to send the recording, or Escape or
-the delete button to discard it. Zap Fasterk raises the volume of quiet recordings.
+on another device. A voice message you sent shows a microphone beside its
+length instead: grey until it is played, then blue like the read ticks. In a
+group it turns blue once everyone has played it. When the composer is empty, the send button becomes a
+microphone. The pause button stops recording without ending the take: the
+time stops, the play button plays back what you have so far, clicking the
+waveform jumps to a point in it, and the red microphone records again. Press
+Enter or the send button to send the recording, paused or not, as one voice
+message, or Escape or the delete button to discard it. Zap Fasterk raises the
+volume of quiet recordings.
 Starting a reply before recording includes the quoted message.
 
 ## Copying
@@ -517,6 +530,15 @@ even if some have scrolled off-screen. Attachments contribute a text label and
 any caption; their files are not copied. Copying keeps the selection open.
 
 ## Chats
+
+While you scroll, the first visible message's date briefly stays at the top
+of the conversation. In the Messages themes it sits below the header's blur,
+so the date remains readable.
+
+Ctrl+Tab switches between the two most recently opened chats. It preserves
+each chat's draft and does not open locked chats outside their unlocked
+folder. Recent-chat history is cleared when you switch accounts or restart
+the app. Ordinary Tab still moves focus.
 
 To find a contact in **New chat**, type part of their name or number. Each
 word you type matches the start of a word in the name, in order: `will shak`

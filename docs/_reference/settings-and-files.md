@@ -19,6 +19,8 @@ On Linux:
 | Per-number settings | `~/.local/state/zapfasterk/accounts/<id>/settings.json` | Notifications, receipts, typing, automatic downloads, the last open chat, and the wallpaper |
 | Stickers and packs | `~/.local/state/zapfasterk/accounts/<id>/stickers/` | Plain WebP files; each pack is a folder |
 | Wallpaper image | `~/.local/state/zapfasterk/accounts/<id>/wallpaper.jpg` | Copy of the chosen picture (or `.png`, `.webp`, `.gif`) |
+| Notification sounds | `~/.local/state/zapfasterk/sounds/` | Copies of the chosen message and mention sounds |
+| Chat notification sounds | `~/.local/state/zapfasterk/accounts/<id>/chat-sounds/` | Copies of the sounds chosen for each chat |
 | Attachments, avatars | `~/.cache/zapfasterk/accounts/<id>/` | Safe to delete; available files download again when viewed |
 | Last run's log | `~/.local/state/zapfasterk/zapfasterk.log` | `--verbose` for more |
 | The run before's log | `~/.local/state/zapfasterk/zapfasterk.previous.log` | Kept for one more start |
@@ -141,7 +143,10 @@ beside their labels.
   quiet. The bell beside each number in the account switcher turns the same
   setting off and on for that number without switching to it.
 - **Message sound** and **Mention sound**: Pidgin's sounds, the system sound,
-  none, or an audio file.
+  none, or an audio file. The app keeps its own copy of a chosen audio file
+  (WAV, MP3 or Ogg Vorbis, up to 10 MB), so moving or deleting the original
+  keeps the sound; a chat's own sound is copied the same way. Copies no
+  setting uses any more are deleted the next time the app starts.
 - **Play sounds for group messages**: when off, only mentions and replies to
   you make a sound in groups.
 - **Limit repeat notifications**: off by default. Choose **Direct messages**,
@@ -203,7 +208,10 @@ supported history metadata; complete cross-device call history is not guaranteed
   Signal sticker imports, and update checks. It accepts `socks5h://host:port`
   (the proxy resolves names, as Tor expects), `socks5://host:port`, and
   `http://host:port`, each with an optional `user:password@`; a bare
-  `host:port` is an HTTP proxy. Changing it reconnects at once. Empty uses
+  `host:port` is an HTTP proxy. An address that the download client cannot
+  use is rejected. If an invalid address is already saved, the connection
+  and HTTP requests fail instead of connecting directly. Changing it
+  reconnects at once. Empty uses
   `ALL_PROXY` or `HTTPS_PROXY` from the environment and honors `NO_PROXY`.
 - **GIPHY API key**: for GIF search, unless the build includes one. Set
   `ZAPFAST_GIPHY_KEY` at compile time to include a default key. The earlier

@@ -140,12 +140,13 @@ fn tabs(app: &mut App, ui: &mut egui::Ui, palette: &Palette, current: PickerTab)
 fn search_box(
     ui: &mut egui::Ui,
     palette: &Palette,
+    locale: crate::i18n::Locale,
     id: &str,
     text: &mut String,
     hint: &str,
 ) -> egui::Response {
     let width = ui.available_width();
-    widgets::search_field(ui, palette, egui::Id::new(id), text, hint, width)
+    widgets::search_field(ui, palette, locale, egui::Id::new(id), text, hint, width)
 }
 
 // --- emoji ---------------------------------------------------------------
@@ -643,7 +644,14 @@ fn emoji_grid(
     let submit = search_active && take_plain_key(ui, Key::Enter);
     let mut search = app.picker_search.clone();
     let search_hint = gettext(app.locale, "Search emoji");
-    let response = search_box(ui, palette, search_id, &mut search, &search_hint);
+    let response = search_box(
+        ui,
+        palette,
+        app.locale,
+        search_id,
+        &mut search,
+        &search_hint,
+    );
     let query_changed = search != app.picker_search;
     if query_changed {
         app.picker_search = search;
@@ -1028,7 +1036,14 @@ fn gif_tab(app: &mut App, ui: &mut egui::Ui, palette: &Palette) {
     let submit = ui.memory(|memory| memory.has_focus(egui::Id::new("gif-search")))
         && ui.input_mut(|input| input.consume_key(Modifiers::NONE, Key::Enter));
     let search_hint = gettext(app.locale, "Search GIFs via GIPHY");
-    search_box(ui, palette, "gif-search", &mut query, &search_hint);
+    search_box(
+        ui,
+        palette,
+        app.locale,
+        "gif-search",
+        &mut query,
+        &search_hint,
+    );
     if query != app.picker_search {
         app.picker_search = query.clone();
     }
@@ -1245,6 +1260,7 @@ fn sticker_tab(app: &mut App, ui: &mut egui::Ui, palette: &Palette) {
     search_box(
         ui,
         palette,
+        locale,
         "sticker-search",
         &mut app.sticker_search,
         &gettext(locale, "Search by emoji, word, or pack"),

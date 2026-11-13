@@ -761,6 +761,7 @@ pub fn empty_state(ui: &mut Ui, palette: &Palette, icon: Icon, title: &str, body
 pub fn search_field(
     ui: &mut Ui,
     palette: &Palette,
+    locale: crate::i18n::Locale,
     id: egui::Id,
     text: &mut String,
     hint: &str,
@@ -842,7 +843,7 @@ pub fn search_field(
             15.0,
             palette.secondary,
             palette.text,
-            "Clear",
+            crate::i18n::gettext(locale, "Clear").as_ref(),
         )
         .clicked()
         {

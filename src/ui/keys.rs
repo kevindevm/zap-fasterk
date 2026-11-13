@@ -3,7 +3,7 @@
 use egui::{Key, Modifiers};
 
 use crate::app::App;
-use crate::model::{Action, Chat, Dialog, Page, Scroll};
+use crate::model::{Action, Chat, Dialog, Page, PickerTab, Scroll};
 
 /// Whether Home, End and Ctrl+End scroll the open chat rather than move the
 /// cursor of the focused text field (#456).
@@ -63,6 +63,21 @@ pub fn handle(app: &mut App, ctx: &egui::Context) {
     // or with no field focused.
     let jump_allowed =
         jump_keys_reach_chat(editing_text, composer_focused, app.composer.is_empty());
+    // Ctrl+. and Ctrl+; open the emoji picker only where the smiley would:
+    // beside the focused message field. A selection, a block or a
+    // read-only chat replaces the field.
+    let emoji_keys_allowed = composer_focused
+        && app.page == Page::Chats
+        && app
+            .current_chat()
+            .is_some_and(|chat| chat.can_send() && !chat.locked && !app.selecting_in(&chat.id))
+        && app.editing.is_none()
+        && app.dialog.is_none()
+        && !app.show_update
+        && app.picker != Some(PickerTab::Emoji)
+        && app.reaction_target.is_none()
+        && app.recording.is_none()
+        && app.call.is_none();
     let mut actions = Vec::new();
     ctx.input_mut(|input| {
         // The message list's key counts only with its modifier alone:
@@ -164,10 +179,29 @@ pub fn handle(app: &mut App, ctx: &egui::Context) {
         {
             key(Modifiers::ALT, Key::Num2, Action::FocusMessages);
         }
+        // Ctrl+. and Ctrl+; open the emoji picker with its search focused.
+        if emoji_keys_allowed && take_emoji_key(input) {
+            actions.push(Action::TogglePicker(PickerTab::Emoji));
+        }
     });
     drop_shortcut_text(ctx);
     // Escape cancels the topmost state. Menus handle Escape themselves.
     let menu_open = egui::Popup::is_any_open(ctx);
+    // Ctrl+Tab switches between the two most recent chats. Leave plain Tab
+    // and all other modified Tabs for focus navigation and the platform.
+    if app.page == Page::Chats
+        && app.dialog.is_none()
+        && !app.show_update
+        && app.picker.is_none()
+        && app.reaction_target.is_none()
+        && app.recording.is_none()
+        && !menu_open
+        && app.call.is_none()
+        && ctx.input_mut(take_recent_chat)
+    {
+        ctx.data_mut(|data| data.insert_temp(crate::theme::keyboard_focus_id(), true));
+        actions.push(Action::SwitchRecentChat);
+    }
     let search_focused = ctx.memory(|memory| memory.has_focus(egui::Id::new("chat-search")));
     if app.page == Page::Chats
         && app.selection.as_ref().is_some_and(|(chat, selected)| {
@@ -515,6 +549,51 @@ fn take_chat_number(input: &mut egui::InputState) -> Option<usize> {
     number
 }
 
+/// Takes this frame's first Ctrl+. or Ctrl+;, the emoji picker's keys.
+fn take_emoji_key(input: &mut egui::InputState) -> bool {
+    let mut taken = false;
+    input.events.retain(|event| {
+        let matches = !taken
+            && matches!(
+                event,
+                egui::Event::Key {
+                    key: Key::Period | Key::Semicolon,
+                    pressed: true,
+                    modifiers,
+                    ..
+                } if emoji_modifiers(*modifiers)
+            );
+        taken |= matches;
+        !matches
+    });
+    taken
+}
+
+/// Control held with no other modifier, as the emoji keys want it.
+fn emoji_modifiers(modifiers: Modifiers) -> bool {
+    modifiers.matches_exact(Modifiers::CTRL)
+}
+
+/// Takes Ctrl+Tab alone, leaving plain Tab and every other modified Tab for
+/// focus navigation and the platform.
+fn take_recent_chat(input: &mut egui::InputState) -> bool {
+    let mut taken = false;
+    input.events.retain(|event| {
+        let matches = matches!(
+            event,
+            egui::Event::Key {
+                key: Key::Tab,
+                pressed: true,
+                modifiers,
+                ..
+            } if modifiers.ctrl && !modifiers.alt && !modifiers.shift && !modifiers.mac_cmd
+        );
+        taken |= matches;
+        !matches
+    });
+    taken
+}
+
 /// Removes this frame's first plain (unmodified) press of `key`, if any, and
 /// reports whether one was found. `consume_key` is unsuitable here: it also
 /// matches the key with Shift or Alt held, and a plain binding must leave
@@ -841,7 +920,9 @@ pub const SHORTCUTS: &[(&str, &str)] = &[
         "Walk the open chat's search results and jump to one",
     ),
     ("Ctrl+L", "Focus the message input"),
+    ("Ctrl+. / Ctrl+;", "Emoji picker (in the message input)"),
     ("Alt+↑ / Alt+↓", "Previous / next chat"),
+    ("Ctrl+Tab", "Switch between the two most recent chats"),
     ("Ctrl+Shift+[ / ]", "Previous / next chat, as in WhatsApp"),
     ("Ctrl+1..9", "Open a chat by its position in the chat list"),
     ("↑", "Edit the previous message (when the input is empty)"),
@@ -966,6 +1047,78 @@ mod tests {
             close_shortcut_action(&app, &egui::Context::default()),
             Some(Action::CloseWindow)
         );
+    }
+
+    /// Ctrl+. and Ctrl+; open the emoji picker from the focused message
+    /// field, as they open GTK's emoji chooser. Elsewhere, while editing,
+    /// or with the emoji tab already open, the keys are left for the views.
+    #[test]
+    fn ctrl_period_and_semicolon_open_the_emoji_picker_from_the_composer() {
+        let (_root, mut app, ids) = app_with_chats(1);
+        app.open_chat = Some(ids[0].clone());
+        let ctx = egui::Context::default();
+        // What a real Control press carries on Windows: Ctrl and Command.
+        let control = Modifiers {
+            ctrl: true,
+            command: true,
+            ..Modifiers::NONE
+        };
+        let composer = egui::Id::new("composer-text");
+        for key in [Key::Period, Key::Semicolon] {
+            app.actions.clear();
+            ctx.memory_mut(|memory| memory.request_focus(composer));
+            press(&mut app, &ctx, key, control);
+            assert!(
+                app.actions
+                    .contains(&Action::TogglePicker(PickerTab::Emoji)),
+                "{key:?} opened the picker"
+            );
+        }
+        // With the emoji tab open the keys pass through to the views.
+        app.actions.clear();
+        app.picker = Some(PickerTab::Emoji);
+        ctx.memory_mut(|memory| memory.request_focus(composer));
+        assert!(press(&mut app, &ctx, Key::Period, control));
+        assert!(app.actions.is_empty());
+        // A dialog keeps them too.
+        app.actions.clear();
+        app.picker = None;
+        app.dialog = Some(Dialog::Shortcuts);
+        ctx.memory_mut(|memory| memory.request_focus(composer));
+        assert!(press(&mut app, &ctx, Key::Period, control));
+        assert!(app.actions.is_empty());
+    }
+
+    #[test]
+    fn only_control_tab_switches_recent_chats() {
+        let (_root, mut app, _) = app_with_chats(0);
+        app.page = Page::Chats;
+        let ctx = egui::Context::default();
+        for modifiers in [Modifiers::CTRL, Modifiers::CTRL | Modifiers::COMMAND] {
+            app.actions.clear();
+            assert!(!press(&mut app, &ctx, Key::Tab, modifiers));
+            assert!(app.actions.contains(&Action::SwitchRecentChat));
+        }
+        for modifiers in [
+            Modifiers::NONE,
+            Modifiers::SHIFT,
+            Modifiers::CTRL | Modifiers::SHIFT,
+            Modifiers::CTRL | Modifiers::ALT,
+            Modifiers::MAC_CMD,
+        ] {
+            app.actions.clear();
+            press(&mut app, &ctx, Key::Tab, modifiers);
+            assert!(!app.actions.contains(&Action::SwitchRecentChat));
+        }
+        app.dialog = Some(Dialog::Shortcuts);
+        app.actions.clear();
+        press(&mut app, &ctx, Key::Tab, Modifiers::CTRL);
+        assert!(!app.actions.contains(&Action::SwitchRecentChat));
+        app.dialog = None;
+        app.page = Page::Settings;
+        app.actions.clear();
+        press(&mut app, &ctx, Key::Tab, Modifiers::CTRL);
+        assert!(!app.actions.contains(&Action::SwitchRecentChat));
     }
 
     #[test]

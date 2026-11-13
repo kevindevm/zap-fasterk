@@ -414,6 +414,40 @@ impl Player {
         }
     }
 
+    /// Plays `samples`, mono 48 kHz, as the clip of `message`, from a
+    /// fraction from 0 to 1, without decoding a file.
+    pub fn play_samples(
+        &mut self,
+        message: &str,
+        samples: Arc<Vec<f32>>,
+        start: f32,
+    ) -> Result<(), String> {
+        self.stop();
+        if samples.is_empty() {
+            return Err("The clip is empty".to_owned());
+        }
+        self.loaded = Some(Loaded {
+            message: message.to_owned(),
+            buffer: Arc::clone(&samples),
+            samples,
+            factor: 1.0,
+            base: Duration::ZERO,
+            paused: false,
+            done: false,
+        });
+        self.restart(start)?;
+        self.ensure_stretch();
+        Ok(())
+    }
+
+    /// Whether the clip of `message` is in the player, playing, paused or
+    /// played to its end.
+    pub fn holds(&self, message: &str) -> bool {
+        self.loaded
+            .as_ref()
+            .is_some_and(|loaded| loaded.message == message)
+    }
+
     /// Plays or pauses a message. Finished clips restart; new clips decode first.
     pub fn toggle(&mut self, message: &str, path: &Path) -> Result<(), String> {
         match self.loaded.as_mut() {
@@ -688,6 +722,48 @@ fn decode_file(path: &Path) -> Result<Vec<f32>, String> {
 
 type Outcome = Arc<Mutex<Option<Result<Vec<f32>, String>>>>;
 
+/// Pause state shared with the recording thread: whether the take is paused,
+/// how long pauses lasted, and the take so far for listening back.
+#[derive(Default)]
+struct Pause {
+    paused: AtomicBool,
+    pauses: Mutex<Pauses>,
+    so_far: Mutex<Option<Arc<Vec<f32>>>>,
+}
+
+#[derive(Default)]
+struct Pauses {
+    since: Option<Instant>,
+    total: Duration,
+}
+
+impl Pauses {
+    /// How long the take has been paused in all.
+    fn paused_for(&self) -> Duration {
+        self.total + self.since.map_or(Duration::ZERO, |since| since.elapsed())
+    }
+}
+
+impl Pause {
+    fn is_paused(&self) -> bool {
+        self.paused.load(Ordering::Relaxed)
+    }
+
+    /// Publishes `heard`, interleaved in the microphone's format, as the take
+    /// so far in mono 48 kHz.
+    fn publish(&self, heard: &[f32], channels: u16, rate: u32) {
+        let mono = voice::mono_at_rate(heard, channels, rate);
+        *self.so_far.lock().unwrap_or_else(|p| p.into_inner()) = Some(Arc::new(mono));
+    }
+
+    fn forget_so_far(&self) {
+        *self.so_far.lock().unwrap_or_else(|p| p.into_inner()) = None;
+    }
+}
+
+/// What [`Recorder`] calls the paused take it plays back.
+const TAKE_SO_FAR: &str = "voice-take-so-far";
+
 /// Records from the chosen microphone until told to stop.
 pub struct Recorder {
     started: Instant,
@@ -699,6 +775,10 @@ pub struct Recorder {
     stepped: Arc<AtomicBool>,
     outcome: Outcome,
     thread: Option<std::thread::JoinHandle<()>>,
+    pause: Arc<Pause>,
+    waker: Waker,
+    /// Plays the take so far back while paused.
+    playback: Option<Player>,
 }
 
 impl Recorder {
@@ -707,8 +787,8 @@ impl Recorder {
     }
 
     pub fn start_on(waker: Waker, device: Option<String>) -> Self {
-        Self::spawn(waker, move |stop, levels, wake| {
-            record(stop, levels, wake, device.as_deref())
+        Self::spawn(waker, move |stop, levels, pause, wake| {
+            record(stop, levels, pause, wake, device.as_deref())
         })
     }
 
@@ -722,7 +802,7 @@ impl Recorder {
 
     fn spawn(
         waker: Waker,
-        body: impl FnOnce(&AtomicBool, &Mutex<Vec<f32>>, &dyn Fn()) -> Result<Vec<f32>, String>
+        body: impl FnOnce(&AtomicBool, &Mutex<Vec<f32>>, &Pause, &dyn Fn()) -> Result<Vec<f32>, String>
         + Send
         + 'static,
     ) -> Self {
@@ -730,11 +810,14 @@ impl Recorder {
         let levels: Arc<Mutex<Vec<f32>>> = Default::default();
         let stepped = Arc::new(AtomicBool::new(false));
         let outcome: Outcome = Default::default();
+        let pause: Arc<Pause> = Default::default();
+        let playback_waker = waker.clone();
         let spawned = {
             let stop = Arc::clone(&stop);
             let levels = Arc::clone(&levels);
             let stepped = Arc::clone(&stepped);
             let outcome = Arc::clone(&outcome);
+            let pause = Arc::clone(&pause);
             std::thread::Builder::new()
                 .name("voice-record".to_owned())
                 .spawn(move || {
@@ -743,7 +826,7 @@ impl Recorder {
                             waker.wake();
                         }
                     };
-                    let result = body(&stop, &levels, &wake);
+                    let result = body(&stop, &levels, &pause, &wake);
                     *outcome.lock().unwrap_or_else(|p| p.into_inner()) = Some(result);
                     waker.wake();
                 })
@@ -762,6 +845,9 @@ impl Recorder {
             stepped,
             outcome,
             thread,
+            pause,
+            waker: playback_waker,
+            playback: None,
         }
     }
 
@@ -778,7 +864,36 @@ impl Recorder {
             stepped: Default::default(),
             outcome: Default::default(),
             thread: None,
+            pause: Default::default(),
+            waker: Waker::default(),
+            playback: None,
         }
+    }
+
+    /// A simulated take paused at 4.5 seconds, with that much of a
+    /// speech-like tone to listen back to.
+    #[cfg(any(test, feature = "demo"))]
+    pub fn paused_rehearsal() -> Self {
+        let recorder = Self::rehearsal();
+        let mut take = Vec::new();
+        for segment in 0..90 {
+            take.extend(rehearsal_segment(segment * voice::RATE as usize / 20));
+        }
+        *recorder
+            .pause
+            .so_far
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(Arc::new(take));
+        recorder.pause.paused.store(true, Ordering::Relaxed);
+        *recorder
+            .pause
+            .pauses
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Pauses {
+            since: Some(Instant::now()),
+            total: Duration::ZERO,
+        };
+        recorder
     }
 
     /// Creates a completed synthetic recording without opening an audio device.
@@ -790,7 +905,134 @@ impl Recorder {
     }
 
     pub fn elapsed(&self) -> Duration {
-        self.started.elapsed()
+        self.started.elapsed().saturating_sub(
+            self.pause
+                .pauses
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .paused_for(),
+        )
+    }
+
+    /// Pauses the take: what the microphone hears from now on is dropped
+    /// until [`Recorder::resume`], and what was recorded can be played back
+    /// once [`Recorder::so_far`] has it. A take with no levels yet has
+    /// nothing to pause.
+    pub fn pause(&mut self) {
+        if self
+            .levels
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .is_empty()
+            || self.is_paused()
+        {
+            return;
+        }
+        self.pause
+            .pauses
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .since = Some(Instant::now());
+        self.pause.paused.store(true, Ordering::Relaxed);
+    }
+
+    /// Records again after a pause, stopping any playback of the take.
+    pub fn resume(&mut self) {
+        if !self.is_paused() {
+            return;
+        }
+        self.playback = None;
+        self.pause.forget_so_far();
+        {
+            let mut pauses = self.pause.pauses.lock().unwrap_or_else(|p| p.into_inner());
+            if let Some(since) = pauses.since.take() {
+                pauses.total += since.elapsed();
+            }
+        }
+        self.pause.paused.store(false, Ordering::Relaxed);
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.pause.is_paused()
+    }
+
+    /// The take so far as mono 48 kHz samples, once a pause has taken effect.
+    pub fn so_far(&self) -> Option<Arc<Vec<f32>>> {
+        self.pause
+            .so_far
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
+    }
+
+    /// Plays or pauses the paused take. Does nothing until the take so far
+    /// is ready, and while recording.
+    pub fn toggle_playback(&mut self) -> Result<(), String> {
+        let Some(take) = self.so_far().filter(|_| self.is_paused()) else {
+            return Ok(());
+        };
+        let waker = self.waker.clone();
+        let player = self.playback.get_or_insert_with(|| Player::new(waker));
+        if player.holds(TAKE_SO_FAR) {
+            player.toggle(TAKE_SO_FAR, Path::new(""))
+        } else {
+            player.play_samples(TAKE_SO_FAR, take, 0.0)
+        }
+    }
+
+    /// Plays the paused take from a fraction from 0 to 1.
+    pub fn seek_playback(&mut self, fraction: f32) -> Result<(), String> {
+        let Some(take) = self.so_far().filter(|_| self.is_paused()) else {
+            return Ok(());
+        };
+        let waker = self.waker.clone();
+        let player = self.playback.get_or_insert_with(|| Player::new(waker));
+        if player.holds(TAKE_SO_FAR) {
+            player.seek(TAKE_SO_FAR, Path::new(""), fraction)
+        } else {
+            player.play_samples(TAKE_SO_FAR, take, fraction)
+        }
+    }
+
+    /// Pauses playback of the take, if it is playing.
+    pub fn hold_playback(&mut self) {
+        if let Some(player) = self.playback.as_mut()
+            && player.status(TAKE_SO_FAR).state == State::Playing
+            && let Err(error) = player.toggle(TAKE_SO_FAR, Path::new(""))
+        {
+            log::debug!("recording: could not pause playback: {error}");
+        }
+    }
+
+    /// Where playback of the paused take is, and how long the take is.
+    pub fn playback(&self) -> Status {
+        match &self.playback {
+            Some(player) => player.status(TAKE_SO_FAR),
+            None => Status {
+                total: self
+                    .so_far()
+                    .map_or(Duration::ZERO, |take| clip_length(take.len())),
+                ..Status::IDLE
+            },
+        }
+    }
+
+    /// Whether the paused take is playing.
+    pub fn is_playing_back(&self) -> bool {
+        self.playback.as_ref().is_some_and(Player::is_playing)
+    }
+
+    /// Notices playback reaching the end of the take, once per frame.
+    pub fn poll_playback(&mut self) -> Result<(), String> {
+        match self.playback.as_mut() {
+            Some(player) => {
+                let polled = player.poll();
+                // The take is not a message: nothing plays after it.
+                player.take_finished();
+                polled
+            }
+            None => Ok(()),
+        }
     }
 
     /// Stops new levels from asking for a frame of their own while
@@ -849,18 +1091,24 @@ impl Drop for Recorder {
 fn rehearse(
     stop: &AtomicBool,
     levels: &Mutex<Vec<f32>>,
+    pause: &Pause,
     wake: &dyn Fn(),
 ) -> Result<Vec<f32>, String> {
-    let segment = voice::RATE as usize / 20;
     let mut samples = Vec::new();
+    let mut published = false;
     while !stop.load(Ordering::Relaxed) {
+        if pause.is_paused() {
+            if !published {
+                pause.publish(&samples, 1, voice::RATE);
+                published = true;
+                wake();
+            }
+            std::thread::sleep(Duration::from_millis(50));
+            continue;
+        }
+        published = false;
         let start = samples.len();
-        samples.extend((start..start + segment).map(|index| {
-            let t = index as f32 / voice::RATE as f32;
-            (t * 180.0 * std::f32::consts::TAU).sin()
-                * 0.35
-                * ((t * 2.3).sin() * (t * 0.9).cos()).abs()
-        }));
+        samples.extend(rehearsal_segment(start));
         let peak = samples[start..]
             .iter()
             .fold(0.0_f32, |peak, sample| peak.max(sample.abs()));
@@ -874,9 +1122,20 @@ fn rehearse(
     Ok(samples)
 }
 
+/// 50 ms of [`rehearse`]'s tone, from sample `start` of the take.
+#[cfg(any(test, feature = "demo"))]
+fn rehearsal_segment(start: usize) -> impl Iterator<Item = f32> {
+    let segment = voice::RATE as usize / 20;
+    (start..start + segment).map(|index| {
+        let t = index as f32 / voice::RATE as f32;
+        (t * 180.0 * std::f32::consts::TAU).sin() * 0.35 * ((t * 2.3).sin() * (t * 0.9).cos()).abs()
+    })
+}
+
 fn record(
     stop: &AtomicBool,
     levels: &Mutex<Vec<f32>>,
+    pause: &Pause,
     wake: &dyn Fn(),
     preferred: Option<&str>,
 ) -> Result<Vec<f32>, String> {
@@ -960,7 +1219,15 @@ fn record(
     stream
         .play()
         .map_err(|_| "Could not start the microphone. Check audio permissions.".to_owned())?;
-    let result = collect_recording(stop, levels, wake, &receive, &failed, channels, rate);
+    let result = collect_recording(
+        stop,
+        levels,
+        pause,
+        wake,
+        &receive,
+        &failed,
+        (channels, rate),
+    );
     drop(stream);
     result
 }
@@ -1002,25 +1269,66 @@ where
 fn collect_recording(
     stop: &AtomicBool,
     levels: &Mutex<Vec<f32>>,
+    pause: &Pause,
     wake: &dyn Fn(),
     receive: &std::sync::mpsc::Receiver<Vec<f32>>,
     failed: &AtomicBool,
-    channels: u16,
-    rate: u32,
+    format: (u16, u32),
 ) -> Result<Vec<f32>, String> {
+    let (channels, rate) = format;
     let started = Instant::now();
     let mut heard = Vec::new();
     let mut last_audio = Instant::now();
     let window = (rate as usize * channels as usize / 20).max(1);
     let mut energy = 0.0;
     let mut count = 0;
-    while !stop.load(Ordering::Acquire) && started.elapsed() < LONGEST_RECORDING {
+    // Pauses as this loop saw them: the longest take counts recorded time.
+    let mut paused_since: Option<Instant> = None;
+    let mut paused_for = Duration::ZERO;
+    let mut published = false;
+    let recorded = |paused_since: Option<Instant>, paused_for: Duration| {
+        started.elapsed().saturating_sub(
+            paused_for + paused_since.map_or(Duration::ZERO, |since| since.elapsed()),
+        )
+    };
+    while !stop.load(Ordering::Acquire) && recorded(paused_since, paused_for) < LONGEST_RECORDING {
         if failed.load(Ordering::Acquire) {
             return Err("The microphone stopped recording. Check its connection, permissions, and audio settings.".into());
+        }
+        match (pause.is_paused(), paused_since) {
+            (true, None) => {
+                // The take so far is ready even if no more audio arrives.
+                paused_since = Some(Instant::now());
+                if !published && !heard.is_empty() {
+                    pause.publish(&heard, channels, rate);
+                    published = true;
+                    wake();
+                }
+            }
+            (false, Some(since)) => {
+                paused_for += since.elapsed();
+                paused_since = None;
+                published = false;
+            }
+            _ => {}
+        }
+        // While paused the microphone is still read, so it neither backs up
+        // nor looks stalled.
+        if pause.is_paused() {
+            last_audio = Instant::now();
         }
         match receive.recv_timeout(Duration::from_millis(10)) {
             Ok(values) => {
                 if values.is_empty() {
+                    continue;
+                }
+                // While paused what the microphone hears is dropped.
+                if pause.is_paused() {
+                    if !published && !heard.is_empty() {
+                        pause.publish(&heard, channels, rate);
+                        published = true;
+                        wake();
+                    }
                     continue;
                 }
                 if heard.len().saturating_add(values.len())
@@ -1088,14 +1396,14 @@ mod tests {
         let result = collect_recording(
             &stop,
             &Mutex::new(Vec::new()),
+            &Pause::default(),
             &|| {
                 failed.store(true, Ordering::Release);
                 stop.store(true, Ordering::Release);
             },
             &receive,
             &failed,
-            1,
-            48_000,
+            (1, 48_000),
         );
         assert!(result.unwrap_err().contains("stopped recording"));
     }
@@ -1109,11 +1417,11 @@ mod tests {
             collect_recording(
                 &stop,
                 &Mutex::new(Vec::new()),
+                &Pause::default(),
                 &|| {},
                 &receive,
                 &failed,
-                1,
-                48_000
+                (1, 48_000)
             )
             .unwrap_err()
             .contains("did not record")
@@ -1124,11 +1432,11 @@ mod tests {
             collect_recording(
                 &stop,
                 &Mutex::new(Vec::new()),
+                &Pause::default(),
                 &|| {},
                 &receive,
                 &failed,
-                1,
-                48_000
+                (1, 48_000)
             )
             .unwrap_err()
             .contains("disconnected")
@@ -1144,18 +1452,164 @@ mod tests {
         let result = collect_recording(
             &stop,
             &levels,
+            &Pause::default(),
             &|| {
                 stop.store(true, Ordering::Release);
             },
             &receive,
             &AtomicBool::new(false),
-            2,
-            16_000,
+            (2, 16_000),
         )
         .unwrap();
         assert_eq!(levels.lock().unwrap().len(), 1);
         assert!((result.len() as isize - 2400).abs() <= 3);
         assert!(result.iter().all(|sample| (*sample - 0.25).abs() < 0.001));
+    }
+
+    /// Waits up to a second for `ready`.
+    fn wait_for(ready: impl Fn() -> bool) -> bool {
+        let started = Instant::now();
+        while !ready() {
+            if started.elapsed() > Duration::from_secs(1) {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        true
+    }
+
+    #[test]
+    fn audio_heard_while_paused_is_dropped_and_the_take_so_far_published() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let pause = Arc::new(Pause::default());
+        let levels = Arc::new(Mutex::new(Vec::new()));
+        let (samples, read) = std::sync::mpsc::channel();
+        let capturing = {
+            let stop = Arc::clone(&stop);
+            let levels = Arc::clone(&levels);
+            let pause = Arc::clone(&pause);
+            std::thread::spawn(move || {
+                collect_recording(
+                    &stop,
+                    &levels,
+                    &pause,
+                    &|| {},
+                    &read,
+                    &AtomicBool::new(false),
+                    (1, 48_000),
+                )
+            })
+        };
+        let window = 48_000usize / 20;
+        samples.send(vec![0.1; window]).unwrap();
+        assert!(wait_for(|| levels.lock().unwrap().len() == 1));
+        pause.paused.store(true, Ordering::Relaxed);
+        assert!(wait_for(|| pause.so_far.lock().unwrap().is_some()));
+        assert_eq!(
+            pause.so_far.lock().unwrap().as_deref().map(Vec::as_slice),
+            Some([0.1; 2400].as_slice()),
+            "the take so far is what was heard before the pause"
+        );
+        samples.send(vec![0.9; window]).unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(levels.lock().unwrap().len(), 1, "no levels while paused");
+        pause.paused.store(false, Ordering::Relaxed);
+        std::thread::sleep(Duration::from_millis(30));
+        samples.send(vec![0.3; window]).unwrap();
+        assert!(wait_for(|| levels.lock().unwrap().len() == 2));
+        stop.store(true, Ordering::Release);
+        let heard = capturing.join().unwrap().unwrap();
+        assert_eq!(
+            heard,
+            [vec![0.1; window], vec![0.3; window]].concat(),
+            "the paused audio is not kept"
+        );
+    }
+
+    #[test]
+    fn stopping_while_paused_drops_audio_still_arriving() {
+        let stop = AtomicBool::new(true);
+        let pause = Pause::default();
+        pause.paused.store(true, Ordering::Relaxed);
+        let (samples, read) = std::sync::mpsc::channel();
+        samples.send(vec![0.1, 0.2]).unwrap();
+        let result = collect_recording(
+            &stop,
+            &Mutex::new(Vec::new()),
+            &pause,
+            &|| {},
+            &read,
+            &AtomicBool::new(false),
+            (1, 48_000),
+        );
+        assert!(
+            result.unwrap_err().contains("did not record"),
+            "nothing heard before the pause means no take"
+        );
+    }
+
+    #[test]
+    fn a_paused_take_counts_only_recorded_time() {
+        let mut recorder = Recorder::rehearsal();
+        recorder.pause();
+        assert!(recorder.is_paused());
+        let paused_at = recorder.elapsed();
+        std::thread::sleep(Duration::from_millis(80));
+        let still = recorder.elapsed();
+        assert!(
+            still.saturating_sub(paused_at) < Duration::from_millis(20),
+            "{paused_at:?} became {still:?} while paused"
+        );
+        recorder.resume();
+        assert!(!recorder.is_paused());
+        std::thread::sleep(Duration::from_millis(80));
+        let resumed = recorder.elapsed();
+        assert!(resumed >= still + Duration::from_millis(70), "{resumed:?}");
+        assert!(
+            resumed < paused_at + Duration::from_millis(150),
+            "the pause is not counted: {resumed:?}"
+        );
+    }
+
+    #[test]
+    fn a_take_that_is_not_listening_yet_cannot_pause() {
+        let mut recorder = Recorder::rehearsal();
+        recorder
+            .levels
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clear();
+        recorder.pause();
+        assert!(!recorder.is_paused());
+    }
+
+    #[test]
+    fn a_simulated_take_pauses_resumes_and_keeps_both_parts() {
+        let mut recorder = Recorder::simulated(Waker::default());
+        assert!(wait_for(|| recorder.levels().len() >= 3));
+        recorder.pause();
+        assert!(wait_for(|| recorder.so_far().is_some()));
+        let before = recorder.so_far().unwrap().len();
+        assert_eq!(before, recorder.levels().len() * voice::RATE as usize / 20);
+        std::thread::sleep(Duration::from_millis(150));
+        assert_eq!(
+            recorder.levels().len() * voice::RATE as usize / 20,
+            before,
+            "nothing is recorded while paused"
+        );
+        assert_eq!(
+            recorder.playback().total,
+            clip_length(before),
+            "playback offers the whole take so far"
+        );
+        recorder.resume();
+        assert!(recorder.so_far().is_none());
+        assert!(wait_for(|| recorder.levels().len() * voice::RATE as usize
+            / 20
+            > before));
+        let take = recorder.finish().unwrap();
+        assert!(take.len() > before);
+        assert!(take.len() < before + voice::RATE as usize, "{}", take.len());
     }
 
     #[test]

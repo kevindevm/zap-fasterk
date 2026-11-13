@@ -1114,6 +1114,18 @@ impl App {
                 app.settings.keep_chats_archived,
             ));
         }
+        // Sounds that still name a file of the person's own, saved by releases
+        // before the app kept copies, are copied off the startup path.
+        let root = crate::sounds::settings_root(&app.dirs.state);
+        for (mention, from) in crate::sounds::external(&app.settings, &app.dirs.state) {
+            if let Some(account) = app.accounts.get(app.active) {
+                account.backend.send(Command::AdoptSound {
+                    mention,
+                    from,
+                    root: root.clone(),
+                });
+            }
+        }
         if crate::autostart::supported() {
             app.start_with_system = Some(crate::autostart::enabled());
         }
@@ -4380,18 +4392,28 @@ impl App {
                     self.message_receipts = Some(receipts);
                 }
             }
-            Event::ChatSoundPicked { chat, path } => {
-                if live {
-                    crate::notify::play_sound_on(
-                        crate::settings::NotificationSound::Custom(path.clone()),
-                        self.account().settings.call_speaker.clone(),
-                    );
+            Event::ChatSoundPicked { chat, result } => match result {
+                Ok(path) => {
+                    // The chat takes the sound even if its account left the
+                    // screen meanwhile; only a window on screen previews it.
+                    if live && !self.app_lock.is_locked() {
+                        crate::notify::play_sound_on(
+                            crate::settings::NotificationSound::Custom(path.clone()),
+                            self.account().settings.call_speaker.clone(),
+                        );
+                    }
+                    self.actions.push(Action::SetChatSound {
+                        chat,
+                        sound: Some(crate::settings::NotificationSound::Custom(path)),
+                    });
                 }
-                self.actions.push(Action::SetChatSound {
-                    chat,
-                    sound: Some(crate::settings::NotificationSound::Custom(path)),
-                });
-            }
+                Err(error) => {
+                    if live {
+                        let message = crate::i18n::gettext(self.locale, "Could not use this sound");
+                        self.toast_error(format!("{message}: {error}"));
+                    }
+                }
+            },
             Event::DownloadFolderPicked(path) => {
                 if live {
                     self.actions.push(Action::SetDownloadFolder(Some(path)));
@@ -4423,16 +4445,31 @@ impl App {
                 let message = crate::i18n::gettext(self.locale, "Could not use this image");
                 self.toast_error(format!("{message}: {error}"));
             }
-            Event::NotificationSoundPicked { mention, path } => {
-                if live {
-                    crate::notify::play_sound_on(
-                        crate::settings::NotificationSound::Custom(path.clone()),
-                        self.account().settings.call_speaker.clone(),
-                    );
+            Event::NotificationSoundPicked { mention, result } => match result {
+                // The sounds are the app's, not one account's: a pick whose
+                // account left the screen meanwhile still applies.
+                Ok(path) => {
+                    if live && !self.app_lock.is_locked() {
+                        crate::notify::play_sound_on(
+                            crate::settings::NotificationSound::Custom(path.clone()),
+                            self.account().settings.call_speaker.clone(),
+                        );
+                    }
                     self.actions.push(Action::SetNotificationSound {
                         mention,
                         sound: crate::settings::NotificationSound::Custom(path),
                     });
+                }
+                Err(error) => {
+                    if live {
+                        let message = crate::i18n::gettext(self.locale, "Could not use this sound");
+                        self.toast_error(format!("{message}: {error}"));
+                    }
+                }
+            },
+            Event::SoundAdopted { mention, from, to } => {
+                if crate::sounds::adopt_setting(&mut self.settings, mention, &from, to) {
+                    self.mark_settings_dirty();
                 }
             }
             Event::InvitePreview { code, result } => {
@@ -7322,6 +7359,18 @@ impl App {
             }
             Action::OpenChat(id) => self.open_chat(id),
             Action::NavigateBack => self.navigate_back(ctx),
+            Action::SwitchRecentChat => {
+                if let Some(chat) = self
+                    .nav_history
+                    .recent_chat(self.open_chat.as_deref())
+                    .map(str::to_owned)
+                    && self
+                        .chat(&chat)
+                        .is_some_and(|chat| !chat.locked || self.locked_folder_open())
+                {
+                    self.apply(Action::OpenChat(chat), ctx);
+                }
+            }
             Action::NavigateForward => self.navigate_forward(ctx),
             Action::StartChat {
                 id,
@@ -8461,6 +8510,9 @@ impl App {
                 // One sound at a time, and the clip the reader picked wins
                 // over one a run is still fetching.
                 self.video.stop();
+                if let Some(recorder) = self.recording.as_mut() {
+                    recorder.hold_playback();
+                }
                 self.voice_wanted = None;
                 self.voice_chat = self.open_chat.clone();
                 self.voice_clip_chat = self.open_chat.clone();
@@ -8506,6 +8558,18 @@ impl App {
                 self.send_recording();
                 self.refocus_composer(ctx);
             }
+            Action::PauseRecording => {
+                if let Some(recorder) = self.recording.as_mut() {
+                    recorder.pause();
+                }
+            }
+            Action::ResumeRecording => {
+                if let Some(recorder) = self.recording.as_mut() {
+                    recorder.resume();
+                }
+            }
+            Action::PlayRecording => self.play_recording(None),
+            Action::SeekRecording(fraction) => self.play_recording(Some(fraction)),
             Action::DiscardUnsentVoice => self.unsent_voice = None,
             Action::SetDisappearingTimer(chat, seconds) => {
                 self.backend
@@ -9669,8 +9733,9 @@ impl App {
                 self.mark_settings_dirty();
             }
             Action::PickNotificationSound { mention } => {
+                let root = crate::sounds::settings_root(&self.dirs.state);
                 self.backend
-                    .send(Command::PickNotificationSound { mention });
+                    .send(Command::PickNotificationSound { mention, root });
             }
             Action::PreviewSound(sound) => {
                 crate::notify::play_sound_on(sound, self.account().settings.call_speaker.clone())
@@ -9834,7 +9899,7 @@ impl App {
                     return;
                 }
                 if !value.is_empty()
-                    && let Err(error) = crate::proxy::Proxy::parse(&value)
+                    && let Err(error) = crate::proxy::validate_setting(&value)
                 {
                     self.toast_error(error);
                     return;
@@ -10701,13 +10766,21 @@ impl App {
             self.recording = None;
             self.toast_error(format!("Could not record: {error}"));
         }
+        if let Some(Err(error)) = self.recording.as_mut().map(Recorder::poll_playback) {
+            self.toast_error(error);
+        }
         // The playback bar, the recording light and the waveform only show
         // progress, so they step while a screen reader is attached.
         let stepped = crate::motion::screen_reader_attached(ctx);
         if let Some(recorder) = &self.recording {
             recorder.set_stepped(stepped);
         }
-        if self.player.is_playing() || self.recording.is_some() {
+        // A paused take sits still, unless it is playing back or its
+        // playback is still being prepared.
+        let recording_moves = self.recording.as_ref().is_some_and(|recorder| {
+            !recorder.is_paused() || recorder.is_playing_back() || recorder.so_far().is_none()
+        });
+        if self.player.is_playing() || recording_moves {
             self.waker.wake_after(if stepped {
                 crate::motion::STEP
             } else {
@@ -10776,6 +10849,9 @@ impl App {
         self.player
             .set_output_device(self.account().settings.call_speaker.clone());
         self.video.stop();
+        if let Some(recorder) = self.recording.as_mut() {
+            recorder.hold_playback();
+        }
         self.voice_wanted = None;
         self.voice_chat = self.open_chat.clone();
         self.voice_clip_chat = self.open_chat.clone();
@@ -11017,6 +11093,36 @@ impl App {
                 self.follow_sent_chat();
             }
             Err(error) => self.toast_error(format!("Could not record: {error}")),
+        }
+    }
+
+    /// Plays or pauses a paused recording, or plays it from `fraction`. One
+    /// sound at a time: a voice message or video that is playing pauses.
+    fn play_recording(&mut self, fraction: Option<f32>) {
+        let Some(recorder) = self.recording.as_mut() else {
+            return;
+        };
+        if !recorder.is_paused() {
+            return;
+        }
+        let played = match fraction {
+            Some(fraction) => recorder.seek_playback(fraction),
+            None => recorder.toggle_playback(),
+        };
+        if let Err(error) = played {
+            self.toast_error(error);
+            return;
+        }
+        if self
+            .recording
+            .as_ref()
+            .is_some_and(Recorder::is_playing_back)
+        {
+            self.video.stop();
+            self.voice_wanted = None;
+            if self.player.is_playing() {
+                self.player.stop();
+            }
         }
     }
 
@@ -14406,6 +14512,37 @@ mod tests {
     }
 
     #[test]
+    fn recent_chat_switching_toggles_and_preserves_drafts_and_locked_chats() {
+        let ctx = egui::Context::default();
+        let mut app = app();
+        for id in ["a@s.whatsapp.net", "b@s.whatsapp.net", "c@s.whatsapp.net"] {
+            app.chats
+                .push(Chat::new(id.into(), "Synthetic chat".into()));
+            app.actions.push(Action::OpenChat(id.into()));
+            app.apply_actions(&ctx);
+        }
+        app.composer = "draft for c".into();
+        app.actions.push(Action::SwitchRecentChat);
+        app.apply_actions(&ctx);
+        assert_eq!(app.open_chat.as_deref(), Some("b@s.whatsapp.net"));
+        app.composer = "draft for b".into();
+        app.actions.push(Action::SwitchRecentChat);
+        app.apply_actions(&ctx);
+        assert_eq!(app.open_chat.as_deref(), Some("c@s.whatsapp.net"));
+        assert_eq!(app.composer, "draft for c");
+        app.chat_mut("b@s.whatsapp.net").unwrap().locked = true;
+        app.actions.push(Action::SwitchRecentChat);
+        app.apply_actions(&ctx);
+        assert_eq!(app.open_chat.as_deref(), Some("c@s.whatsapp.net"));
+        assert_eq!(app.composer, "draft for c");
+        app.forget_chat("b@s.whatsapp.net");
+        app.actions.push(Action::SwitchRecentChat);
+        app.apply_actions(&ctx);
+        assert_eq!(app.open_chat.as_deref(), Some("c@s.whatsapp.net"));
+        assert_eq!(app.nav_history.recent_chat(Some("c@s.whatsapp.net")), None);
+    }
+
+    #[test]
     fn back_and_forward_walk_between_chats_and_settings() {
         let ctx = egui::Context::default();
         let mut app = app();
@@ -14709,7 +14846,10 @@ mod tests {
         app.apply_actions(&ctx);
         app.actions.push(Action::OpenChat(chat.into()));
         app.apply_actions(&ctx);
+        assert_eq!(app.nav_history.recent_chat(None), Some(chat));
         app.apply(Action::SwitchAccount(AccountId::parse("2").unwrap()), &ctx);
+        assert_eq!(app.nav_history.recent_chat(None), None);
+        app.apply(Action::SwitchRecentChat, &ctx);
         assert_eq!(app.open_chat, None, "the other account has no chat open");
         app.apply(Action::NavigateBack, &ctx);
         assert_eq!(
@@ -15213,7 +15353,7 @@ mod tests {
         events
             .send(crate::backend::Event::ChatSoundPicked {
                 chat: "1@s.whatsapp.net".into(),
-                path: directory.path().join("ding.ogg"),
+                result: Ok(directory.path().join("ding.ogg")),
             })
             .unwrap();
         app.handle_events();
@@ -20203,6 +20343,80 @@ mod tests {
         assert_eq!(app.reply_to.as_deref(), Some("original"));
         // Repeats of one error share a toast.
         assert_eq!(error_toasts(&app).len(), 1);
+    }
+
+    #[test]
+    fn a_paused_recording_resumes_and_sends_as_one_message() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut app, _) = App::headless(AppDirs::under(root.path()), Settings::default());
+        let (backend, mut commands) = Backend::recording();
+        app.backend = backend;
+        let ctx = egui::Context::default();
+        let chat = "fixture@s.whatsapp.net";
+        app.open_chat = Some(chat.into());
+        app.recording = Some(Recorder::simulated(app.waker.clone()));
+        let segment = crate::voice::RATE as usize / 20;
+        let recorded = |app: &App| app.recording.as_ref().map_or(0, |r| r.levels().len());
+        let wait = |app: &App, ready: &dyn Fn(&App) -> bool| {
+            let started = std::time::Instant::now();
+            while !ready(app) && started.elapsed() < Duration::from_secs(2) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            assert!(ready(app));
+        };
+        // Longer than the half second a voice message needs at the least.
+        wait(&app, &|app| recorded(app) >= 8);
+        app.apply(Action::PauseRecording, &ctx);
+        wait(&app, &|app| {
+            app.recording.as_ref().is_some_and(|r| r.so_far().is_some())
+        });
+        let before = recorded(&app);
+        std::thread::sleep(Duration::from_millis(150));
+        assert_eq!(recorded(&app), before, "nothing is recorded while paused");
+        app.apply(Action::ResumeRecording, &ctx);
+        assert!(app.recording.as_ref().is_some_and(|r| !r.is_paused()));
+        wait(&app, &|app| recorded(app) >= before + 6);
+        app.apply(Action::SendRecording, &ctx);
+        assert!(app.recording.is_none());
+        let sent = match commands.try_recv() {
+            Ok(Command::SendVoice {
+                chat: sent,
+                samples,
+                ..
+            }) if sent == chat => samples,
+            other => panic!("expected the voice message, got {other:?}"),
+        };
+        assert!(sent.len() >= (before + 6) * segment, "both parts are sent");
+        assert!(commands.try_recv().is_err(), "as one message");
+    }
+
+    #[test]
+    fn discarding_a_paused_recording_drops_it() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut app, _) = App::headless(AppDirs::under(root.path()), Settings::default());
+        let (backend, mut commands) = Backend::recording();
+        app.backend = backend;
+        let ctx = egui::Context::default();
+        app.open_chat = Some("fixture@s.whatsapp.net".into());
+        app.recording = Some(Recorder::paused_rehearsal());
+        // Recording only moves on while it records: a paused take is still.
+        app.apply(Action::CancelRecording, &ctx);
+        assert!(app.recording.is_none());
+        assert!(commands.try_recv().is_err());
+    }
+
+    #[test]
+    fn playback_of_a_recording_waits_for_a_pause() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut app, _) = App::headless(AppDirs::under(root.path()), Settings::default());
+        let ctx = egui::Context::default();
+        app.open_chat = Some("fixture@s.whatsapp.net".into());
+        app.recording = Some(Recorder::rehearsal());
+        app.apply(Action::PlayRecording, &ctx);
+        app.apply(Action::SeekRecording(0.5), &ctx);
+        let recorder = app.recording.as_ref().unwrap();
+        assert!(!recorder.is_playing_back());
+        assert_eq!(recorder.playback().state, crate::audio::State::Idle);
     }
 
     /// Checks that an unsent recording remains scoped to its destination and retains its quote.

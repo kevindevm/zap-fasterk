@@ -294,7 +294,7 @@ fn reaction_results(app: &mut App, ui: &mut egui::Ui, chat: &str, id: &str) {
                                     14.0,
                                     palette.secondary,
                                     palette.text,
-                                    "Remove reaction",
+                                    crate::i18n::gettext(app.locale, "Remove reaction").as_ref(),
                                 )
                                 .clicked()
                                 {
@@ -649,7 +649,15 @@ fn new_chat(app: &mut App, ui: &mut egui::Ui) {
         {
             app.actions.push(Action::ShowDialog(Dialog::MessageNumber));
         }
-        if theme::soft_button(ui, &palette, Some(Icon::Plus), "Add contact", false).clicked() {
+        if theme::soft_button(
+            ui,
+            &palette,
+            Some(Icon::Plus),
+            crate::i18n::gettext(app.locale, "Add contact").as_ref(),
+            false,
+        )
+        .clicked()
+        {
             app.actions.push(Action::ShowDialog(Dialog::NewContact));
         }
     });
@@ -658,6 +666,7 @@ fn new_chat(app: &mut App, ui: &mut egui::Ui) {
     let search = super::widgets::search_field(
         ui,
         &palette,
+        app.locale,
         egui::Id::new("new-chat-search"),
         &mut app.new_chat_search,
         &search_hint,
@@ -863,9 +872,10 @@ fn forward(app: &mut App, ui: &mut egui::Ui, messages: &[String]) {
     let search = super::widgets::search_field(
         ui,
         &palette,
+        app.locale,
         egui::Id::new("forward-search"),
         &mut app.forward_search,
-        "Search chats",
+        &crate::i18n::gettext(app.locale, "Search chats"),
         width,
     );
     if ui.memory(|memory| memory.focused().is_none()) {

@@ -632,6 +632,11 @@ pub async fn run(
         }
     };
     let (wa_sender, wa_events) = mpsc::unbounded_channel();
+    // Before anything imports a chat's sound: follow a moved state folder and
+    // delete the copies no chat names. Files of the person's own, saved by
+    // releases before these copies, are copied off this path.
+    crate::sounds::tidy_chat_sounds(&archive, &dirs.state);
+    let _ = commands.send(Command::AdoptChatSounds);
     let privacy_confirmed = archive
         .meta("chat_privacy_ready_v1")
         .ok()
@@ -2666,23 +2671,31 @@ impl Worker {
                 }
             };
         let sender = self.wa_sender.clone();
+        let agent = match crate::proxy::agent() {
+            Ok(agent) => agent,
+            Err(error) => {
+                self.set_status(LinkStatus::Failed(error));
+                return;
+            }
+        };
         let builder = host_owned_presence(Bot::builder().with_backend(store))
             .with_watched_ab_props([abprops::web::AURA_PINNED_CHATS_BENEFIT_ACTIVE])
-            .with_history_sync_capture_hook(capture);
+            .with_history_sync_capture_hook(capture)
+            .with_http_client(whatsapp_rust::http::UreqHttpClient::with_agent(agent));
         let builder = match crate::proxy::for_whatsapp() {
-            Some(proxy) => {
+            Ok(Some(proxy)) => {
                 log::info!("connecting through the proxy {}", proxy.redacted());
-                builder
-                    .with_transport_factory(crate::proxy::ProxyTransportFactory::new(proxy))
-                    .with_http_client(whatsapp_rust::http::UreqHttpClient::with_agent(
-                        crate::proxy::agent(),
-                    ))
+                builder.with_transport_factory(crate::proxy::ProxyTransportFactory::new(proxy))
             }
             // Every address the host resolves to is dialed, not only the first
             // one, so a network whose IPv6 does not answer still links over
             // IPv4 (#212).
-            None => builder
+            Ok(None) => builder
                 .with_transport_factory(crate::transport::HappyEyeballsTransportFactory::new()),
+            Err(error) => {
+                self.set_status(LinkStatus::Failed(error));
+                return;
+            }
         };
         let bot = builder
             // WhatsApp reads the linked-device name, version, and icon at pairing.
@@ -7286,8 +7299,9 @@ impl Worker {
             }
             Command::SetProxy(setting) => {
                 crate::proxy::configure(&setting);
-                // Reconnect so the WhatsApp connection uses the new route.
-                if self.handle.is_some() {
+                // A failed start has no handle. Correcting its proxy must
+                // still retry, while an unlinked account stays unlinked.
+                if restart_for_proxy_change(self.handle.is_some(), &self.status) {
                     self.stop_bot().await;
                     self.start_bot().await;
                 }
@@ -7324,7 +7338,9 @@ impl Worker {
             Command::SetKeepChatsArchived(keep) => self.keep_chats_archived = keep,
             Command::Resumed => self.resumed(),
             Command::SetChatSound { chat, sound } => {
-                let _ = self.archive.set_notification_sound(&chat, sound.as_ref());
+                if let Err(error) = self.archive.set_notification_sound(&chat, sound.as_ref()) {
+                    log::warn!("could not store a chat's notification sound: {error}");
+                }
                 self.emit_chat(&chat);
             }
             Command::SetChatVoiceSpeed { chat, speed } => {
@@ -7334,6 +7350,7 @@ impl Worker {
                 self.emit_chat(&chat);
             }
             Command::PickChatSound(chat) => {
+                let root = crate::sounds::chat_root(&self.dirs.state);
                 let events = self.events.clone();
                 let waker = self.waker.clone();
                 tokio::task::spawn_blocking(move || {
@@ -7342,7 +7359,8 @@ impl Worker {
                         .add_filter("Audio", &["wav", "mp3", "ogg", "oga"])
                         .pick_file()
                     {
-                        let _ = events.send(Event::ChatSoundPicked { chat, path });
+                        let result = crate::sounds::import(&path, &root);
+                        let _ = events.send(Event::ChatSoundPicked { chat, result });
                         waker.wake();
                     }
                 });
@@ -7513,7 +7531,7 @@ impl Worker {
                 }
                 self.emit(self.me_event());
             }
-            Command::PickNotificationSound { mention } => {
+            Command::PickNotificationSound { mention, root } => {
                 let events = self.events.clone();
                 let waker = self.waker.clone();
                 tokio::task::spawn_blocking(move || {
@@ -7522,10 +7540,59 @@ impl Worker {
                         .add_filter("Audio", &["wav", "mp3", "ogg", "oga"])
                         .pick_file()
                     {
-                        let _ = events.send(Event::NotificationSoundPicked { mention, path });
+                        let result = crate::sounds::import(&path, &root);
+                        let _ = events.send(Event::NotificationSoundPicked { mention, result });
                         waker.wake();
                     }
                 });
+            }
+            Command::AdoptSound {
+                mention,
+                from,
+                root,
+            } => {
+                let events = self.events.clone();
+                let waker = self.waker.clone();
+                tokio::task::spawn_blocking(move || match crate::sounds::import(&from, &root) {
+                    Ok(to) => {
+                        let _ = events.send(Event::SoundAdopted { mention, from, to });
+                        waker.wake();
+                    }
+                    Err(error) => log::warn!("could not copy a notification sound: {error}"),
+                });
+            }
+            Command::AdoptChatSounds => {
+                let sounds = crate::sounds::external_chat_sounds(&self.archive, &self.dirs.state);
+                if !sounds.is_empty() {
+                    let root = crate::sounds::chat_root(&self.dirs.state);
+                    let commands = self.commands.clone();
+                    tokio::task::spawn_blocking(move || {
+                        let copied = sounds
+                            .into_iter()
+                            .filter_map(|(chat, from)| match crate::sounds::import(&from, &root) {
+                                Ok(to) => Some((chat, from, to)),
+                                Err(error) => {
+                                    log::warn!(
+                                        "could not copy a chat's notification sound: {error}"
+                                    );
+                                    None
+                                }
+                            })
+                            .collect();
+                        let _ = commands.send(Command::ChatSoundsAdopted(copied));
+                    });
+                }
+            }
+            Command::ChatSoundsAdopted(copied) => {
+                // A chat merged under its phone number while its sound was
+                // copied takes the copy there, if it still names the file.
+                let copied = copied
+                    .into_iter()
+                    .map(|(chat, from, to)| (self.canonical_str(&chat), from, to))
+                    .collect();
+                for chat in crate::sounds::apply_adopted(&self.archive, copied) {
+                    self.emit_chat(&chat);
+                }
             }
             Command::SaveAttachmentAs { source, name } => {
                 let events = self.events.clone();
@@ -11488,7 +11555,7 @@ impl Worker {
             let outcome = async {
                 let url = gif.mp4.clone();
                 let bytes = tokio::task::spawn_blocking(move || {
-                    crate::proxy::agent()
+                    crate::proxy::agent()?
                         .get(&url)
                         .call()
                         .and_then(|mut response| response.body_mut().read_to_vec())
@@ -12716,6 +12783,10 @@ pub(super) struct Prepared {
     file_name: Option<String>,
 }
 
+fn restart_for_proxy_change(has_handle: bool, status: &LinkStatus) -> bool {
+    has_handle || matches!(status, LinkStatus::Failed(_))
+}
+
 fn encode_jpeg(image: &image::DynamicImage, quality: u8) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
     let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, quality);
@@ -12728,7 +12799,7 @@ fn encode_jpeg(image: &image::DynamicImage, quality: u8) -> Result<Vec<u8>, Stri
 /// Downloads a picture through the proxy settings into the avatar cache.
 async fn download_avatar(url: String, path: PathBuf) -> Result<PathBuf, String> {
     let bytes = tokio::task::spawn_blocking(move || {
-        crate::proxy::agent()
+        crate::proxy::agent()?
             .get(&url)
             .call()
             .and_then(|mut response| response.body_mut().read_to_vec())
@@ -13144,7 +13215,7 @@ fn search_gifs(query: &str, key: &str, dir: &Path) -> Result<Vec<Gif>, GifError>
             percent_encode(query.trim())
         )
     };
-    let body = match crate::proxy::agent().get(&url).call() {
+    let body = match crate::proxy::agent().map_err(plain)?.get(&url).call() {
         Ok(mut response) => response
             .body_mut()
             .read_to_string()
@@ -14672,6 +14743,31 @@ mod tests {
                     .contact("15550000001@s.whatsapp.net")
                     .unwrap()
                     .is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn a_proxy_change_retries_a_failed_start_without_linking_a_stopped_account() {
+        for status in [
+            LinkStatus::Starting,
+            LinkStatus::Connecting,
+            LinkStatus::Connected,
+            LinkStatus::Disconnected {
+                reason: "Fixture".into(),
+            },
+            LinkStatus::Unlinked {
+                qr: None,
+                pair_code: None,
+                pairing_phone: None,
+            },
+            LinkStatus::LoggedOut,
+            LinkStatus::Failed("The proxy address is not usable for downloads".into()),
+        ] {
+            assert!(super::restart_for_proxy_change(true, &status));
+            assert_eq!(
+                super::restart_for_proxy_change(false, &status),
+                matches!(status, LinkStatus::Failed(_))
             );
         }
     }

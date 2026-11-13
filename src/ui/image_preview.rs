@@ -19,6 +19,8 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     let is_video = selected
         .as_ref()
         .is_some_and(|row| matches!(row.content, Content::Video { .. }));
+    // When the picture on screen was sent, to name a saved copy by.
+    let sent = selected.as_ref().map(|row| row.timestamp);
     // The motion photo this picture belongs to, when it is one.
     let motion = app.open_chat.as_ref().and_then(|chat| {
         let messages = &app.conversations.get(chat)?.messages;
@@ -104,8 +106,12 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                         if let Some((chat, message, motion)) = &motion {
                             // A failed download says why, and a click tries again.
                             let (icon, hint) = match &motion.state {
-                                MediaState::Failed(error) => (Icon::CircleAlert, error.as_str()),
-                                _ => (Icon::Play, "Play motion photo"),
+                                MediaState::Failed(error) => (Icon::CircleAlert, error.clone()),
+                                _ => (
+                                    Icon::Play,
+                                    crate::i18n::gettext(app.locale, "Play motion photo")
+                                        .into_owned(),
+                                ),
                             };
                             if matches!(
                                 motion.state,
@@ -117,7 +123,8 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                                     18.0,
                                     palette.secondary,
                                     palette.text,
-                                    "Cancel clip download",
+                                    crate::i18n::gettext(app.locale, "Cancel clip download")
+                                        .as_ref(),
                                 )
                                 .clicked()
                                 {
@@ -133,7 +140,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                                 18.0,
                                 palette.secondary,
                                 palette.text,
-                                hint,
+                                &hint,
                             )
                             .clicked()
                             {
@@ -160,7 +167,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                             18.0,
                             palette.secondary,
                             palette.text,
-                            "Zoom in",
+                            crate::i18n::gettext(app.locale, "Zoom in").as_ref(),
                         )
                         .clicked()
                         {
@@ -170,14 +177,16 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                         // the window and the original size.
                         let (label, hint, action) = if preview.is_fit() {
                             (
-                                "Fit".to_owned(),
-                                "Show at original size",
+                                crate::i18n::gettext(app.locale, "Fit").into_owned(),
+                                crate::i18n::gettext(app.locale, "Show at original size")
+                                    .into_owned(),
                                 Action::ImageActualSize,
                             )
                         } else {
                             (
                                 format!("{:.0}%", preview.zoom() * 100.0),
-                                "Fit to the window (0)",
+                                crate::i18n::gettext(app.locale, "Fit to the window (0)")
+                                    .into_owned(),
                                 Action::FitImage,
                             )
                         };
@@ -193,7 +202,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                             18.0,
                             palette.secondary,
                             palette.text,
-                            "Zoom out",
+                            crate::i18n::gettext(app.locale, "Zoom out").as_ref(),
                         )
                         .clicked()
                         {
@@ -220,7 +229,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                         20.0,
                         palette.secondary,
                         palette.text,
-                        "Previous image (Left arrow)",
+                        crate::i18n::gettext(app.locale, "Previous image (Left arrow)").as_ref(),
                     )
                     .clicked()
                     {
@@ -234,7 +243,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                         20.0,
                         palette.secondary,
                         palette.text,
-                        "Next image (Right arrow)",
+                        crate::i18n::gettext(app.locale, "Next image (Right arrow)").as_ref(),
                     )
                     .clicked()
                     {
@@ -284,12 +293,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     {
                         app.actions.push(Action::SaveAttachmentAs {
                             path: preview.path().into(),
-                            name: preview
-                                .path()
-                                .file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("attachment")
-                                .into(),
+                            name: save_name(preview.path(), is_video, sent, "attachment"),
                         });
                     }
                     if ui
@@ -400,15 +404,14 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                                                     Some(Icon::Download),
                                                     &save_label,
                                                 ) {
-                                                    let name = preview
-                                                        .path()
-                                                        .file_name()
-                                                        .and_then(|name| name.to_str())
-                                                        .unwrap_or("image.png")
-                                                        .to_owned();
                                                     app.actions.push(Action::SaveAttachmentAs {
                                                         path: preview.path().to_owned(),
-                                                        name,
+                                                        name: save_name(
+                                                            preview.path(),
+                                                            is_video,
+                                                            sent,
+                                                            "image.png",
+                                                        ),
                                                     });
                                                 }
                                                 if crate::ui::widgets::menu_item(
@@ -889,9 +892,54 @@ fn display_size(original: Vec2, canvas: Vec2, fit: bool, zoom: f32) -> Vec2 {
     vec2(width, height)
 }
 
+/// The name Save as offers for the file on screen: its kind and send time, as
+/// the message menu names it, else the file's own name.
+fn save_name(path: &std::path::Path, video: bool, sent: Option<i64>, fallback: &str) -> String {
+    let kind = if video { "Video" } else { "Image" };
+    sent.and_then(|sent| crate::util::saved_file_name(kind, sent, path))
+        .unwrap_or_else(|| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(fallback)
+                .to_owned()
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The viewer's Save as names a photo or clip by its kind and send time, as
+    /// the message menu does, and keeps the file's own name only when it has
+    /// no time to go by (#801).
+    #[test]
+    fn the_viewer_names_a_saved_copy_by_kind_and_send_time() {
+        use std::path::Path;
+        let _clock = crate::util::fixed_clock::set(crate::util::fixed_clock::Clock {
+            now: 0,
+            zone: jiff::tz::TimeZone::UTC,
+            twelve_hour: false,
+        });
+        let sent = 1_786_046_869; // 2026-08-06 at 20.07.49 UTC
+        let photo = Path::new("/cache/media/15550101234_s_whatsapp_net-AB1C23.jpg");
+        assert_eq!(
+            save_name(photo, false, Some(sent), "image.png"),
+            "WhatsApp Image 2026-08-06 at 20.07.49.jpg"
+        );
+        let clip = Path::new("/cache/media/15550101234_s_whatsapp_net-AB1C23.mp4");
+        assert_eq!(
+            save_name(clip, true, Some(sent), "attachment"),
+            "WhatsApp Video 2026-08-06 at 20.07.49.mp4"
+        );
+        assert_eq!(
+            save_name(photo, false, None, "image.png"),
+            "15550101234_s_whatsapp_net-AB1C23.jpg"
+        );
+        assert_eq!(
+            save_name(Path::new("/"), false, None, "image.png"),
+            "image.png"
+        );
+    }
 
     #[test]
     fn stickers_show_on_a_card_that_fits_small_windows() {

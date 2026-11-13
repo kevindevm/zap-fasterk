@@ -3421,6 +3421,9 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
                 }
             }
             "recording" => app.recording = Some(crate::audio::Recorder::rehearsal()),
+            "recording-paused" => {
+                app.recording = Some(crate::audio::Recorder::paused_rehearsal());
+            }
             // Shows the native image preview over the demo chat.
             "preview" => {
                 let chat = app.open_chat.clone().expect("demo chat");
@@ -6499,6 +6502,7 @@ mod tests {
             "voice,voice-menu",
             "voice,voice-transcript",
             "recording",
+            "recording-paused",
             "preview",
             "gifs",
             "gifs-badkey",
@@ -16720,6 +16724,43 @@ mod tests {
     }
 
     #[test]
+    fn a_paused_recording_offers_playback_resume_and_send() {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        app.attach(&ctx);
+        app.recording = Some(crate::audio::Recorder::rehearsal());
+        let labels = accessible_labels(&mut app, &ctx);
+        for label in ["Discard", "Pause recording", "Send"] {
+            assert!(
+                labels.iter().any(|text| text == label),
+                "{label} in {labels:?}"
+            );
+        }
+        assert!(!labels.iter().any(|text| text == "Play recording"));
+        app.recording = Some(crate::audio::Recorder::paused_rehearsal());
+        let labels = accessible_labels(&mut app, &ctx);
+        for label in ["Discard", "Play recording", "Resume recording", "Send"] {
+            assert!(
+                labels.iter().any(|text| text == label),
+                "{label} in {labels:?}"
+            );
+        }
+        assert!(!labels.iter().any(|text| text == "Pause recording"));
+        // The whole take spreads across the field, between the controls.
+        for _ in 0..3 {
+            frame_sized(&mut app, &ctx, 780.0, Vec::new());
+        }
+        let wave = ctx
+            .data(|data| data.get_temp::<egui::Rect>(crate::ui::conversation::recording_wave_id()))
+            .expect("the paused recorder is drawn");
+        assert!(
+            wave.width() > 400.0,
+            "the waveform is {} wide",
+            wave.width()
+        );
+    }
+
+    #[test]
     fn the_plus_menu_sends_files_or_creates_a_poll_and_closes() {
         let click = |app: &mut App, ctx: &egui::Context, pos: egui::Pos2| {
             let press = |pressed| egui::Event::PointerButton {
@@ -18590,6 +18631,90 @@ mod bubble_detail_tests {
                 )
                 .is_none(),
                 "an audio file has no dot"
+            );
+        }
+    }
+
+    /// The tints of the icons painted with their centre at `at`: an icon is
+    /// a rectangle filled with its texture, and its fill is the tint.
+    fn icon_tints(shapes: &[egui::epaint::ClippedShape], at: egui::Pos2) -> Vec<egui::Color32> {
+        fn collect(shape: &egui::Shape, at: egui::Pos2, out: &mut Vec<egui::Color32>) {
+            match shape {
+                // The painter snaps the rectangle to pixels, so within one.
+                egui::Shape::Rect(rect)
+                    if rect.brush.is_some() && rect.rect.center().distance(at) < 1.0 =>
+                {
+                    out.push(rect.fill);
+                }
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        collect(shape, at, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        for shape in shapes {
+            collect(&shape.shape, at, &mut out);
+        }
+        out
+    }
+
+    /// Our voice message shows a microphone beside its length, lit once
+    /// they have played it; theirs and audio files never have one.
+    #[test]
+    fn our_voice_message_says_when_it_was_played() {
+        for (from_me, status, mic, played) in [
+            (true, Delivery::Pending, false, false),
+            (true, Delivery::Delivered, true, false),
+            (true, Delivery::Read, true, false),
+            (true, Delivery::Played, true, true),
+            (false, Delivery::Played, false, false),
+        ] {
+            let mut app = app();
+            apply_flags(&mut app, Some("audio-types"));
+            let chat = app.open_chat.clone().unwrap();
+            for row in &mut app.conversations.get_mut(&chat).unwrap().messages {
+                row.from_me = from_me;
+                row.status = status;
+            }
+            let ctx = egui::Context::default();
+            app.attach(&ctx);
+            let shapes = frames(&mut app, &ctx, egui::vec2(1180.0, 780.0));
+            let bubble = crate::ui::conversation::bubble_id(&chat, "audio-original");
+            let shown = rect(&ctx, bubble.with("mic"));
+            assert_eq!(shown.is_some(), mic, "from me: {from_me}, {status:?}");
+            assert_eq!(
+                rect(&ctx, bubble.with("played")).is_some(),
+                played,
+                "from me: {from_me}, {status:?}"
+            );
+            if let Some(shown) = shown {
+                let frame = rect(&ctx, bubble.with("rect")).expect("voice bubble drawn");
+                assert!(
+                    frame.contains_rect(shown),
+                    "the microphone is inside its bubble"
+                );
+                // Grey until played, then the read ticks' colour, both as
+                // our bubble draws them.
+                let inside = app.palette.on_bubble(true);
+                let expected = if played {
+                    inside.read
+                } else {
+                    inside.secondary
+                };
+                assert_ne!(inside.read, inside.secondary, "the two states differ");
+                assert_eq!(
+                    icon_tints(&shapes, shown.center()),
+                    vec![expected],
+                    "the microphone is painted once, in its colour: {status:?}"
+                );
+            }
+            let file = crate::ui::conversation::bubble_id(&chat, "audio-file");
+            assert!(
+                rect(&ctx, file.with("mic")).is_none(),
+                "an audio file has none"
             );
         }
     }

@@ -267,7 +267,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         20.0,
                         palette.secondary,
                         palette.text,
-                        "Back (Esc)",
+                        crate::i18n::gettext(app.locale, "Back (Esc)").as_ref(),
                     )
                     .clicked()
                     {
@@ -330,6 +330,7 @@ fn search(app: &mut App, ui: &mut egui::Ui) {
     let response = widgets::search_field(
         ui,
         &palette,
+        app.locale,
         egui::Id::new(SEARCH_ID),
         &mut text,
         &crate::i18n::gettext(app.locale, "Search settings"),
@@ -822,7 +823,7 @@ fn sections(app: &App) -> Vec<Section> {
         .settings
         .proxy
         .is_empty()
-        .then(crate::proxy::for_whatsapp)
+        .then(|| crate::proxy::from_env("web.whatsapp.com"))
         .flatten();
     let description = match environment {
         Some(proxy) => {
@@ -1641,7 +1642,7 @@ pub fn wallpaper_show(app: &mut App, ui: &mut egui::Ui) {
                                 20.0,
                                 palette.secondary,
                                 palette.text,
-                                "Back to settings",
+                                crate::i18n::gettext(app.locale, "Back to settings").as_ref(),
                             )
                             .clicked()
                             {

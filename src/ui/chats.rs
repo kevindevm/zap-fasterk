@@ -145,7 +145,7 @@ fn header(app: &mut App, ui: &mut egui::Ui) {
                             18.0,
                             palette.secondary,
                             palette.text,
-                            "Back to chats",
+                            crate::i18n::gettext(app.locale, "Back to chats").as_ref(),
                         )
                         .tab_stop(Stop::Back)
                         .clicked()
@@ -166,7 +166,7 @@ fn header(app: &mut App, ui: &mut egui::Ui) {
                             18.0,
                             palette.secondary,
                             palette.text,
-                            "Back to chats",
+                            crate::i18n::gettext(app.locale, "Back to chats").as_ref(),
                         )
                         .tab_stop(Stop::Back)
                         .clicked()
@@ -247,7 +247,7 @@ fn header(app: &mut App, ui: &mut egui::Ui) {
                             18.0,
                             palette.secondary,
                             palette.text,
-                            "New chat",
+                            crate::i18n::gettext(app.locale, "New chat").as_ref(),
                         )
                         .tab_stop(Stop::NewChat)
                         .clicked()
@@ -262,7 +262,7 @@ fn header(app: &mut App, ui: &mut egui::Ui) {
                                 18.0,
                                 palette.secondary,
                                 palette.text,
-                                "Hide the chat list (Ctrl+B)",
+                                &super::keys::label("Hide the chat list (Ctrl+B)"),
                             )
                             .tab_stop(Stop::Sidebar)
                             .clicked()
@@ -281,6 +281,7 @@ fn header(app: &mut App, ui: &mut egui::Ui) {
             let response = widgets::search_field(
                 ui,
                 &palette,
+                app.locale,
                 id,
                 &mut text,
                 crate::i18n::gettext(app.locale, "Search").as_ref(),
@@ -356,7 +357,7 @@ fn macos_header(app: &mut App, ui: &mut egui::Ui) {
                         18.0,
                         palette.secondary,
                         palette.text,
-                        "Back to chats",
+                        crate::i18n::gettext(app.locale, "Back to chats").as_ref(),
                     )
                     .tab_stop(Stop::Back)
                     .clicked()
@@ -377,7 +378,7 @@ fn macos_header(app: &mut App, ui: &mut egui::Ui) {
                         18.0,
                         palette.secondary,
                         palette.text,
-                        "Back to chats",
+                        crate::i18n::gettext(app.locale, "Back to chats").as_ref(),
                     )
                     .tab_stop(Stop::Back)
                     .clicked()
@@ -435,7 +436,7 @@ fn macos_header(app: &mut App, ui: &mut egui::Ui) {
                         18.0,
                         palette.secondary,
                         palette.text,
-                        "New chat (⌘N)",
+                        &super::keys::label("New chat (Ctrl+N)"),
                     )
                     .tab_stop(Stop::NewChat)
                     .clicked()
@@ -449,7 +450,7 @@ fn macos_header(app: &mut App, ui: &mut egui::Ui) {
                             18.0,
                             palette.secondary,
                             palette.text,
-                            "Hide the chat list (⌘B)",
+                            &super::keys::label("Hide the chat list (Ctrl+B)"),
                         )
                         .tab_stop(Stop::Sidebar)
                         .clicked()
@@ -465,6 +466,7 @@ fn macos_header(app: &mut App, ui: &mut egui::Ui) {
             let response = widgets::search_field(
                 ui,
                 &palette,
+                app.locale,
                 egui::Id::new("chat-search"),
                 &mut text,
                 crate::i18n::gettext(app.locale, "Search").as_ref(),
