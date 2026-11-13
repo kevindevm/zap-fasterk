@@ -8,9 +8,9 @@ const PHONE_RANGE_LOOKBACK: usize = 20;
 
 /// The range WhatsApp checks before it archives or unarchives a chat on the
 /// phone: the chat's newest message. A phone left the chat in place when the
-/// change came without one. A row ZapFast filed for itself (a local call entry,
-/// a disappearing-timer notice) was never sent under that id, so it gives its
-/// time but names no message, and a message without a time is treated as none.
+/// change came without one. Local call entries were never sent, so they
+/// give their time but name no message, and a message without a time is
+/// treated as none.
 pub(super) fn archive_range(
     jid: &Jid,
     last: Option<&crate::model::Message>,
@@ -21,13 +21,18 @@ pub(super) fn archive_range(
     let participant = (jid.is_group() && !last.from_me)
         .then(|| Worker::jid_of(&last.sender))
         .flatten();
-    let key = (!crate::model::local_message_id(&last.id))
+    let key = (!is_local_call_entry(&last.id))
         .then(|| whatsapp_rust::MessageId::new(&last.id).ok())
         .flatten()
         .and_then(|id| {
             whatsapp_rust::MessageRef::new(jid, id, participant.as_ref(), last.from_me).ok()
         });
     whatsapp_rust::message_range(last.timestamp, None, key.map(|key| (key, last.timestamp)))
+}
+
+/// Local call entries were never sent, so the phone cannot know them.
+fn is_local_call_entry(id: &str) -> bool {
+    id.starts_with("local-call:") || id.starts_with("call-log:")
 }
 
 impl Worker {
@@ -49,9 +54,7 @@ impl Worker {
     }
 
     /// The chat's newest message the phone has: a send still pending or
-    /// failed here may never have reached it, and a disappearing-timer notice
-    /// was filed under an id the phone never issued. Either is no boundary
-    /// there, though the notice keeps its place in the transcript.
+    /// failed here may never have reached it.
     pub(super) fn newest_on_phone(
         &self,
         chat: &str,
@@ -62,12 +65,11 @@ impl Worker {
             .into_iter()
             .rev()
             .find(|message| {
-                !crate::model::timer_notice_id(&message.id)
-                    && !(message.from_me
-                        && matches!(
-                            message.status,
-                            crate::model::Delivery::Pending | crate::model::Delivery::Failed
-                        ))
+                !(message.from_me
+                    && matches!(
+                        message.status,
+                        crate::model::Delivery::Pending | crate::model::Delivery::Failed
+                    ))
             }))
     }
     pub(super) fn apply_remote_archive(&mut self, chat: String, mut archived: bool, mut at: i64) {

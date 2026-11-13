@@ -15,7 +15,6 @@ mod archive_sync;
 mod automation;
 pub mod backup;
 mod call_log;
-pub mod chat_export;
 mod communities;
 mod disappearing;
 mod drafts;
@@ -116,9 +115,6 @@ pub type Result<T> = std::result::Result<T, rusqlite::Error>;
 /// `meta` keys for the phone's "Keep chats archived" and when it changed.
 const UNARCHIVE_CHATS: &str = "unarchive_chats";
 const UNARCHIVE_CHATS_AT: &str = "unarchive_chats_at";
-/// `meta` keys for the phone's "Disable link previews" and when it changed.
-const LINK_PREVIEWS_DISABLED: &str = "link_previews_disabled";
-const LINK_PREVIEWS_DISABLED_AT: &str = "link_previews_disabled_at";
 
 /// Marks an archived photo whose clip is known as a motion photo. Only the
 /// photo's own sender can give it a clip.
@@ -1000,36 +996,6 @@ impl Archive {
         Ok(unarchive)
     }
 
-    /// The phone's "Disable link previews": `Some(true)` when it is on.
-    /// `None` until the phone has said.
-    pub fn link_previews_disabled(&self) -> Result<Option<bool>> {
-        Ok(self.meta(LINK_PREVIEWS_DISABLED)?.map(|value| value == "1"))
-    }
-
-    /// Records the phone's "Disable link previews" changed at `timestamp`
-    /// milliseconds, unless a newer change is stored, so a replayed snapshot
-    /// cannot undo it. Returns the setting in force.
-    pub fn set_link_previews_disabled_at(&self, disabled: bool, timestamp: i64) -> Result<bool> {
-        let stored = self
-            .meta(LINK_PREVIEWS_DISABLED_AT)?
-            .and_then(|value| value.parse::<i64>().ok());
-        if stored.is_some_and(|stored| stored > timestamp) {
-            return Ok(self.link_previews_disabled()?.unwrap_or(disabled));
-        }
-        // One statement, so a failed write leaves the previous pair intact.
-        self.connection.execute(
-            "INSERT INTO meta (key, value) VALUES (?1, ?2), (?3, ?4)
-                ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            params![
-                LINK_PREVIEWS_DISABLED,
-                if disabled { "1" } else { "0" },
-                LINK_PREVIEWS_DISABLED_AT,
-                timestamp.to_string()
-            ],
-        )?;
-        Ok(disabled)
-    }
-
     /// A chat's own notification sound; `None` follows Settings.
     pub fn set_notification_sound(
         &self,
@@ -1136,7 +1102,6 @@ impl Archive {
              unread = MIN(unread, (SELECT COUNT(*) FROM messages
                  WHERE chat = ?1 AND from_me = 0
                  AND id NOT GLOB 'local-call:*' AND id NOT GLOB 'call-log:*'
-                 AND id NOT GLOB 'zapfast-timer-*'
                  AND timestamp > MAX(COALESCE(read_through, 0), ?2))) WHERE id = ?1",
             params![id, timestamp],
         )?;
@@ -1154,7 +1119,6 @@ impl Archive {
                  JOIN messages boundary ON boundary.chat = m.chat AND boundary.id = ?2
                  WHERE m.chat = ?1 AND m.from_me = 0
                  AND m.id NOT GLOB 'local-call:*' AND m.id NOT GLOB 'call-log:*'
-                 AND m.id NOT GLOB 'zapfast-timer-*'
                  AND (m.timestamp > boundary.timestamp
                       OR (m.timestamp = boundary.timestamp AND
                           (COALESCE(m.history_order, 9223372036854775807), m.rowid) >
@@ -1205,7 +1169,7 @@ impl Archive {
             return Ok(unread);
         };
         let remaining: u32 = self.connection.query_row(
-            "SELECT COUNT(*) FROM messages WHERE chat = ?1 AND from_me = 0 AND id NOT GLOB 'local-call:*' AND id NOT GLOB 'call-log:*' AND id NOT GLOB 'zapfast-timer-*' AND timestamp > ?2",
+            "SELECT COUNT(*) FROM messages WHERE chat = ?1 AND from_me = 0 AND id NOT GLOB 'local-call:*' AND id NOT GLOB 'call-log:*' AND timestamp > ?2",
             params![id, through],
             |row| row.get(0),
         )?;
@@ -1311,7 +1275,6 @@ impl Archive {
         let mut statement = self.connection.prepare(
             "SELECT id, sender FROM messages WHERE chat = ?1 AND from_me = 0
              AND id NOT GLOB 'local-call:*' AND id NOT GLOB 'call-log:*'
-             AND id NOT GLOB 'zapfast-timer-*'
              AND timestamp >= COALESCE((SELECT read_through FROM chats WHERE id = ?1), -1)
              ORDER BY timestamp DESC, COALESCE(history_order, 9223372036854775807) DESC, rowid DESC LIMIT ?2",
         )?;
@@ -1954,7 +1917,6 @@ impl Archive {
              FROM messages
              WHERE chat = ?1 AND timestamp >= ?2 AND timestamp < ?3
              AND json_valid(content)
-             AND json_extract(content, '$.kind') != 'disappearing_timer'
              AND (?4 IS NULL OR {SEARCHED_TEXT} LIKE ?4 ESCAPE '\\')
              ORDER BY timestamp DESC, COALESCE(history_order, 9223372036854775807) DESC, rowid DESC
              LIMIT ?5"
@@ -2736,7 +2698,7 @@ impl Archive {
         let id: Option<String> = self
             .connection
             .query_row(
-                "SELECT id FROM messages WHERE chat = ?1 AND id NOT GLOB 'local-call:*' AND id NOT GLOB 'call-log:*' AND id NOT GLOB 'zapfast-timer-*' ORDER BY timestamp ASC, COALESCE(history_order, 9223372036854775807) ASC, rowid ASC LIMIT 1",
+                "SELECT id FROM messages WHERE chat = ?1 AND id NOT GLOB 'local-call:*' AND id NOT GLOB 'call-log:*' ORDER BY timestamp ASC, COALESCE(history_order, 9223372036854775807) ASC, rowid ASC LIMIT 1",
                 params![chat],
                 |row| row.get(0),
             )
@@ -3746,121 +3708,6 @@ pub(crate) mod tests {
             forwarded: false,
             thumbnail: None,
         }
-    }
-
-    /// A disappearing-timer notice as the worker files it, under the prefix
-    /// the archive's queries filter on, so a change to either fails a test.
-    pub(crate) fn timer_notice(chat: &str, suffix: &str, timestamp: i64) -> Message {
-        let mut notice = message(
-            chat,
-            &format!("{}{suffix}", crate::model::TIMER_NOTICE_PREFIX),
-            timestamp,
-            false,
-        );
-        notice.content = Content::DisappearingTimer { seconds: 86_400 };
-        notice
-    }
-
-    /// The system row a timer change leaves is stored as structured content
-    /// and reloads as the same variant, not as prose; search never matches it.
-    #[test]
-    fn a_timer_notice_round_trips_and_stays_out_of_search() {
-        let archive = Archive::in_memory().expect("opens");
-        let chat = "1@s.whatsapp.net";
-        archive.ensure_chat(chat, "Ada").expect("chat");
-        let mut notice = message(chat, "timer", 100, false);
-        notice.content = Content::DisappearingTimer { seconds: 604_800 };
-        archive.insert_message(&notice, None).expect("insert");
-
-        let loaded = archive
-            .message(chat, "timer")
-            .expect("reads")
-            .expect("exists");
-        assert_eq!(
-            loaded.content,
-            Content::DisappearingTimer { seconds: 604_800 }
-        );
-        assert_eq!(loaded.summary(), "Disappearing messages: 7 days");
-        assert!(
-            archive
-                .search_messages("Disappearing", 10)
-                .expect("search")
-                .is_empty(),
-            "a timer notice is not searchable"
-        );
-        // A date-only search in the chat (an empty needle) is not a text
-        // search: the notice must be kept out of it as well, or it shows as a
-        // result nothing can scroll to.
-        archive
-            .insert_message(&message(chat, "hello", 150, false), None)
-            .expect("insert");
-        let found: Vec<String> = archive
-            .search_chat_messages(chat, "", Some(0), Some(200), 10)
-            .expect("search")
-            .into_iter()
-            .map(|message| message.id)
-            .collect();
-        assert_eq!(found, vec!["hello"], "only real messages are listed");
-    }
-
-    /// A timer notice is not a message the reader owes a receipt for, and it
-    /// must not keep a chat looking unread after the real message was read.
-    #[test]
-    fn a_timer_notice_does_not_keep_a_chat_unread() {
-        let archive = Archive::in_memory().expect("opens");
-        let chat = "1@s.whatsapp.net";
-        archive.ensure_chat(chat, "Ada").expect("chat");
-        archive
-            .insert_message(&message(chat, "real", 100, false), None)
-            .expect("insert");
-        let notice = timer_notice(chat, "change", 200);
-        archive.insert_message(&notice, None).expect("insert");
-
-        // The id path counts only the real incoming messages after the read.
-        archive.bump_unread(chat).expect("bump");
-        archive.mark_read_to(chat, "real").expect("read");
-        assert_eq!(archive.chat(chat).expect("chat").expect("exists").unread, 0);
-
-        // The timestamp path counts the same way.
-        archive.bump_unread(chat).expect("bump");
-        archive.mark_read_through(chat, 100).expect("read through");
-        assert_eq!(archive.chat(chat).expect("chat").expect("exists").unread, 0);
-    }
-
-    /// The local rows ZapFast invents (call entries, disappearing-timer
-    /// notices) have no counterpart on the phone: a receipt for their id would
-    /// name a message the phone never sent, and a history anchor for one would
-    /// ask for something it does not hold.
-    #[test]
-    fn synthetic_rows_stay_out_of_receipts_and_history_anchors() {
-        let archive = Archive::in_memory().expect("opens");
-        let chat = "1@s.whatsapp.net";
-        archive.ensure_chat(chat, "A").expect("chat");
-        let call = "local-call:1";
-        let notice = format!("{}1", crate::model::TIMER_NOTICE_PREFIX);
-        for (id, at) in [(call, 40), (notice.as_str(), 50)] {
-            archive
-                .insert_message(&message(chat, id, at, false), None)
-                .expect("insert");
-        }
-        archive
-            .insert_message(&message(chat, "m1", 100, false), None)
-            .expect("insert");
-        archive
-            .insert_message(&message(chat, "m2", 200, false), None)
-            .expect("insert");
-        assert_eq!(
-            archive.oldest(chat).expect("oldest").expect("row").id,
-            "m1",
-            "the phone-history anchor is a real message"
-        );
-        let ids: Vec<String> = archive
-            .unread_incoming(chat, 10)
-            .expect("ids")
-            .into_iter()
-            .map(|(id, _)| id)
-            .collect();
-        assert_eq!(ids, vec!["m2", "m1"], "receipts name only real messages");
     }
 
     #[test]
@@ -4976,19 +4823,6 @@ pub(crate) mod tests {
         assert_eq!(archive.unarchive_chats().unwrap(), Some(true));
         assert!(!archive.set_unarchive_chats_at(false, 300).unwrap());
         assert_eq!(archive.unarchive_chats().unwrap(), Some(false));
-    }
-
-    #[test]
-    fn the_phones_link_preview_setting_applies_in_timestamp_order() {
-        let archive = Archive::in_memory().unwrap();
-        assert_eq!(archive.link_previews_disabled().unwrap(), None);
-        assert!(archive.set_link_previews_disabled_at(true, 200).unwrap());
-        assert_eq!(archive.link_previews_disabled().unwrap(), Some(true));
-        // A replayed older change does not undo it; a newer one does.
-        assert!(archive.set_link_previews_disabled_at(false, 100).unwrap());
-        assert_eq!(archive.link_previews_disabled().unwrap(), Some(true));
-        assert!(!archive.set_link_previews_disabled_at(false, 300).unwrap());
-        assert_eq!(archive.link_previews_disabled().unwrap(), Some(false));
     }
 
     #[test]

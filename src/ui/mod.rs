@@ -3,9 +3,7 @@
 pub(crate) mod accessibility;
 pub mod accounts;
 pub mod archive_backup;
-mod blocking;
 pub mod call;
-mod chat_export;
 pub mod chats;
 pub mod conversation;
 pub mod dialogs;

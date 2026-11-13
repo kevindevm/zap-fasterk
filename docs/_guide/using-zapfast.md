@@ -44,20 +44,6 @@ below the grid fetches the next page. A failed page keeps the earlier results
 and offers **Retry**; pressing Enter with the same search also retries that
 page.
 
-When you write a new text message with a web link and pause, Zap Fasterk
-fetches that page, and its picture from wherever the page says it is, directly,
-through your proxy if one is set, and shows a preview card above the message
-box, for the first link. Edits and captions get no card. The card is sent with
-the message. Zap Fasterk identifies itself to the site as Zap Fasterk, and some
-sites give no preview to apps they do not recognise, in which case the message
-goes out with a plain link. Zap Fasterk never looks up or contacts addresses
-on this computer or your local network itself, and refuses links that name one
-outright. With a proxy set, the proxy looks up the name instead. Click the
-cross on the card to send the link without a preview. If your phone has
-**Privacy > Advanced > Disable link previews** on, Zap Fasterk makes no
-previews either, and it makes none until it has read that setting from your
-phone.
-
 Links in a received message show a preview card below the text. Media links
 show a large picture above the title: reels and other video links a square
 poster with a play badge, articles their picture kept in aspect ratio.
@@ -649,33 +635,12 @@ your phone's contacts if you chose that for the last contact you added. A card w
 A chat or group with disappearing messages shows its timer in the contact or
 group details, opened from the header or by right-clicking a row in the chat
 list. The line reads **Off** when the timer is turned off and stays away
-entirely when Zap Fasterk has never heard of a timer for that chat. The same
-details offer **Change disappearing messages** with **Off**, **24 hours**,
-**7 days**, or **90 days**: the choice stays disabled while WhatsApp answers
-it, and only lands once WhatsApp accepts it. Every accepted change also leaves
-a centred notice in the conversation naming who changed it and to what, so the
-history shows when the timer changed. In a group only admins can change it,
-and groups you left, locked chats, and channels offer no change.
-Messages Zap Fasterk sends carry the timer, while messages received here stay
-in the archive after they disappear on your
+entirely when Zap Fasterk has never heard of a timer for that chat. Read-only for
+now: change the timer on your phone, and messages Zap Fasterk sends carry it,
+while messages received here stay in the archive after they disappear on your
 other devices. A person's details also list the groups you are both in, under a
 heading such as **2 groups in common**: click one to open it. Groups you left
 and locked chats are not listed.
-
-To block or unblock a person, open their contact info or either chat menu and
-choose **Block contact** or **Unblock contact**, then confirm. Blocking keeps
-the conversation and its history; the composer shows an **Unblock contact**
-button and keeps your unsent draft. Blocked contacts cannot be sent new direct
-messages or called from Zap Fasterk. Shared groups are unaffected. Under
-**Settings > Privacy > Blocked contacts**, you can also see the account's full
-blocked list and unblock people with no chat on this computer.
-
-Changes apply to your WhatsApp account after the server accepts them. Zap Fasterk
-refreshes the list when connecting, after blocking or unblocking, and when
-opening the blocked list. Changes made on your phone
-appear at the next refresh, rather than immediately. A failed lookup keeps the
-last confirmed list. Blocking requires WhatsApp's phone/privacy-id mapping;
-if it is unavailable, try again or block the person on your phone.
 
 The chips under the search bar narrow the list to **Unread**, **Private**
 (one-to-one chats), **Favorites** (in your phone's order), or **Groups**.
@@ -698,14 +663,6 @@ your configured download folder stays there. **Delete chat** in
 the same menu also needs a connection and confirmation. Groups and channels
 can be left from the same menu, keeping their history here. `Ctrl+E` (Command+E on macOS) archives the
 open chat, or unarchives it from **Archived**, as in WhatsApp.
-
-Choose **Export chat…** in a chat header's menu to save that chat's locally
-stored messages as a UTF-8 text file. **Include downloaded attachments (ZIP)**
-packs the already downloaded files together with `_chat.txt` into one ZIP.
-Stamps use UTC, and multiline messages and captions keep their line breaks.
-Attachments that were never downloaded are listed as unavailable; the export
-never downloads files or asks the phone for older history. Exported files are
-not encrypted, and locked chats cannot be exported.
 
 Archived chats stay archived when new messages arrive, unless your phone's
 **Keep chats archived** (in WhatsApp's chat settings) is off: then a new message,

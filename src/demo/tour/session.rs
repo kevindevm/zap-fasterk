@@ -61,28 +61,14 @@ pub fn respond(app: &mut App) {
                 }
                 app.poll_voting.remove(&(chat, message));
             }
-            // No network offline: the card settles on no preview.
-            Command::FetchLinkPreview { url } => app.link_preview_arrived(url, None),
             Command::SendText {
                 chat,
                 text,
                 quoting,
                 mentions,
-                preview,
             } => {
                 let quoted = quoting.and_then(|id| quote(app, &chat, id));
-                let (content, thumbnail) = match preview {
-                    Some(preview) => (
-                        Content::Text {
-                            text,
-                            preview: Some(preview.preview),
-                        },
-                        preview.thumbnail,
-                    ),
-                    None => (Content::text(text), None),
-                };
-                let mut row = outgoing(app, &chat, content);
-                row.thumbnail = thumbnail;
+                let mut row = outgoing(app, &chat, Content::text(text));
                 row.quoted = quoted;
                 row.mentions = mentions
                     .into_iter()

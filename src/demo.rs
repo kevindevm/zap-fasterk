@@ -426,7 +426,6 @@ pub fn populate(app: &mut App) {
     // Demo mode has no backend to handle downloads.
     app.account_mut().settings.auto_download = false;
     app.link = LinkStatus::Connected;
-    app.blocklist.ids = Some(Default::default());
     app.me = Some(ME.to_owned());
     app.me_name = Some("Carmine".to_owned());
     app.chats.clear();
@@ -2163,24 +2162,6 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
                 app.dialog = Some(Dialog::ResumeRestoredAccount(app.account().id.clone()));
             }
             "chat" | "" => {}
-            "blocked" | "blocked-contacts" | "block-confirm" => {
-                const DOROTHY: &str = "12025550137@s.whatsapp.net";
-                app.blocklist.ids = Some(if part == "block-confirm" {
-                    Default::default()
-                } else {
-                    [SAMPLES[0].id.into(), DOROTHY.into()].into()
-                });
-                if part == "blocked-contacts" {
-                    app.dialog = Some(Dialog::BlockedContacts);
-                }
-                if part == "block-confirm" {
-                    app.dialog = Some(Dialog::ConfirmBlock {
-                        chat: SAMPLES[0].id.into(),
-                        blocked: true,
-                        from_list: false,
-                    });
-                }
-            }
             "phone-menu" => phone_menu_sample(app),
             "queued-messages" => queued::setup(app, false),
             "queued-messages-stress" => queued::setup(app, true),
@@ -2896,22 +2877,6 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
             "clear-chat" => {
                 app.dialog = app.open_chat.clone().map(Dialog::ConfirmClearChat);
             }
-            "export-chat" | "export-chat-progress" => {
-                app.dialog = app.open_chat.clone().map(|chat| Dialog::ExportChat {
-                    chat,
-                    include_media: true,
-                });
-                if part == "export-chat-progress" {
-                    app.chat_export = Some((
-                        1,
-                        crate::archive::chat_export::Counts {
-                            messages: 128,
-                            files: 12,
-                            missing: 2,
-                        },
-                    ));
-                }
-            }
             "select" => {
                 if let Some(chat) = app.open_chat.clone() {
                     let ids: Vec<String> = app
@@ -3225,37 +3190,6 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
             "composer-tools" => {
                 app.open_chat = Some(SAMPLES[0].id.to_owned());
                 app.composer_tools_open = true;
-                app.focus_composer = true;
-            }
-            // The card above the composer for a link being written, loaded
-            // and shown.
-            "link-preview" | "link-preview-loading" => {
-                const LINK: &str = "https://spotifast.rocks/";
-                app.open_chat = Some(SAMPLES[0].id.to_owned());
-                app.composer = format!("Have you tried {LINK} yet?");
-                app.composer_preview = Some(crate::app::ComposerPreview {
-                    account: app.account().id.clone(),
-                    chat: SAMPLES[0].id.to_owned(),
-                    url: LINK.to_owned(),
-                    state: if part == "link-preview" {
-                        crate::app::LinkPreviewState::Ready(crate::model::ComposedPreview {
-                            preview: LinkPreview {
-                                url: LINK.to_owned(),
-                                title: Some("spotifast.rocks".into()),
-                                description: Some(
-                                    "Spotify, native and fast. A lightweight Spotify client written in Rust with egui."
-                                        .into(),
-                                ),
-                                video: false,
-                                image: None,
-                                image_sha256: None,
-                            },
-                            thumbnail: Some(stock::thumbnail(stock::SPOTIFAST)),
-                        })
-                    } else {
-                        crate::app::LinkPreviewState::Loading
-                    },
-                });
                 app.focus_composer = true;
             }
             "mention" => {
@@ -6386,9 +6320,6 @@ mod tests {
             "draft-priority,light",
             "document-draft-priority",
             "document-draft-priority,light",
-            "blocked",
-            "blocked-contacts",
-            "block-confirm",
             "chat-menu",
             "chat-header-menu",
             "channel",
@@ -6500,10 +6431,6 @@ mod tests {
             "toasts",
             "delete-chat",
             "clear-chat",
-            "export-chat",
-            "export-chat,light",
-            "export-chat-progress",
-            "export-chat-progress,light",
             "invite",
             "unread-divider",
             "quotes",
@@ -6545,9 +6472,6 @@ mod tests {
             "sticker-pack-view",
             "typing",
             "composer-tools",
-            "link-preview",
-            "link-preview,light",
-            "link-preview-loading",
             "mention",
             "emoji-complete",
             "reply",
@@ -19295,7 +19219,12 @@ mod independent_text_scale_tests {
 
     /// Same 1180x780 frame `frame_with` draws; the height parameter only
     /// keeps ported tests readable.
-    fn frame_sized(app: &mut App, ctx: &egui::Context, _height: f32, events: Vec<egui::Event>) {
+    fn frame_sized(
+        app: &mut App,
+        ctx: &egui::Context,
+        _height: f32,
+        events: Vec<egui::Event>,
+    ) {
         frame_with(app, ctx, events);
     }
 

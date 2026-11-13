@@ -47,10 +47,6 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 Dialog::NewContact | Dialog::MessageNumber => 380.0,
                 Dialog::NewChat => 420.0,
                 Dialog::UnlockLockedChats | Dialog::ConfirmLockChat(_) => 380.0,
-                Dialog::BlockedContacts => {
-                    420.0_f32.min((ui.ctx().content_rect().width() - 48.0).max(180.0))
-                }
-                Dialog::ConfirmBlock { .. } => 380.0,
                 Dialog::ChatInfo(_) if app.gallery.tab.is_some() => {
                     (ui.ctx().content_rect().width() - 64.0).clamp(180.0, 760.0)
                 }
@@ -61,9 +57,6 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     380.0
                 }
                 Dialog::ConfirmClearChat(_) => 380.0,
-                Dialog::ExportChat { .. } => {
-                    380.0_f32.min((ui.ctx().content_rect().width() - 48.0).max(180.0))
-                }
                 Dialog::ConfirmDeleteMessage { .. } | Dialog::ConfirmDeleteSelection { .. } => {
                     380.0
                 }
@@ -119,19 +112,11 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 Dialog::NewChat => new_chat(app, ui),
                 Dialog::UnlockLockedChats => unlock_locked_chats(app, ui),
                 Dialog::ConfirmLockChat(id) => confirm_lock_chat(app, ui, &id),
-                Dialog::BlockedContacts => super::blocking::list(app, ui),
-                Dialog::ConfirmBlock { chat, blocked, .. } => {
-                    super::blocking::confirmation(app, ui, &chat, blocked)
-                }
                 Dialog::ChatInfo(id) => {
                     chat_info(app, ui, &id);
                 }
                 Dialog::ConfirmDeleteChat(id) => confirm_delete_chat(app, ui, &id),
                 Dialog::ConfirmClearChat(id) => confirm_clear_chat(app, ui, &id),
-                Dialog::ExportChat {
-                    chat,
-                    include_media,
-                } => super::chat_export::show(app, ui, &chat, include_media),
                 Dialog::ConfirmDeleteMessage {
                     chat,
                     message,
@@ -902,7 +887,7 @@ fn forward(app: &mut App, ui: &mut egui::Ui, messages: &[String]) {
     let mut chats: Vec<_> = app
         .chats
         .iter()
-        .filter(|chat| forwardable(chat) && !app.blocklist.contains(&chat.id))
+        .filter(|chat| forwardable(chat))
         .filter(|chat| {
             needle.is_empty()
                 || app.chat_title(chat).to_lowercase().contains(&needle)
@@ -2731,7 +2716,6 @@ fn chat_info(app: &mut App, ui: &mut egui::Ui, id: &str) {
         let timer_editable = !chat.locked
             && !chat.left
             && !chat.is_channel()
-            && !app.timer_saving.contains(id)
             && (chat.kind == crate::model::ChatKind::Direct || chat.can_edit_info());
         if timer_editable {
             let current = chat.ephemeral_expiration;
@@ -3055,14 +3039,6 @@ fn chat_info(app: &mut App, ui: &mut egui::Ui, id: &str) {
     }
     if let Some(actions) = fired {
         app.actions.extend(actions);
-    }
-    // Blocking only addresses people; groups and channels draw nothing, so
-    // they keep their exact layout.
-    if crate::blocking::eligible(id, app.me.as_deref(), app.me_lid.as_deref()) {
-        ui.add_space(4.0);
-        ui.vertical_centered(|ui| {
-            super::blocking::button(app, ui, id, super::focus::Stop::Profile)
-        });
     }
 }
 

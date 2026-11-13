@@ -589,14 +589,6 @@ impl Worker {
             self.emit(Event::Error("Calls are one to one only".to_owned()));
             return;
         }
-        // A blocked contact cannot be called from here; the window says so
-        // before the request reaches this point, and the worker refuses one
-        // that arrives anyway.
-        if self.blocklist.contains(&self.canonical_str(&chat)) {
-            self.emit(Event::CallPreparing(false));
-            self.emit(Event::Error("Unblock this contact to call them.".into()));
-            return;
-        }
         let Some(client) = self.client.clone() else {
             self.emit(Event::CallPreparing(false));
             log::warn!("[CALL] cannot start a call: WhatsApp is not connected");
