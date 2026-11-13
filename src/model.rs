@@ -491,6 +491,58 @@ pub struct LinkPreview {
     pub url: String,
     pub title: Option<String>,
     pub description: Option<String>,
+    #[serde(default)]
+    pub video: bool,
+    /// Larger preview hosted by WhatsApp. Its download keys stay in the raw message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<Box<Media>>,
+    /// Content identity of the downloadable picture, without its encryption keys.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_sha256: Option<Vec<u8>>,
+}
+
+impl LinkPreview {
+    /// Cached paths and in-flight downloads must belong to the same picture.
+    pub fn same_picture(&self, other: &Self) -> bool {
+        self.url == other.url && self.image_sha256 == other.image_sha256
+    }
+
+    /// Prefer WhatsApp's video flag; known reel/video links also work when a
+    /// sender omitted it. An ordinary post or article never gets a play badge.
+    pub fn is_video(&self) -> bool {
+        if self.video {
+            return true;
+        }
+        let Ok(url) = reqwest::Url::parse(&self.url) else {
+            return false;
+        };
+        let host = url
+            .host_str()
+            .unwrap_or_default()
+            .trim_start_matches("www.");
+        let path = url.path();
+        match host {
+            "instagram.com" => path.starts_with("/reel/") || path.starts_with("/reels/"),
+            "facebook.com" | "m.facebook.com" => {
+                path.starts_with("/reel/")
+                    || path.starts_with("/reels/")
+                    || path.starts_with("/share/r/")
+                    || path == "/watch"
+                    || path.starts_with("/watch/")
+                    || path.contains("/videos/")
+            }
+            "fb.watch" | "youtu.be" => path.len() > 1,
+            "youtube.com" | "m.youtube.com" => path == "/watch" || path.starts_with("/shorts/"),
+            _ => false,
+        }
+    }
+}
+
+/// A link preview made here for an outgoing message, with its picture as JPEG.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ComposedPreview {
+    pub preview: LinkPreview,
+    pub thumbnail: Option<Vec<u8>>,
 }
 
 pub const EDIT_WINDOW: std::time::Duration = std::time::Duration::from_secs(15 * 60);
@@ -770,6 +822,14 @@ pub enum Content {
     },
     /// "This message was deleted."
     Revoked,
+    /// A disappearing-message timer change, drawn as a centred system row
+    /// rather than a bubble. The message's `from_me` and `sender` say who
+    /// changed it.
+    #[serde(rename = "disappearing_timer")]
+    DisappearingTimer {
+        /// The new duration in seconds; `0` means the timer was turned off.
+        seconds: u32,
+    },
     /// Unsupported content with a user-facing description.
     Unsupported {
         what: String,
@@ -939,6 +999,22 @@ pub const GROUP_NAME_LIMIT: usize = whatsapp_rust::wacore::iq::groups::GROUP_SUB
 /// WhatsApp's longest live location share, in seconds.
 pub const LIVE_LOCATION_LIMIT: i64 = 8 * 60 * 60;
 
+/// The id prefix of the disappearing-timer notices ZapFast files from live
+/// setting changes. They are local system rows, never sent anywhere.
+pub const TIMER_NOTICE_PREFIX: &str = "zapfast-timer-";
+
+/// Whether `id` is one ZapFast made up for a row of its own, which no server
+/// ever issued: a local call entry, or a disappearing-timer notice. Nothing
+/// sent to WhatsApp may name such an id.
+pub fn local_message_id(id: &str) -> bool {
+    id.starts_with("local-call:") || id.starts_with("call-log:") || timer_notice_id(id)
+}
+
+/// Whether `id` names a disappearing-timer notice.
+pub fn timer_notice_id(id: &str) -> bool {
+    id.starts_with(TIMER_NOTICE_PREFIX)
+}
+
 impl Content {
     /// Whether a live location sent at `sent` has stopped by `now`: its
     /// sender ended it, or it has outlived the longest share.
@@ -1016,6 +1092,11 @@ impl Content {
 
     /// [`Self::summary`] with its content label in `locale`.
     pub fn summary_in(&self, locale: crate::i18n::Locale) -> String {
+        // The duration after the label is a phrase of its own, so the whole
+        // line is built in the reader's language rather than only its label.
+        if let Self::DisappearingTimer { seconds } = self {
+            return disappearing_summary(locale, *seconds);
+        }
         let summary = self.summary();
         if self.labelled() {
             localized_summary(locale, &summary).into_owned()
@@ -1026,6 +1107,9 @@ impl Content {
 
     /// [`Self::full_summary`] with its content label in `locale`.
     pub fn full_summary_in(&self, locale: crate::i18n::Locale) -> String {
+        if matches!(self, Self::DisappearingTimer { .. }) {
+            return self.summary_in(locale);
+        }
         let summary = self.full_summary();
         if self.labelled() {
             localized_summary(locale, &summary).into_owned()
@@ -1144,6 +1228,10 @@ impl Content {
             }
             Self::Contact { display_name, .. } => format!("Contact: {display_name}"),
             Self::Poll { question, .. } => format!("Poll: {question}"),
+            Self::DisappearingTimer { seconds } => {
+                crate::util::disappearing_line(crate::i18n::Locale::English, Some(*seconds))
+                    .unwrap_or_else(|| "Disappearing messages changed".to_owned())
+            }
             Self::Revoked => "This message was deleted".to_owned(),
             Self::Unsupported { what } => format!("Unsupported message ({what})"),
             Self::PhoneOnly {
@@ -1173,6 +1261,10 @@ impl Content {
 
     pub fn media(&self) -> Option<&Media> {
         match self {
+            Self::Text {
+                preview: Some(preview),
+                ..
+            } => preview.image.as_deref(),
             Self::Image { media, .. }
             | Self::Video { media, .. }
             | Self::Audio { media, .. }
@@ -1197,10 +1289,28 @@ impl Content {
         }
     }
 
-    /// Carries downloaded file paths over from `old` when rederiving content
-    /// from the raw protobuf: the main attachment and each carousel card's image.
+    /// A changed link must not inherit the previous link's picture or transfer state.
+    pub fn can_reuse_media(&self, old: &Content) -> bool {
+        match (self, old) {
+            (
+                Self::Text {
+                    preview: Some(new), ..
+                },
+                Self::Text {
+                    preview: Some(old), ..
+                },
+            ) => new.same_picture(old),
+            (Self::Text { .. }, _) | (_, Self::Text { .. }) => false,
+            _ => true,
+        }
+    }
+
+    /// Carries downloaded file paths over from `old` when rederiving content:
+    /// the main attachment, link picture and each carousel card's image.
     pub fn keep_local_paths(&mut self, old: &Content) {
-        if let (Some(new), Some(old)) = (self.media_mut(), old.media()) {
+        if self.can_reuse_media(old)
+            && let (Some(new), Some(old)) = (self.media_mut(), old.media())
+        {
             new.path = old.path.clone();
         }
         if let (
@@ -1231,6 +1341,10 @@ impl Content {
 
     pub fn media_mut(&mut self) -> Option<&mut Media> {
         match self {
+            Self::Text {
+                preview: Some(preview),
+                ..
+            } => preview.image.as_deref_mut(),
             Self::Image { media, .. }
             | Self::Video { media, .. }
             | Self::Audio { media, .. }
@@ -1322,6 +1436,14 @@ fn summary_label(
         "Video call" => gettext(locale, "Video call"),
         _ => std::borrow::Cow::Borrowed(label),
     }
+}
+
+/// A timer change's line in `locale`, as the chat list and a notification
+/// show it: "Disappearing messages: 7 days", both parts translated.
+fn disappearing_summary(locale: crate::i18n::Locale, seconds: u32) -> String {
+    // A known duration always reads, so the label alone is only a fallback.
+    crate::util::disappearing_line(locale, Some(seconds))
+        .unwrap_or_else(|| crate::i18n::gettext(locale, "Disappearing messages").into_owned())
 }
 
 /// `summary` with the content label it starts with, such as "Photo" or
@@ -2333,12 +2455,39 @@ pub struct StickerPack {
     pub local: bool,
 }
 
+/// Markup offered for selected composer text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ComposerFormat {
+    Bold,
+    Italic,
+    Strikethrough,
+    Monospace,
+}
+
+impl ComposerFormat {
+    pub fn marker(self) -> &'static str {
+        match self {
+            Self::Bold => "*",
+            Self::Italic => "_",
+            Self::Strikethrough => "~",
+            Self::Monospace => "```",
+        }
+    }
+}
+
 /// GIF search failure.
 #[derive(Clone, Debug, PartialEq)]
 pub struct GifError {
     pub message: String,
     /// GIPHY rejected the API key.
     pub bad_key: bool,
+}
+
+/// One page from GIPHY, with an offset based on all returned API entries.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GifPage {
+    pub gifs: Vec<Gif>,
+    pub next_offset: Option<usize>,
 }
 
 /// A GIF found through GIPHY.
@@ -2374,6 +2523,12 @@ pub enum Dialog {
     NewContact,
     UnlockLockedChats,
     ConfirmLockChat(ChatId),
+    BlockedContacts,
+    ConfirmBlock {
+        chat: ChatId,
+        blocked: bool,
+        from_list: bool,
+    },
     ChatInfo(ChatId),
     /// Manages the local labels.
     Labels,
@@ -2381,6 +2536,10 @@ pub enum Dialog {
     ConfirmDeleteChat(ChatId),
     /// Confirms clearing a chat's messages, which cannot be undone.
     ConfirmClearChat(ChatId),
+    ExportChat {
+        chat: ChatId,
+        include_media: bool,
+    },
     /// Leaves a group or channel, optionally archiving the chat.
     ConfirmLeaveGroup(ChatId),
     /// Confirms deleting one message. The archive is the only copy, so a
@@ -2606,6 +2765,11 @@ impl MessagePinDuration {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
+    FetchBlocklist,
+    SetBlocked {
+        chat: ChatId,
+        blocked: bool,
+    },
     ToggleCallLog,
     StartCall(ChatId),
     StartVideoCall(ChatId),
@@ -2864,6 +3028,11 @@ pub enum Action {
     /// Copy a downloaded attachment to a native drag target.
     DragAttachment(PathBuf),
     OpenFolder(PathBuf),
+    ExportChat {
+        chat: ChatId,
+        include_media: bool,
+    },
+    CancelChatExport,
     /// Saves a copy of a downloaded attachment where the person chooses.
     SaveAttachmentAs {
         path: PathBuf,
@@ -2887,6 +3056,9 @@ pub enum Action {
         message: String,
     },
     CancelReply,
+    /// Takes away the link preview above the composer, for its link only:
+    /// the message goes without one.
+    DismissLinkPreview,
     /// Forwards archived messages to one destination chosen by the caller.
     Forward {
         from_chat: ChatId,
@@ -3046,6 +3218,13 @@ pub enum Action {
     },
     /// Searches GIFs or lists trending results for an empty query.
     SearchGifs(String),
+    MoreGifs,
+    /// Wraps the selected character range in WhatsApp markup.
+    FormatComposer {
+        format: ComposerFormat,
+        start: usize,
+        end: usize,
+    },
     SendGif(Gif),
     React {
         chat: ChatId,
@@ -3351,6 +3530,25 @@ pub struct GalleryState {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn facebook_watch_urls_match_a_path_segment() {
+        for (path, expected) in [
+            ("/watch", true),
+            ("/watch/live", true),
+            ("/watchlist", false),
+        ] {
+            let preview = crate::model::LinkPreview {
+                url: format!("https://www.facebook.com{path}"),
+                title: None,
+                description: None,
+                video: false,
+                image: None,
+                image_sha256: None,
+            };
+            assert_eq!(preview.is_video(), expected, "{path}");
+        }
+    }
+
     /// Checks compatibility with older archived quotes that omitted a source chat.
     #[test]
     fn archived_quotes_without_a_source_chat_remain_readable() {

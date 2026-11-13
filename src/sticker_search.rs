@@ -28,7 +28,12 @@ fn named_emojis(word: &str) -> HashSet<String> {
     }
     for emoji in emojis::iter() {
         let named = emoji.name().to_lowercase().contains(&word)
-            || emoji.shortcodes().any(|code| code.contains(&word));
+            || emoji.shortcodes().any(|code| code.contains(&word))
+            || crate::emoji_es::spanish(emoji.as_str()).is_some_and(|(name, keywords, slug)| {
+                name.to_lowercase().contains(&word)
+                    || keywords.to_lowercase().contains(&word)
+                    || slug.contains(&word)
+            });
         if named {
             found.insert(plain(emoji.as_str()));
         }
@@ -177,6 +182,14 @@ mod tests {
         assert_eq!(
             library_search("DUCK"),
             vec!["/packs/Ducks/1.webp", "/packs/Ducks/2.webp"]
+        );
+    }
+
+    #[test]
+    fn a_spanish_word_finds_stickers_through_the_emoji_it_names() {
+        assert_eq!(
+            library_search("llorando"),
+            vec!["/fav/laugh.webp", "/packs/Ducks/1.webp"]
         );
     }
 

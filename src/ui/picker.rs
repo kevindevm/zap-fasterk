@@ -218,6 +218,13 @@ fn rows_for(
                     || emoji
                         .shortcodes()
                         .any(|code| code.to_lowercase().contains(&query))
+                    || crate::emoji_es::spanish(emoji.as_str()).is_some_and(
+                        |(name, keywords, slug)| {
+                            name.to_lowercase().contains(&query)
+                                || keywords.to_lowercase().contains(&query)
+                                || slug.contains(&query)
+                        },
+                    )
             })
             .map(|emoji| emoji.as_str())
             .collect();
@@ -595,7 +602,7 @@ fn category_tabs(
                 }
                 if response
                     .on_hover_cursor(egui::CursorIcon::PointingHand)
-                    .on_hover_text(label)
+                    .on_hover_text(gettext(app.locale, label))
                     .clicked()
                 {
                     app.picker_search.clear();
@@ -766,7 +773,7 @@ fn emoji_grid(
                     ui.painter().text(
                         pos2(rect.left() + 4.0, rect.bottom() - 8.0),
                         Align2::LEFT_BOTTOM,
-                        *label,
+                        gettext(app.locale, label),
                         theme::semibold(12.5),
                         palette.secondary,
                     );
@@ -812,10 +819,17 @@ fn emoji_grid(
                                 );
                                 line.paint(ui, rect.center() - line.size() / 2.0, palette.text);
                             }
-                            if response
-                                .on_hover_cursor(egui::CursorIcon::PointingHand)
-                                .clicked()
-                            {
+                            let tip = emojis::get(emoji).map(|found| {
+                                let (name, shortcode) = crate::emoji::display(found, app.locale);
+                                format!("{shortcode} {name}")
+                            });
+                            let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+                            let response = if let Some(text) = tip {
+                                response.on_hover_text(text)
+                            } else {
+                                response
+                            };
+                            if response.clicked() {
                                 app.emoji_selected = *first + offset;
                                 picked = Some((*emoji).to_owned());
                             }
@@ -859,6 +873,21 @@ mod emoji_tests {
     #[test]
     fn search_finds_emoji_by_name_and_shortcode() {
         let rows = rows_for("crab", &[], 8, "Recent");
+        let found: Vec<&str> = rows
+            .iter()
+            .filter_map(|row| match row {
+                Row::Emoji { values, .. } => Some(values.as_slice()),
+                Row::Header(_) => None,
+            })
+            .flatten()
+            .copied()
+            .collect();
+        assert!(found.contains(&"🦀"), "{found:?}");
+    }
+
+    #[test]
+    fn search_finds_emoji_by_spanish_name_and_shortcode() {
+        let rows = rows_for("cangrejo", &[], 8, "Recent");
         let found: Vec<&str> = rows
             .iter()
             .filter_map(|row| match row {
@@ -1019,8 +1048,11 @@ fn gif_tab(app: &mut App, ui: &mut egui::Ui, palette: &Palette) {
                 if response.changed() {
                     app.actions.push(Action::SettingsChanged);
                 }
-                if response.lost_focus() && !app.settings.giphy_key.trim().is_empty() {
-                    app.actions.push(Action::SearchGifs(String::new()));
+                if response.lost_focus()
+                    && !app.settings.giphy_key.trim().is_empty()
+                    && app.gif_results.is_empty()
+                {
+                    app.actions.push(Action::SearchGifs(app.gif_query.clone()));
                 }
                 response
             });
@@ -1030,7 +1062,9 @@ fn gif_tab(app: &mut App, ui: &mut egui::Ui, palette: &Palette) {
             field.response.rect,
             f32::from(theme::RADIUS),
         );
-        return;
+        if app.gif_results.is_empty() {
+            return;
+        }
     }
     let mut query = app.picker_search.clone();
     let submit = ui.memory(|memory| memory.has_focus(egui::Id::new("gif-search")))
@@ -1047,8 +1081,12 @@ fn gif_tab(app: &mut App, ui: &mut egui::Ui, palette: &Palette) {
     if query != app.picker_search {
         app.picker_search = query.clone();
     }
-    if submit && query.trim() != app.gif_query.trim() {
-        app.actions.push(Action::SearchGifs(query));
+    if submit && (query.trim() != app.gif_query.trim() || app.gif_error.is_some()) {
+        if query.trim() == app.gif_query.trim() && app.gif_next_offset.is_some() {
+            app.actions.push(Action::MoreGifs);
+        } else {
+            app.actions.push(Action::SearchGifs(query));
+        }
     }
     if app.gif_pending {
         ui.horizontal(|ui| {
@@ -1060,7 +1098,7 @@ fn gif_tab(app: &mut App, ui: &mut egui::Ui, palette: &Palette) {
                 palette.secondary,
             );
         });
-    } else if let Some(error) = &app.gif_error {
+    } else if let Some(error) = app.gif_error.as_ref().filter(|error| !error.bad_key) {
         theme::paragraph(ui, &error.message, theme::regular(13.0), palette.danger);
     }
     let results = app.gif_results.clone();
@@ -1105,6 +1143,16 @@ fn gif_tab(app: &mut App, ui: &mut egui::Ui, palette: &Palette) {
                         }
                     }
                 });
+            }
+            if !app.gif_pending && app.gif_next_offset.is_some() {
+                let label = if app.gif_error.is_some() {
+                    gettext(app.locale, "Retry")
+                } else {
+                    gettext(app.locale, "Load more")
+                };
+                if theme::soft_button(ui, palette, None, &label, false).clicked() {
+                    app.actions.push(Action::MoreGifs);
+                }
             }
             if results.is_empty() && !app.gif_pending && app.gif_error.is_none() {
                 ui.add_space(20.0);
@@ -1684,6 +1732,11 @@ fn sticker_grid(
                     .width(menu_width)
                     .frame(widgets::menu_frame(palette))
                     .show(|ui| {
+                        // Lottie is receive-only; picker send/favorite/pack
+                        // actions currently assume raw WebP bytes.
+                        if path.extension().is_some_and(|extension| extension == "was") {
+                            return;
+                        }
                         if shelf == Shelf::Favorites {
                             if widgets::menu_item(ui, palette, Some(Icon::StarOff), &remove_label) {
                                 choices.forget = Some(path.clone());
@@ -1714,6 +1767,7 @@ fn sticker_grid(
                 if response
                     .on_hover_cursor(egui::CursorIcon::PointingHand)
                     .clicked()
+                    && path.extension().is_none_or(|extension| extension != "was")
                 {
                     choices.send = Some(path.clone());
                 }
@@ -1900,6 +1954,9 @@ fn moves(ctx: &egui::Context, path: &Path) -> bool {
 /// Returns `None` when the header cannot be read, so the caller can tell a read
 /// failure from a still image and retry instead of memoizing the failure.
 fn probe_motion(path: &Path) -> Option<bool> {
+    if path.extension().is_some_and(|extension| extension == "was") {
+        return Some(true);
+    }
     let mut head = [0u8; 64];
     let mut file = std::fs::File::open(path).ok()?;
     let read = std::io::Read::read(&mut file, &mut head).ok()?;

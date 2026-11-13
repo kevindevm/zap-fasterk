@@ -47,6 +47,10 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 Dialog::NewContact | Dialog::MessageNumber => 380.0,
                 Dialog::NewChat => 420.0,
                 Dialog::UnlockLockedChats | Dialog::ConfirmLockChat(_) => 380.0,
+                Dialog::BlockedContacts => {
+                    420.0_f32.min((ui.ctx().content_rect().width() - 48.0).max(180.0))
+                }
+                Dialog::ConfirmBlock { .. } => 380.0,
                 Dialog::ChatInfo(_) if app.gallery.tab.is_some() => {
                     (ui.ctx().content_rect().width() - 64.0).clamp(180.0, 760.0)
                 }
@@ -57,6 +61,9 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     380.0
                 }
                 Dialog::ConfirmClearChat(_) => 380.0,
+                Dialog::ExportChat { .. } => {
+                    380.0_f32.min((ui.ctx().content_rect().width() - 48.0).max(180.0))
+                }
                 Dialog::ConfirmDeleteMessage { .. } | Dialog::ConfirmDeleteSelection { .. } => {
                     380.0
                 }
@@ -112,11 +119,19 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 Dialog::NewChat => new_chat(app, ui),
                 Dialog::UnlockLockedChats => unlock_locked_chats(app, ui),
                 Dialog::ConfirmLockChat(id) => confirm_lock_chat(app, ui, &id),
+                Dialog::BlockedContacts => super::blocking::list(app, ui),
+                Dialog::ConfirmBlock { chat, blocked, .. } => {
+                    super::blocking::confirmation(app, ui, &chat, blocked)
+                }
                 Dialog::ChatInfo(id) => {
                     chat_info(app, ui, &id);
                 }
                 Dialog::ConfirmDeleteChat(id) => confirm_delete_chat(app, ui, &id),
                 Dialog::ConfirmClearChat(id) => confirm_clear_chat(app, ui, &id),
+                Dialog::ExportChat {
+                    chat,
+                    include_media,
+                } => super::chat_export::show(app, ui, &chat, include_media),
                 Dialog::ConfirmDeleteMessage {
                     chat,
                     message,
@@ -887,7 +902,7 @@ fn forward(app: &mut App, ui: &mut egui::Ui, messages: &[String]) {
     let mut chats: Vec<_> = app
         .chats
         .iter()
-        .filter(|chat| forwardable(chat))
+        .filter(|chat| forwardable(chat) && !app.blocklist.contains(&chat.id))
         .filter(|chat| {
             needle.is_empty()
                 || app.chat_title(chat).to_lowercase().contains(&needle)
@@ -2716,6 +2731,7 @@ fn chat_info(app: &mut App, ui: &mut egui::Ui, id: &str) {
         let timer_editable = !chat.locked
             && !chat.left
             && !chat.is_channel()
+            && !app.timer_saving.contains(id)
             && (chat.kind == crate::model::ChatKind::Direct || chat.can_edit_info());
         if timer_editable {
             let current = chat.ephemeral_expiration;
@@ -2753,6 +2769,14 @@ fn chat_info(app: &mut App, ui: &mut egui::Ui, id: &str) {
             };
             if danger_button(ui, app, leave_label.as_ref()) {
                 leave = true;
+            }
+        }
+        // Our own details, under either of our ids, share no groups with us.
+        if !chat.is_group() && !chat.is_channel() && !app.our_ids().contains(&id) {
+            let groups = groups_in_common(app, id);
+            if !groups.is_empty() {
+                ui.add_space(8.0);
+                common_groups(app, ui, id, &groups);
             }
         }
     });
@@ -3032,6 +3056,14 @@ fn chat_info(app: &mut App, ui: &mut egui::Ui, id: &str) {
     if let Some(actions) = fired {
         app.actions.extend(actions);
     }
+    // Blocking only addresses people; groups and channels draw nothing, so
+    // they keep their exact layout.
+    if crate::blocking::eligible(id, app.me.as_deref(), app.me_lid.as_deref()) {
+        ui.add_space(4.0);
+        ui.vertical_centered(|ui| {
+            super::blocking::button(app, ui, id, super::focus::Stop::Profile)
+        });
+    }
 }
 
 /// Where the pencil that renames a group was drawn, for interaction tests.
@@ -3089,6 +3121,119 @@ pub fn disappearing_timer_id() -> egui::Id {
 pub struct TimerRow {
     pub text: String,
     pub rect: egui::Rect,
+}
+
+/// The groups `person` shares with us, as `(id, name)`: those whose member
+/// list includes them and us. Groups we left are not shared any more, and a
+/// locked group stays in the locked folder rather than showing here.
+fn groups_in_common(app: &App, person: &str) -> Vec<(String, String)> {
+    let ours = app.our_ids();
+    let mut groups: Vec<(String, String)> = app
+        .chats
+        .iter()
+        .filter(|chat| chat.is_group() && !chat.left && !chat.locked)
+        // A member list without us is a group we are out of, however we got
+        // out of it.
+        .filter(|chat| {
+            let has = |id: &str| chat.participants.iter().any(|member| member == id);
+            has(person) && ours.iter().copied().any(has)
+        })
+        .map(|chat| (chat.id.clone(), app.chat_title(chat)))
+        .collect();
+    groups.sort_by_key(|(_, name)| name.to_lowercase());
+    groups
+}
+
+/// The groups in common with `person`, each opening its chat.
+fn common_groups(app: &mut App, ui: &mut egui::Ui, person: &str, groups: &[(String, String)]) {
+    let palette = app.palette;
+    theme::text(
+        ui,
+        crate::i18n::ngettext(
+            app.locale,
+            "{} group in common",
+            "{} groups in common",
+            groups.len() as u32,
+        )
+        .replace("{}", &groups.len().to_string()),
+        theme::medium(12.5),
+        palette.secondary,
+    );
+    ui.add_space(4.0);
+    let row_height = 30.0;
+    let mut open = None;
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.y = 0.0;
+        // Every row is laid out, not only the visible ones, so Tab reaches
+        // each group and the list scrolls to the one with the focus.
+        let mut focused = false;
+        let list = egui::ScrollArea::vertical()
+            .id_salt(("groups-in-common", person))
+            .max_height(row_height * 6.0)
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                for (group, name) in groups {
+                    // The id comes from the group alone, not its place in the
+                    // list, so focus stays with the group when the list reorders.
+                    let size = egui::vec2(ui.available_width(), row_height);
+                    let (_, rect) = ui.allocate_space(size);
+                    let id = ui.make_persistent_id(group);
+                    let response = ui.interact(rect, id, egui::Sense::click());
+                    focused |= response.gained_focus();
+                    theme::reveal_focus(&response);
+                    theme::focus_outline(ui, response.id, rect, 6.0);
+                    response.widget_info(|| {
+                        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name)
+                    });
+                    if ui.is_rect_visible(rect) {
+                        if response.hovered() {
+                            ui.painter().rect_filled(rect, 6.0, palette.surface_hover);
+                        }
+                        let picture = app.avatar(group);
+                        let avatar = egui::Rect::from_center_size(
+                            egui::pos2(rect.left() + 16.0, rect.center().y),
+                            egui::Vec2::splat(24.0),
+                        );
+                        super::widgets::paint_avatar(
+                            ui,
+                            &palette,
+                            avatar,
+                            name,
+                            group,
+                            picture.as_deref(),
+                        );
+                        let line = super::widgets::line(
+                            ui,
+                            name,
+                            theme::regular(13.0),
+                            palette.text,
+                            (rect.width() - 38.0).max(20.0),
+                            1,
+                        );
+                        line.paint(
+                            ui,
+                            egui::pos2(rect.left() + 34.0, rect.center().y - line.size().y / 2.0),
+                            palette.text,
+                        );
+                    }
+                    if response
+                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                        .clicked()
+                    {
+                        open = Some(group.clone());
+                    }
+                }
+            });
+        // The list's own scrolling stops at its edge, so the panel brings the
+        // list into view too when Tab lands on a row below its fold.
+        if focused {
+            ui.scroll_to_rect(list.inner_rect, None);
+        }
+    });
+    if let Some(group) = open {
+        app.actions
+            .extend([Action::OpenChat(group), Action::CloseDialog]);
+    }
 }
 
 /// Where the group photo that opens its menu was drawn, for interaction tests.
@@ -3274,6 +3419,45 @@ pub(super) fn danger_button(ui: &mut egui::Ui, app: &mut App, label: &str) -> bo
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn groups_in_common_are_the_groups_we_still_share_by_name() {
+        use crate::model::Chat;
+        let directory = tempfile::tempdir().unwrap();
+        let (mut app, _events) = crate::app::App::headless(
+            crate::paths::AppDirs::under(directory.path()),
+            crate::settings::Settings::default(),
+        );
+        let me = "15550001111@s.whatsapp.net";
+        app.me = Some(me.to_owned());
+        let ada = "1@s.whatsapp.net";
+        let group = |id: &str, name: &str, members: &[&str]| {
+            let mut chat = Chat::new(id.into(), name.into());
+            chat.group_subject_known = true;
+            chat.participants = members.iter().map(|member| (*member).to_owned()).collect();
+            chat
+        };
+        let mut left = group("3@g.us", "Left", &[ada, me]);
+        left.left = true;
+        let mut locked = group("4@g.us", "Locked", &[ada, me]);
+        locked.locked = true;
+        app.chats = vec![
+            group("1@g.us", "Zeta", &[ada, "2@s.whatsapp.net", me]),
+            group("2@g.us", "alpha", &[ada, me]),
+            group("5@g.us", "Without Ada", &["2@s.whatsapp.net", me]),
+            // A member list without us: Ada is still in it, we are not.
+            group("6@g.us", "Removed", &[ada]),
+            left,
+            locked,
+            Chat::new(ada.into(), "Ada".into()),
+        ];
+        let names: Vec<String> = super::groups_in_common(&app, ada)
+            .into_iter()
+            .map(|(_, name)| name)
+            .collect();
+        assert_eq!(names, ["alpha", "Zeta"]);
+        assert!(super::groups_in_common(&app, "9@s.whatsapp.net").is_empty());
+    }
+
     #[test]
     fn chat_info_docks_only_when_the_conversation_has_room_and_is_accessible() {
         let root =

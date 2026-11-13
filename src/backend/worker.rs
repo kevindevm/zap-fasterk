@@ -42,6 +42,7 @@ use whatsapp_rust::{MediaRetryResult, MediaReuploadRequest};
 
 mod bot_replies;
 mod channel_pictures;
+mod chat_export;
 mod contact_names;
 mod device_store;
 mod download_organization;
@@ -52,11 +53,15 @@ mod automation;
 mod background_history;
 mod background_media;
 mod backup_merge;
+mod blocking;
 mod cache_retention;
 mod calls;
 mod disappearing;
 mod favorite_chats;
 mod interactive;
+mod link_preview;
+mod link_preview_fetch;
+mod link_preview_setting;
 mod link_watch;
 mod outgoing;
 mod poll_history;
@@ -110,7 +115,7 @@ impl Drop for WorkerTiming {
 }
 use crate::model::{
     ATTACHMENT_DOWNLOAD_LIMIT, Chat, ChatId, ChatKind, Contact, Content, Delivery, Gif, GifError,
-    LIVE_LOCATION_LIMIT, LinkPreview, Media, MentionRef, Message, Quoted, Reaction,
+    GifPage, LIVE_LOCATION_LIMIT, LinkPreview, Media, MentionRef, Message, Quoted, Reaction,
 };
 use crate::paths::AccountDirs;
 use crate::privacy::{self, PrivacyChoice, PrivacyKind};
@@ -677,6 +682,8 @@ pub async fn run(
             (None, true)
         }
     };
+    let (link_previews_disabled, link_previews_unknown) =
+        link_preview_setting::link_previews_at_start(archive.link_previews_disabled());
     // Likewise only contacts synced before first names were kept lack them.
     let first_names_recovered = archive
         .meta(contact_names::FIRST_NAMES_RECOVERED)
@@ -710,6 +717,7 @@ pub async fn run(
         privacy_warned: false,
         privacy_recovering: false,
         privacy_generation: 0,
+        blocklist: Default::default(),
         message_removals_in_flight: HashSet::new(),
         contact_generation: 0,
 
@@ -760,6 +768,10 @@ pub async fn run(
         keep_chats_archived: true,
         phone_unarchive_chats,
         phone_unarchive_unread,
+        link_previews_disabled,
+        link_previews_unknown,
+        link_previews_reading: false,
+        preview_fetch: None,
         online_wanted: false,
         online_changed: Instant::now(),
         online_sent: None,
@@ -806,6 +818,7 @@ pub async fn run(
         pending_outbound_order: None,
         read_sync: ReadSync::default(),
         favorite_chats: Default::default(),
+        chat_export: Default::default(),
         poll_decrypting: 0,
         poll_history: Default::default(),
         background_history: Default::default(),
@@ -822,7 +835,6 @@ pub async fn run(
         outgoing_call_request: None,
         call_preparing_signals: Default::default(),
         call_video_preparing: None,
-        disappearing_pending: HashSet::new(),
         call_prepare_generation: 0,
         call_devices: Default::default(),
         call_device_discovery: Default::default(),
@@ -839,6 +851,7 @@ pub async fn run(
         poll_sending: HashSet::new(),
         interactive_sending: HashMap::new(),
         awaiting_ack: HashMap::new(),
+        early_acks: HashMap::new(),
         receipts_watch: None,
         receipts_pruned: Instant::now(),
         early: Default::default(),
@@ -861,6 +874,7 @@ pub async fn run(
         _ => {}
     }
     worker.backfill();
+    worker.backfill_lottie_stickers();
     worker.backfill_media_albums();
     worker.backfill_video_notes();
     worker.backfill_view_once();
@@ -868,6 +882,7 @@ pub async fn run(
     worker.backfill_hd_copies();
     worker.backfill_group_status_mentions();
     worker.backfill_interactive();
+    worker.backfill_link_previews();
     worker.backfill_call_entries();
     worker.relocate_media();
     discard_attachment_staging(&worker.dirs.media_cache_dir());
@@ -914,6 +929,9 @@ pub async fn run(
                 RuntimeEvent::FavoriteChatsRead { generation, complete } => {
                     worker.favorite_chats_read(generation, complete);
                 }
+                RuntimeEvent::LinkPreviewsRead { generation, complete } => {
+                    worker.link_previews_read(generation, complete);
+                }
             },
             _ = async {
                 match deadline {
@@ -943,6 +961,7 @@ pub async fn run(
                 worker.refresh_legacy_preferences();
                 worker.expire_older_requests();
                 worker.expire_disappearing_messages();
+                worker.expire_timer_acks();
                 if !worker.stories.rows_empty() { worker.emit_statuses(); }
                 WorkerTiming::run("retry-avatars", || worker.retry_avatars());
                 WorkerTiming::run("pump-group-info", || worker.pump_group_info());
@@ -964,6 +983,7 @@ pub async fn run(
             }
         }
     }
+    worker.stop_chat_export().await;
     worker.shutdown_call().await;
     worker.stop_bot().await;
 }
@@ -989,6 +1009,8 @@ enum RuntimeEvent {
     },
     /// The one-time read of the phone's favorite chats finished.
     FavoriteChatsRead { generation: u64, complete: bool },
+    /// The one-time read of the phone's link preview setting finished.
+    LinkPreviewsRead { generation: u64, complete: bool },
 }
 
 /// Complete only a previously persisted logout intent, retaining it on failure.
@@ -1132,6 +1154,15 @@ struct EditRequest {
     draft: EditDraft,
 }
 
+/// What a server ack settles.
+#[derive(Clone)]
+enum AwaitingAck {
+    /// One of our sent messages, not yet placed at the server's time.
+    Message(ChatId),
+    /// A direct disappearing-timer change, not yet accepted.
+    Timer(disappearing::TimerAck),
+}
+
 #[derive(Default)]
 struct PendingEdits {
     latest: u64,
@@ -1208,6 +1239,7 @@ struct Worker {
     privacy_warned: bool,
     privacy_recovering: bool,
     privacy_generation: u64,
+    blocklist: crate::blocking::Blocklist,
     /// Serializes requests for one message, including across privacy-id mapping.
     message_removals_in_flight: HashSet<(ChatId, String)>,
     contact_generation: u64,
@@ -1227,6 +1259,8 @@ struct Worker {
     read_sync: ReadSync,
     /// Sending favorite chats to the phone, and reading its list once.
     favorite_chats: favorite_chats::FavoriteChats,
+    /// A chat export to a text file, optionally with its attachments.
+    chat_export: chat_export::State,
     poll_decrypting: usize,
     poll_history: poll_history::Requests,
     background_history: background_history::Recovery,
@@ -1244,7 +1278,6 @@ struct Worker {
     call_prepare_generation: u64,
     call_preparing_signals: std::collections::VecDeque<calls::PreparationSignal>,
     call_video_preparing: Option<(u64, tokio::task::JoinHandle<()>)>,
-    disappearing_pending: HashSet<String>,
     call_devices: crate::calls::DeviceList,
     call_device_discovery: calls::DeviceDiscovery,
     stories: statuses::Stories,
@@ -1259,9 +1292,13 @@ struct Worker {
     history_storage_ok: std::cell::Cell<bool>,
     poll_sending: HashSet<(ChatId, String)>,
     interactive_sending: HashMap<(ChatId, String), String>,
-    /// Messages we sent that WhatsApp has not acknowledged yet, by id, with
-    /// their chat: the first ack's server time replaces their local stamp.
-    awaiting_ack: HashMap<String, ChatId>,
+    /// Messages we sent that WhatsApp has not acknowledged yet, by id: our sent messages,
+    /// whose first ack's server time replaces their local stamp, and direct
+    /// disappearing-timer changes, which are written only once accepted.
+    awaiting_ack: HashMap<String, AwaitingAck>,
+    /// Message acks seen before their `TimerSet`, by message id and bounded in
+    /// time and count.
+    early_acks: HashMap<String, disappearing::EarlyAck>,
     /// The group message whose "Message info" is open.
     receipts_watch: Option<(ChatId, String)>,
     /// When receipts that never found their message were last dropped.
@@ -1333,6 +1370,15 @@ struct Worker {
     /// The stored phone setting could not be read at startup; it is read
     /// again when needed, and chats stay archived until it is.
     phone_unarchive_unread: bool,
+    /// The phone's own "Disable link previews": while on, nothing is fetched
+    /// for a link we send. Also on until the phone has said.
+    link_previews_disabled: bool,
+    /// The phone has not said yet, so its setting is read from a snapshot.
+    link_previews_unknown: bool,
+    /// That read is running.
+    link_previews_reading: bool,
+    /// The composer's page fetch in flight; a newer request aborts it.
+    preview_fetch: Option<tokio::task::JoinHandle<()>>,
     /// Whether the window is focused and visible.
     online_wanted: bool,
     /// When `online_wanted` last changed.
@@ -1608,7 +1654,9 @@ impl Worker {
         if !self.privacy_ready
             && matches!(
                 event,
-                Event::Chats(_)
+                Event::Blocklist { .. }
+                    | Event::BlocklistMapped { .. }
+                    | Event::Chats(_)
                     | Event::Drafts(_)
                     | Event::ChatHits { .. }
                     | Event::ChatUpdated(_)
@@ -1633,19 +1681,29 @@ impl Worker {
         self.waker.wake();
     }
 
+    /// Settles what a server ack is for: a message of ours waiting for its
+    /// server time, a direct disappearing-timer change waiting for acceptance,
+    /// or neither yet, held briefly in case the timer change names it.
+    fn server_ack(&mut self, ack: &wa_events::ServerAck) {
+        if ack.class.as_deref() != Some("message") {
+            return;
+        }
+        match self.awaiting_ack.get(&ack.id).cloned() {
+            Some(AwaitingAck::Message(chat)) => self.place_sent_message(chat, ack),
+            Some(AwaitingAck::Timer(_)) => self.settle_timer_ack(ack),
+            // An ack can outrun the completion that names the timer change it
+            // belongs to; hold it briefly, bounded in time and count.
+            None => self.hold_early_ack(ack),
+        }
+    }
+
     /// Syncs a chat setting to the phone without blocking the worker.
     /// Moves a message we sent to the time WhatsApp's server acknowledged it.
     /// Only the first ack with a time counts: a resend after a retry receipt
     /// is acked again, later, and must not move the message down the chat.
     /// An ack without a usable time leaves the message waiting for one.
-    fn server_ack(&mut self, ack: &wa_events::ServerAck) {
-        if ack.class.as_deref() != Some("message") {
-            return;
-        }
+    fn place_sent_message(&mut self, chat: ChatId, ack: &wa_events::ServerAck) {
         let Some(at) = ack.timestamp.filter(|_| ack.error.is_none()) else {
-            return;
-        };
-        let Some(chat) = self.awaiting_ack.get(&ack.id).cloned() else {
             return;
         };
         match self.archive.restamp_sent(&chat, &ack.id, at.timestamp()) {
@@ -1857,6 +1915,7 @@ impl Worker {
         self.group_info_retry.retain(|(_, id)| id != chat);
         self.group_info_requested.remove(chat);
         self.group_info_tries.remove(chat);
+        self.cancel_chat_export_for(chat);
         match self.archive.remove_chat_through(chat, through, true) {
             Ok(removed) => {
                 self.discard_removed_edits(chat);
@@ -1891,6 +1950,7 @@ impl Worker {
     /// Empties a chat while keeping it listed.
     /// Empties a chat through `through`; false when the archive could not.
     fn empty_chat(&mut self, chat: &str, through: i64, delete_media: bool) -> bool {
+        self.cancel_chat_export_for(chat);
         match self.archive.remove_chat_through(chat, through, false) {
             Ok(removed) => {
                 self.discard_removed_edits(chat);
@@ -1939,7 +1999,11 @@ impl Worker {
         }
     }
 
-    fn emit_chats(&self) {
+    fn emit_chats(&mut self) {
+        self.emit_chats_mapped(None);
+    }
+
+    fn emit_chats_mapped(&mut self, mapping: Option<(ChatId, ChatId)>) {
         match self.archive.chats() {
             Ok(mut chats) => {
                 // Early preference sync can create an empty privacy-id row.
@@ -1948,7 +2012,15 @@ impl Worker {
                 for chat in &mut chats {
                     self.polish_chat(chat);
                 }
-                self.emit(Event::Chats(chats));
+                self.emit(match mapping {
+                    Some((from, to)) => Event::BlocklistMapped {
+                        from,
+                        to,
+                        chats,
+                        state: self.blocklist.clone(),
+                    },
+                    None => Event::Chats(chats),
+                });
                 self.emit_labels();
                 self.emit(Event::Drafts(self.archive.drafts().unwrap_or_default()));
             }
@@ -1996,9 +2068,15 @@ impl Worker {
     }
 
     fn emit_chat(&self, id: &str) {
-        if let Ok(Some(mut chat)) = self.archive.chat(id) {
-            self.polish_chat(&mut chat);
-            self.emit(Event::ChatUpdated(Box::new(chat)));
+        match self.archive.chat(id) {
+            Ok(Some(mut chat)) => {
+                if chat.locked {
+                    self.cancel_chat_export_for(id);
+                }
+                self.polish_chat(&mut chat);
+                self.emit(Event::ChatUpdated(Box::new(chat)));
+            }
+            _ => self.cancel_chat_export_for(id),
         }
     }
 
@@ -2025,8 +2103,21 @@ impl Worker {
             self.presence_pending = None;
             self.online_sent = None;
             self.presence_retry = Instant::now();
+            // Dropping the link ends what was in flight. An idle list has
+            // nothing new to tell the window.
+            let mut blocks_changed = false;
+            if !status.is_connected() {
+                blocks_changed = self.blocklist.loading || self.blocklist.pending;
+                self.blocklist.invalidate();
+                if matches!(status, LinkStatus::LoggedOut) {
+                    blocks_changed |= self.blocklist.ids.take().is_some();
+                }
+            }
             self.status = status.clone();
             self.emit(Event::Link(status));
+            if blocks_changed {
+                self.publish_blocklist(None);
+            }
             // A lost link fails unsent messages at once; a restored one
             // sends what waits.
             self.pump_outgoing();
@@ -2155,6 +2246,7 @@ impl Worker {
             self.emit(self.me_event());
         }
         self.emit(Event::Contacts(self.contacts.values().cloned().collect()));
+        self.emit(Event::LinkPreviewsDisabled(self.link_previews_disabled));
         self.emit_chats();
         // Remembered statuses come back too, so a restart still shows the
         // unexpired ones. Runs on every reveal: already loaded rows win.
@@ -2222,6 +2314,56 @@ impl Worker {
                 "attachments: {moved} re-pointed to {}, {forgotten} to fetch again",
                 dir.display()
             );
+        }
+    }
+
+    /// Reclassify previously unsupported Lottie stickers without replaying
+    /// the entire message archive. Raw protobufs retain the media keys.
+    fn backfill_lottie_stickers(&mut self) {
+        const KEY: &str = "lottie_stickers";
+        if self.archive.meta(KEY).ok().flatten().as_deref() == Some("1") {
+            return;
+        }
+        let rows = match self.archive.unsupported_with_raw() {
+            Ok(rows) => rows,
+            Err(error) => {
+                log::warn!("could not read archived Lottie stickers: {error}");
+                return;
+            }
+        };
+        let mut updated = 0;
+        let mut failed = false;
+        for (chat, id, raw) in rows {
+            let Ok(message) = wa::Message::decode_from_slice(&raw) else {
+                continue;
+            };
+            if !message.get_base_message().lottie_sticker_message.is_set() {
+                continue;
+            }
+            let Some(content @ Content::Sticker { .. }) = classify(&message) else {
+                continue;
+            };
+            let Some(old) = self.archive.message(&chat, &id).ok().flatten() else {
+                continue;
+            };
+            if old.edited {
+                continue;
+            }
+            match self.archive.set_content(&chat, &id, &content, false) {
+                Ok(true) => updated += 1,
+                Ok(false) => {}
+                Err(error) => {
+                    log::warn!("could not reclassify archived Lottie sticker: {error}");
+                    failed = true;
+                }
+            }
+        }
+        if !failed && let Err(error) = self.archive.set_meta(KEY, "1") {
+            log::warn!("could not mark Lottie archive migration complete: {error}");
+        }
+        if updated > 0 {
+            log::info!("reclassified {updated} archived Lottie stickers");
+            self.emit_chats();
         }
     }
 
@@ -2949,6 +3091,7 @@ impl Worker {
         }
         self.privacy_ready = true;
         self.load_state();
+        self.publish_blocklist(None);
         self.replay_call();
         self.emit(Event::Syncing(self.syncing));
         // The picker may have been sent an empty Received shelf meanwhile.
@@ -2965,6 +3108,7 @@ impl Worker {
     }
 
     async fn stop_bot(&mut self) {
+        self.blocklist.invalidate();
         if let Some(client) = self.client.take() {
             self.device_store_release = Some(client.store_release());
         }
@@ -2981,7 +3125,11 @@ impl Worker {
         // its in-flight row becomes unconfirmed because transmission is uncertain.
         self.abandon_outgoing();
         // Acks belong to the session that sent; the next one never answers.
+        // A connection stop drops pending acks, so no deadline remains to
+        // release their controls: clear both aliases first.
+        self.clear_timer_saving();
         self.awaiting_ack.clear();
+        self.early_acks.clear();
         if let Some(handle) = self.handle.take()
             && tokio::time::timeout(Duration::from_secs(5), handle.shutdown())
                 .await
@@ -3098,11 +3246,20 @@ impl Worker {
             }
         };
         self.lid_to_pn.insert(lid.to_owned(), pn.to_owned());
-        if changed {
-            self.emit_chats();
-        }
         let chat = format!("{pn}@s.whatsapp.net");
         let lid_chat = format!("{lid}@lid");
+        let blocks_changed = self.blocklist.ids.as_mut().is_some_and(|ids| {
+            let removed = ids.remove(&lid_chat);
+            if removed {
+                ids.insert(chat.clone());
+            }
+            removed
+        });
+        if changed || blocks_changed {
+            // Separate events could expose either the old or the new id
+            // without its lock for one frame. Apply both snapshots together.
+            self.emit_chats_mapped(Some((lid_chat.clone(), chat.clone())));
+        }
         if let Some(update) = self.deferred_archive_updates.remove(&lid_chat) {
             let canonical = self
                 .deferred_archive_updates
@@ -3681,6 +3838,7 @@ impl Worker {
                 self.remember_identity(pn, lid, name);
                 WorkerTiming::run("recover-outgoing", || self.recover_outgoing());
                 self.set_status(LinkStatus::Connected);
+                self.fetch_blocklist();
                 self.retry_message_removals();
                 // A new connection may reach a phone that was away before.
                 self.older_warned.clear();
@@ -3689,6 +3847,7 @@ impl Worker {
                 self.pump_read_sync();
                 self.pump_archive_sync();
                 self.pump_favorite_chats();
+                self.recover_link_previews();
                 self.poll_history.reconnect(Instant::now());
                 self.background_history.reconnect();
                 self.push_favorites();
@@ -3874,18 +4033,73 @@ impl Worker {
                     }
                 }
                 if let GroupNotificationAction::Ephemeral { expiration, .. } = &*update.action {
-                    self.ensure_chat(&chat, None);
                     let timestamp = update.timestamp.timestamp();
-                    let accepted = self
-                        .archive
-                        .set_ephemeral(&chat, *expiration, timestamp)
-                        .unwrap_or(false);
-                    log::debug!(
-                        target: "zapfasterk::disappearing",
-                        "group timer update: duration={expiration}s timestamp={timestamp} accepted={accepted}"
-                    );
-                    if accepted {
-                        self.emit_chat(&chat);
+                    // Message removal does not order a timer setting, so a
+                    // newer setting that predates a clear still applies. Only
+                    // a chat removed outright is not brought back by one.
+                    let deleted = self.archive.chat(&chat).ok().flatten().is_none()
+                        && self.predates_removal(&chat, timestamp);
+                    if !deleted {
+                        self.ensure_chat(&chat, None);
+                        let accepted = self
+                            .archive
+                            .set_ephemeral(&chat, *expiration, timestamp)
+                            .unwrap_or(false);
+                        log::debug!(
+                            target: "zapfasterk::disappearing",
+                            "group timer update: duration={expiration}s timestamp={timestamp} accepted={accepted}"
+                        );
+                        if accepted {
+                            // The actor may arrive as a LID or a phone number.
+                            // A notice may name the actor only by a privacy
+                            // id: the notification carries the phone number
+                            // beside it, so learn the pair and name the
+                            // contact rather than "Unknown".
+                            if let (Some(lid), Some(pn)) =
+                                (&update.participant, &update.participant_pn)
+                            {
+                                self.learn_pair(lid, pn);
+                            }
+                            let raw_actor = update
+                                .participant_pn
+                                .as_ref()
+                                .or(update.participant.as_ref());
+                            let actor =
+                                raw_actor.map(|jid| self.canonical(jid)).unwrap_or_default();
+                            let from_me = !actor.is_empty() && actor == self.me();
+                            // Two notifications without an id must not share a
+                            // key: the fallback carries the timestamp, action,
+                            // actor and duration that tell them apart.
+                            let key_actor = raw_actor
+                                .map(|jid| jid.to_string())
+                                .unwrap_or_else(|| "unknown".to_owned());
+                            let id = match update.notification_id.as_deref() {
+                                Some(notification) => format!(
+                                    "{}{}-{}",
+                                    crate::model::TIMER_NOTICE_PREFIX,
+                                    notification,
+                                    update.action_index
+                                ),
+                                None => format!(
+                                    "{}{}-{}-{}-{}",
+                                    crate::model::TIMER_NOTICE_PREFIX,
+                                    timestamp,
+                                    update.action_index,
+                                    key_actor,
+                                    expiration
+                                ),
+                            };
+                            self.file_timer_notice(
+                                &chat,
+                                &id,
+                                actor,
+                                from_me,
+                                timestamp,
+                                *expiration,
+                                update.notify.as_deref(),
+                            );
+                            self.emit_chat(&chat);
+                        }
                     }
                 }
                 // Who may edit the group's info changes at once; the refresh
@@ -4059,6 +4273,23 @@ impl Worker {
                     }
                 }
             }
+            E::DisableLinkPreviewsUpdate(update) => {
+                // The phone has spoken, stored or not, so the end of a
+                // snapshot must not take its silence for the default.
+                self.link_previews_unknown = false;
+                match self.archive.set_link_previews_disabled_at(
+                    update.previews_disabled,
+                    update.timestamp.timestamp_millis(),
+                ) {
+                    Ok(disabled) => {
+                        self.link_previews_disabled = disabled;
+                        self.emit(Event::LinkPreviewsDisabled(disabled));
+                    }
+                    Err(error) => {
+                        log::warn!("could not store the phone's link preview setting: {error}")
+                    }
+                }
+            }
             E::OfflineSyncCompleted(_) => self.emit_chats(),
             E::ServerAck(ack) => self.server_ack(ack),
             _ => {}
@@ -4140,6 +4371,7 @@ impl Worker {
 
     /// Invalidates account-scoped work and clears the unlinked account before publishing logout.
     async fn on_logged_out(&mut self) {
+        self.stop_chat_export().await;
         self.shutdown_call().await;
         self.sticker_download_failed.clear();
         self.sticker_clicked.clear();
@@ -4218,9 +4450,19 @@ impl Worker {
         self.privacy_snapshot = false;
         self.phone_unarchive_chats = None;
         self.phone_unarchive_unread = false;
+        // The next account's phone has said nothing yet.
+        self.link_previews_disabled = true;
+        self.link_previews_unknown = true;
+        self.link_previews_reading = false;
+        if let Some(previous) = self.preview_fetch.take() {
+            previous.abort();
+        }
+        self.emit(Event::LinkPreviewsDisabled(true));
         // Reads for the unlinked account must not be answered for the next.
         self.withheld_pages.clear();
         self.early.clear();
+        // A change or ack sent under the old account belongs to that account.
+        self.early_acks.clear();
         self.privacy_reveal_at = None;
         self.privacy_attempts = 0;
         self.privacy_warned = false;
@@ -4575,6 +4817,14 @@ impl Worker {
                         .ephemeral_setting_timestamp
                         .unwrap_or_else(|| info.timestamp.timestamp());
                     let used_fallback = protocol.ephemeral_setting_timestamp.is_none();
+                    // Message removal does not order a timer setting, so a
+                    // newer setting that predates a clear still applies. Only
+                    // a chat removed outright is not brought back by one.
+                    if self.archive.chat(&chat).ok().flatten().is_none()
+                        && self.predates_removal(&chat, timestamp)
+                    {
+                        return;
+                    }
                     self.ensure_chat(&chat, push_name.as_deref());
                     let accepted = self
                         .archive
@@ -4585,6 +4835,15 @@ impl Worker {
                         "protocol timer update: duration={expiration}s timestamp={timestamp} fallback_timestamp={used_fallback} accepted={accepted}"
                     );
                     if accepted {
+                        self.file_timer_notice(
+                            &chat,
+                            &format!("{}{}", crate::model::TIMER_NOTICE_PREFIX, info.id),
+                            sender.clone(),
+                            from_me,
+                            timestamp,
+                            expiration,
+                            push_name.as_deref(),
+                        );
                         self.emit_chat(&chat);
                     }
                 } else {
@@ -5386,8 +5645,10 @@ impl Worker {
         }
         // Only a stored message can be moved to the server's time.
         if message.from_me && message.status == Delivery::Pending {
-            self.awaiting_ack
-                .insert(message.id.clone(), message.chat.clone());
+            self.awaiting_ack.insert(
+                message.id.clone(),
+                AwaitingAck::Message(message.chat.clone()),
+            );
         }
         if let Some(raw) = raw.as_deref()
             && let Ok(protocol) = wa::Message::decode_from_slice(raw)
@@ -6628,6 +6889,13 @@ impl Worker {
             | Command::SendLocation { chat, .. }
             | Command::CreatePoll { chat, .. } => Some(chat),
             Command::Forward { to_chat, .. } => Some(to_chat),
+            Command::React { chat, .. }
+            | Command::VotePoll { chat, .. }
+            | Command::EditText { chat, .. }
+            | Command::SendStickerPack { chat, .. }
+            | Command::StickerMade {
+                chat: Some(chat), ..
+            } if self.blocklist.contains(&self.canonical_str(chat)) => Some(chat),
             _ => None,
         };
         let writable = |chat: &str| match &command {
@@ -6637,6 +6905,10 @@ impl Worker {
         if let Some(chat) = destination
             && !writable(chat)
         {
+            if self.blocklist.contains(&self.canonical_str(chat)) {
+                self.refuse_blocked(command);
+                return;
+            }
             let error = "This conversation is read-only in Zap Fasterk".to_owned();
             if matches!(&command, Command::CreatePoll { .. }) {
                 self.emit(Event::PollCreated {
@@ -6649,6 +6921,17 @@ impl Worker {
             return;
         }
         match command {
+            Command::FetchBlocklist => self.fetch_blocklist(),
+            Command::SetBlocked { chat, blocked } => self.set_blocked(chat, blocked),
+            Command::BlocklistFetched { generation, result } => {
+                self.blocklist_fetched(generation, result).await
+            }
+            Command::BlockedSet {
+                generation,
+                chat,
+                blocked,
+                result,
+            } => self.blocked_set(generation, chat, blocked, result),
             Command::Automation(request) => self.automation(request),
             Command::Statuses => self.emit_statuses(),
             Command::DownloadStatus(key) => self.download_status(key),
@@ -6733,7 +7016,9 @@ impl Worker {
                 text,
                 quoting,
                 mentions,
-            } => self.send_text(chat, text, quoting, mentions),
+                preview,
+            } => self.send_text(chat, text, quoting, mentions, preview),
+            Command::FetchLinkPreview { url } => self.fetch_link_preview(url),
             Command::SendLocation {
                 chat,
                 latitude,
@@ -6879,6 +7164,29 @@ impl Worker {
                 });
             }
             Command::LoadChat { chat, before } => self.load_chat(chat, before),
+            Command::SetChatExportAllowed(allowed) => {
+                self.chat_export.allowed = allowed;
+                if !allowed {
+                    self.stop_chat_export().await;
+                }
+            }
+            Command::ExportChat {
+                request,
+                chat,
+                include_media,
+            } => self.begin_chat_export(request, chat, include_media).await,
+            Command::CancelChatExport => self.stop_chat_export().await,
+            Command::ChatExportTarget {
+                request,
+                include_media,
+                target,
+            } => self.chat_export_target(request, include_media, target),
+            Command::ChatExportProgress { request, counts } => {
+                self.chat_export_progress(request, counts)
+            }
+            Command::ChatExportFinished { request, result } => {
+                self.chat_export_finished(request, result)
+            }
             Command::LoadPins(chat) => self.emit_pins(&chat),
             Command::ScheduleText {
                 chat,
@@ -7508,7 +7816,18 @@ impl Worker {
                 });
             }
             Command::SetGroupPicture { chat, jpeg } => self.set_group_picture(chat, jpeg),
-            Command::GroupEdited { chat, edit, result } => self.group_edited(chat, edit, result),
+            Command::GroupEdited {
+                chat,
+                edit,
+                session,
+                result,
+            } => {
+                // A completion from a departed session belongs to the account
+                // that left; it must not clear the next one's state.
+                if session == self.privacy_generation {
+                    self.group_edited(chat, edit, result);
+                }
+            }
             Command::ProfileSaved {
                 name,
                 about,
@@ -7987,12 +8306,22 @@ impl Worker {
                 }
             }
             Command::SendGif { chat, gif, quoting } => self.send_gif(chat, gif, quoting),
-            Command::SearchGifs { query, key } => {
+            Command::SearchGifs {
+                query,
+                key,
+                offset,
+                request,
+            } => {
                 let commands = self.commands.clone();
                 let dir = self.dirs.cache.join("gifs");
                 tokio::task::spawn_blocking(move || {
-                    let results = search_gifs(&query, &key, &dir);
-                    let _ = commands.send(Command::GifResults { query, results });
+                    let results = search_gifs(&query, &key, &dir, offset);
+                    let _ = commands.send(Command::GifResults {
+                        query,
+                        offset,
+                        request,
+                        results,
+                    });
                 });
             }
             Command::ReceiptsPrivacy { disabled } => {
@@ -8144,8 +8473,18 @@ impl Worker {
                     }
                 });
             }
-            Command::GifResults { query, results } => {
-                self.emit(Event::Gifs { query, results });
+            Command::GifResults {
+                query,
+                offset,
+                request,
+                results,
+            } => {
+                self.emit(Event::Gifs {
+                    query,
+                    offset,
+                    request,
+                    results,
+                });
             }
             Command::ViewStickerPack { chat, message } => self.view_sticker_pack(&chat, &message),
             Command::StickerPackViewed { result } => {
@@ -8469,13 +8808,12 @@ impl Worker {
             Command::SetDisappearingTimer { chat, seconds } => {
                 self.set_disappearing_timer(chat, seconds)
             }
-            Command::DisappearingTimerSet {
-                generation,
+            Command::TimerSet {
                 chat,
+                session,
                 seconds,
-                requested_at,
-                error,
-            } => self.disappearing_timer_set(generation, chat, seconds, requested_at, error),
+                result,
+            } => self.timer_set(chat, session, seconds, result),
             Command::SetMuted(chat, until) => {
                 let _ = self.archive.set_muted(&chat, until);
                 self.emit_chat(&chat);
@@ -8937,6 +9275,7 @@ impl Worker {
             chat: chat.clone(),
             saving: true,
         });
+        let session = self.privacy_generation;
         let commands = self.commands.clone();
         let waker = self.waker.clone();
         tokio::spawn(async move {
@@ -8948,6 +9287,7 @@ impl Worker {
             let _ = commands.send(Command::GroupEdited {
                 chat,
                 edit: GroupEdit::Name(name),
+                session,
                 result,
             });
             waker.wake();
@@ -8969,6 +9309,7 @@ impl Worker {
             chat: chat.clone(),
             saving: true,
         });
+        let session = self.privacy_generation;
         let commands = self.commands.clone();
         let waker = self.waker.clone();
         tokio::spawn(async move {
@@ -8982,18 +9323,24 @@ impl Worker {
             let _ = commands.send(Command::GroupEdited {
                 chat,
                 edit: GroupEdit::Picture { removed },
+                session,
                 result,
             });
             waker.wake();
         });
     }
 
-    /// Applies WhatsApp's answer to a group name or photo change.
+    /// Applies WhatsApp's answer to a group name, photo or timer change.
     fn group_edited(&mut self, chat: ChatId, edit: GroupEdit, result: Result<(), String>) {
-        self.emit(Event::GroupSaving {
-            chat: chat.clone(),
-            saving: false,
-        });
+        // A timer has its own saving state, so a rename in flight and a timer
+        // change no longer clear each other.
+        match &edit {
+            GroupEdit::Timer(_) => self.timer_saving(&chat, false),
+            GroupEdit::Name(_) | GroupEdit::Picture { .. } => self.emit(Event::GroupSaving {
+                chat: chat.clone(),
+                saving: false,
+            }),
+        }
         match (result, edit) {
             (Ok(()), GroupEdit::Name(name)) => {
                 // Metadata asked for before now may still name the old subject.
@@ -9002,14 +9349,28 @@ impl Worker {
                 self.emit_chat(&chat);
             }
             (Ok(()), GroupEdit::Picture { removed }) => self.refresh_avatar(chat, removed),
+            // A group's timer is applied from the server's own group
+            // notification, which carries the change's timestamp and actor,
+            // and files the notice. The accepted IQ only refreshes the
+            // metadata, so a newer change is never overwritten and no notice
+            // is invented here.
+            (Ok(()), GroupEdit::Timer(_)) => self.request_group_info(&chat, true),
             (Err(error), edit) => {
                 let refused = group_edit_refused(&error);
                 log::warn!(
                     "could not change group info ({})",
                     if refused { "refused" } else { "failed" }
                 );
+                let timer = matches!(&edit, GroupEdit::Timer(_));
                 self.emit(Event::Error(if refused {
-                    GROUP_EDIT_REFUSED.to_owned()
+                    // The refusal names what was being changed: a timer has
+                    // nothing to do with the group's name and photo.
+                    if timer {
+                        "Only admins can change disappearing messages."
+                    } else {
+                        GROUP_EDIT_REFUSED
+                    }
+                    .to_owned()
                 } else {
                     match edit {
                         GroupEdit::Name(_) => "Could not rename the group.",
@@ -9019,6 +9380,7 @@ impl Worker {
                         GroupEdit::Picture { removed: true } => {
                             "Could not remove the group's photo."
                         }
+                        GroupEdit::Timer(_) => "Could not change disappearing messages.",
                     }
                     .to_owned()
                 }));
@@ -9251,8 +9613,9 @@ impl Worker {
         text: String,
         quoting: Option<crate::model::ReplyTarget>,
         mentions: Vec<String>,
+        preview: Option<crate::model::ComposedPreview>,
     ) {
-        let _ = self.send_text_inner(chat, text, quoting, mentions, None);
+        let _ = self.send_text_inner(chat, text, quoting, mentions, preview, None);
     }
 
     fn send_text_inner(
@@ -9261,6 +9624,7 @@ impl Worker {
         text: String,
         quoting: Option<crate::model::ReplyTarget>,
         mentions: Vec<String>,
+        preview: Option<crate::model::ComposedPreview>,
         cli_request: Option<String>,
     ) -> Option<String> {
         let (context, shown) = match self.quote_target(&chat, quoting.as_ref()) {
@@ -9275,7 +9639,8 @@ impl Worker {
             self.refuse(chat, quoting, Unsent::Text(text), Refusal::Offline);
             return None;
         };
-        let mut message = outgoing_text(text.clone(), context, &mentions);
+        let (mut message, content, thumbnail) =
+            self.compose_text(text.clone(), context, &mentions, preview);
         let expiration = self.apply_ephemeral(&chat, &mut message);
         let mentions = self.mentions_of(&mentions);
         let id = client.generate_message_id().into_string();
@@ -9300,7 +9665,7 @@ impl Worker {
             sender_name: None,
             from_me: true,
             timestamp: crate::util::now(),
-            content: Content::text(text),
+            content,
             status: Delivery::Pending,
             delivered_at: None,
             read_at: None,
@@ -9310,7 +9675,7 @@ impl Worker {
             edited: false,
             mentions,
             forwarded: false,
-            thumbnail: None,
+            thumbnail,
         };
         self.store_message(row, Some(message.encode_to_vec()), None);
         if cli_request.is_some() && self.archive.message(&chat, &id).ok().flatten().is_none() {
@@ -9318,6 +9683,59 @@ impl Worker {
         }
         self.queue_outgoing(chat, jid, id.clone(), message, expiration);
         Some(id)
+    }
+
+    /// Builds the outgoing body, its stored content and thumbnail. A preview
+    /// goes along only when the phone setting allows it and it describes the
+    /// first link of the text, so an edited text never carries a stale card.
+    fn compose_text(
+        &self,
+        text: String,
+        context: Option<wa::ContextInfo>,
+        mentions: &[String],
+        preview: Option<crate::model::ComposedPreview>,
+    ) -> (wa::Message, Content, Option<Vec<u8>>) {
+        let mut message = outgoing_text(text.clone(), context, mentions);
+        let matched = preview
+            .filter(|_| !self.link_previews_disabled)
+            .and_then(|preview| {
+                let link = crate::safety::first_link(&text)?;
+                (crate::safety::preview_url(&link).as_deref()
+                    == crate::safety::preview_url(&preview.preview.url).as_deref())
+                .then_some((link, preview))
+            });
+        let Some((link, preview)) = matched else {
+            return (message, Content::text(text), None);
+        };
+        attach_preview(&mut message, &link, &preview);
+        let crate::model::ComposedPreview { preview, thumbnail } = preview;
+        (
+            message,
+            Content::Text {
+                text,
+                preview: Some(preview),
+            },
+            thumbnail,
+        )
+    }
+
+    /// Reads the page behind a link for the composer, replacing a fetch still
+    /// running. Nothing is fetched while the phone has previews disabled.
+    fn fetch_link_preview(&mut self, url: String) {
+        if let Some(previous) = self.preview_fetch.take() {
+            previous.abort();
+        }
+        if self.link_previews_disabled {
+            self.emit(Event::LinkPreview { url, preview: None });
+            return;
+        }
+        let events = self.events.clone();
+        let waker = self.waker.clone();
+        self.preview_fetch = Some(tokio::spawn(async move {
+            let preview = link_preview_fetch::fetch(url.clone()).await;
+            let _ = events.send(Event::LinkPreview { url, preview });
+            waker.wake();
+        }));
     }
 
     /// Sends a spot as a location, keeping the row locally the way a phone
@@ -9439,6 +9857,7 @@ impl Worker {
                 | Content::PhoneOnly { .. }
                 | Content::Poll { .. }
                 | Content::Interactive { .. }
+                | Content::DisappearingTimer { .. }
         ) {
             self.emit(Event::Error("This message cannot be forwarded".to_owned()));
             return None;
@@ -9776,12 +10195,20 @@ impl Worker {
                     document.mimetype.clone().unwrap_or_default(),
                     document.file_name.clone(),
                 )
-            } else if let Some(sticker) = base.sticker_message.as_option() {
+            } else if let Some(sticker) = sticker_of(&base) {
                 (
                     Box::new(sticker.clone()),
-                    sticker.mimetype.clone().unwrap_or_default(),
+                    if base.lottie_sticker_message.is_set() || sticker.is_lottie == Some(true) {
+                        "application/was".to_owned()
+                    } else {
+                        sticker.mimetype.clone().unwrap_or_default()
+                    },
                     None,
                 )
+            } else if let Some(text) = base.extended_text_message.as_option()
+                && let Some(picture) = link_preview::picture(text)
+            {
+                (Box::new(picture), "image/jpeg".to_owned(), None)
             } else {
                 self.downloaded(
                     chat,
@@ -9791,7 +10218,10 @@ impl Worker {
                 );
                 return;
             };
-        let limit = if explicit {
+        let link_picture = base.extended_text_message.is_set();
+        let limit = if link_picture {
+            link_preview::PICTURE_LIMIT
+        } else if explicit {
             crate::model::MANUAL_DOWNLOAD_LIMIT
         } else {
             ATTACHMENT_DOWNLOAD_LIMIT
@@ -9826,11 +10256,7 @@ impl Worker {
                     .as_option()
                     .and_then(|media| media.media_key.clone())
             })
-            .or_else(|| {
-                base.sticker_message
-                    .as_option()
-                    .and_then(|media| media.media_key.clone())
-            })
+            .or_else(|| sticker_of(&base).and_then(|media| media.media_key.clone()))
             .unwrap_or_default();
         // A sticker only the picker wanted is not worth a re-upload request:
         // the picker fetches in the background, and each request counts
@@ -9870,6 +10296,16 @@ impl Worker {
                 return Some(Box::new(media.clone()));
             }
             if let Some(media) = fresh_base.sticker_message.as_option_mut() {
+                media.direct_path = Some(direct);
+                media.url = None;
+                return Some(Box::new(media.clone()));
+            }
+            if let Some(media) = fresh_base
+                .lottie_sticker_message
+                .as_option_mut()
+                .and_then(|wrapper| wrapper.message.as_option_mut())
+                .and_then(|inner| inner.sticker_message.as_option_mut())
+            {
                 media.direct_path = Some(direct);
                 media.url = None;
                 return Some(Box::new(media.clone()));
@@ -9940,7 +10376,9 @@ impl Worker {
         tokio::spawn(async move {
             let cache_id = card.map_or_else(|| id.clone(), |index| format!("{id}-card-{index}"));
             let path = media_path(&dir, &chat, &cache_id, &mime, file_name.as_deref());
-            let deadline = if explicit {
+            let deadline = if link_picture {
+                Duration::from_secs(20)
+            } else if explicit {
                 Duration::from_secs(30 * 60)
             } else {
                 ATTACHMENT_TIMEOUT
@@ -10030,6 +10468,16 @@ impl Worker {
                     .await
                     .unwrap_or_else(|_| Err("Could not save organized download".into()))
                 }
+                (Ok(source), None) if link_picture => tokio::task::spawn_blocking(move || {
+                    if link_preview::valid_picture(&source) {
+                        Ok(source)
+                    } else {
+                        let _ = std::fs::remove_file(&source);
+                        Err("Link preview has invalid or excessive image dimensions".to_owned())
+                    }
+                })
+                .await
+                .unwrap_or_else(|_| Err("Could not validate link preview".to_owned())),
                 (result, _) => result,
             };
             control.cancel();
@@ -12152,6 +12600,34 @@ fn outgoing_text(
     }
 }
 
+/// Puts a link preview on an outgoing text, keeping its quote and mentions.
+/// `matched` is the link as it appears in the text.
+fn attach_preview(
+    message: &mut wa::Message,
+    matched: &str,
+    preview: &crate::model::ComposedPreview,
+) {
+    use wa::message::extended_text_message::PreviewType;
+    let mut extended = message.extended_text_message.take().unwrap_or_default();
+    if let Some(text) = message.conversation.take() {
+        extended.text = Some(text);
+    }
+    extended.matched_text = Some(matched.to_owned());
+    extended.title = preview.preview.title.clone();
+    extended.description = preview.preview.description.clone();
+    if let Some(bytes) = &preview.thumbnail {
+        let size = image::ImageReader::new(std::io::Cursor::new(bytes))
+            .with_guessed_format()
+            .ok()
+            .and_then(|reader| reader.into_dimensions().ok());
+        extended.jpeg_thumbnail = Some(bytes.clone());
+        extended.thumbnail_width = size.map(|(width, _)| width);
+        extended.thumbnail_height = size.map(|(_, height)| height);
+    }
+    extended.preview_type = Some(PreviewType::NONE);
+    message.extended_text_message = MessageField::some(extended);
+}
+
 /// A location message: the coordinates and nothing else, because a computer
 /// has no place name to send. A quote rides inside the location, where a
 /// phone puts it.
@@ -12199,7 +12675,7 @@ fn context_of(base: &wa::Message) -> Option<&wa::ContextInfo> {
     if let Some(document) = base.document_message.as_option() {
         return document.context_info.as_option();
     }
-    if let Some(sticker) = base.sticker_message.as_option() {
+    if let Some(sticker) = sticker_of(base) {
         return sticker.context_info.as_option();
     }
     if let Some(location) = base.location_message.as_option() {
@@ -12246,13 +12722,6 @@ fn frequently_forwarded(base: &wa::Message) -> bool {
     context_of(base)
         .and_then(|context| context.forwarding_score)
         .is_some_and(|score| score >= FREQUENTLY_FORWARDED_SCORE)
-}
-
-/// Finds the first web address when preview metadata omits its URL.
-fn first_link(text: &str) -> Option<String> {
-    text.split_whitespace()
-        .find(|token| token.starts_with("http://") || token.starts_with("https://"))
-        .map(|token| token.trim_end_matches(['.', ',', ')', ']']).to_owned())
 }
 
 /// Extracts the attachment or link-preview thumbnail.
@@ -12399,6 +12868,19 @@ fn live_location_newer(share: &Message, incoming: &Content) -> bool {
     }
 }
 
+/// A Lottie sticker's media lives in FutureProofMessage -> Message -> StickerMessage.
+/// Use the same extraction for both classification and downloads.
+fn sticker_of(base: &wa::Message) -> Option<&wa::message::StickerMessage> {
+    base.sticker_message.as_option().or_else(|| {
+        base.lottie_sticker_message
+            .as_option()?
+            .message
+            .as_option()?
+            .sticker_message
+            .as_option()
+    })
+}
+
 /// Converts a protocol message to visible content, or `None` for internal
 /// traffic. Takes the whole message, wrappers included: view-once media
 /// arrives wrapped, and WhatsApp keeps it for the phone, so a linked device
@@ -12437,11 +12919,16 @@ fn classify_base(base: &wa::Message) -> Option<Content> {
             }
             let url = non_empty(&extended.matched_text)
                 .and_then(|url| crate::safety::preview_url(&url))
-                .or_else(|| first_link(text).and_then(|url| crate::safety::preview_url(&url)))?;
+                .or_else(|| {
+                    crate::safety::first_link(text).and_then(|url| crate::safety::preview_url(&url))
+                })?;
             Some(LinkPreview {
                 url,
                 title,
                 description,
+                video: false,
+                image: None,
+                image_sha256: None,
             })
         });
         return Some(Content::Text {
@@ -12509,15 +12996,22 @@ fn classify_base(base: &wa::Message) -> Option<Content> {
             pages: document.page_count,
         });
     }
-    if let Some(sticker) = base.sticker_message.as_option() {
+    if let Some(sticker) = sticker_of(base) {
+        let lottie = base.lottie_sticker_message.is_set()
+            || sticker.is_lottie.unwrap_or(false)
+            || sticker.mimetype.as_deref() == Some("application/was");
+        let mut attachment = media(
+            sticker.mimetype.as_ref(),
+            sticker.file_length,
+            sticker.width,
+            sticker.height,
+        );
+        if lottie {
+            attachment.mime = "application/was".to_owned();
+        }
         return Some(Content::Sticker {
-            media: media(
-                sticker.mimetype.as_ref(),
-                sticker.file_length,
-                sticker.width,
-                sticker.height,
-            ),
-            animated: sticker.is_animated.unwrap_or(false),
+            media: attachment,
+            animated: lottie || sticker.is_animated.unwrap_or(false),
         });
     }
     if let Some(location) = base.location_message.as_option() {
@@ -12623,9 +13117,6 @@ fn classify_base(base: &wa::Message) -> Option<Content> {
     }
     if base.scheduled_call_creation_message.is_set() {
         return unsupported("call");
-    }
-    if base.lottie_sticker_message.is_set() {
-        return unsupported("animated sticker");
     }
     if base.poll_update_message.is_set()
         || base.enc_reaction_message.is_set()
@@ -13220,7 +13711,7 @@ fn percent_encode(text: &str) -> String {
 }
 
 /// Searches GIPHY and downloads result stills. Empty queries list trending GIFs.
-fn search_gifs(query: &str, key: &str, dir: &Path) -> Result<Vec<Gif>, GifError> {
+fn search_gifs(query: &str, key: &str, dir: &Path, offset: usize) -> Result<GifPage, GifError> {
     let plain = |message: String| GifError {
         message,
         bad_key: false,
@@ -13232,10 +13723,12 @@ fn search_gifs(query: &str, key: &str, dir: &Path) -> Result<Vec<Gif>, GifError>
         });
     }
     let url = if query.trim().is_empty() {
-        format!("https://api.giphy.com/v1/gifs/trending?api_key={key}&limit=24&rating=pg-13")
+        format!(
+            "https://api.giphy.com/v1/gifs/trending?api_key={key}&limit=24&offset={offset}&rating=pg-13"
+        )
     } else {
         format!(
-            "https://api.giphy.com/v1/gifs/search?api_key={key}&q={}&limit=24&rating=pg-13",
+            "https://api.giphy.com/v1/gifs/search?api_key={key}&q={}&limit=24&offset={offset}&rating=pg-13",
             percent_encode(query.trim())
         )
     };
@@ -13329,7 +13822,23 @@ fn search_gifs(query: &str, key: &str, dir: &Path) -> Result<Vec<Gif>, GifError>
             });
         }
     });
-    Ok(gifs.into_iter().map(|(gif, _)| gif).collect())
+    Ok(GifPage {
+        gifs: gifs.into_iter().map(|(gif, _)| gif).collect(),
+        next_offset: gif_next_offset(
+            query,
+            offset,
+            data.len(),
+            json["pagination"]["total_count"].as_u64(),
+        ),
+    })
+}
+
+/// API offsets count raw entries, including any without a playable rendition.
+fn gif_next_offset(query: &str, offset: usize, count: usize, total: Option<u64>) -> Option<usize> {
+    let next = offset.checked_add(count)?;
+    let max = if query.trim().is_empty() { 499 } else { 4999 };
+    (count > 0 && next <= max && total.map_or(count >= 24, |total| (next as u64) < total))
+        .then_some(next)
 }
 
 /// Copies a sent attachment to media storage and builds its archive row.
@@ -16369,6 +16878,7 @@ mod tests {
                 text: "Fixture".into(),
                 quoting: None,
                 mentions: Vec::new(),
+                preview: None,
             })
             .await;
         assert!(matches!(events.try_recv().unwrap(), Event::Error(_)));
@@ -17264,6 +17774,113 @@ mod tests {
         assert_eq!(context.mentioned_jid, mentions);
     }
 
+    fn composed_preview() -> crate::model::ComposedPreview {
+        let mut jpeg = Vec::new();
+        image::RgbImage::new(6, 4)
+            .write_to(
+                &mut std::io::Cursor::new(&mut jpeg),
+                image::ImageFormat::Jpeg,
+            )
+            .expect("jpeg");
+        crate::model::ComposedPreview {
+            preview: LinkPreview {
+                url: "https://ex.com/a".into(),
+                title: Some("Example".into()),
+                description: Some("An example page".into()),
+                video: false,
+                image: None,
+                image_sha256: None,
+            },
+            thumbnail: Some(jpeg),
+        }
+    }
+
+    #[test]
+    fn outgoing_preview_round_trips() {
+        let p = composed_preview();
+        let mut message = outgoing_text("look https://ex.com/a, ok".into(), None, &[]);
+        attach_preview(&mut message, "https://ex.com/a", &p);
+        assert_eq!(message.conversation, None);
+        let extended = message.extended_text_message.as_option().expect("extended");
+        assert_eq!(extended.text.as_deref(), Some("look https://ex.com/a, ok"));
+        assert_eq!(extended.matched_text.as_deref(), Some("https://ex.com/a"));
+        assert_eq!(extended.thumbnail_width, Some(6));
+        assert_eq!(extended.thumbnail_height, Some(4));
+        assert_eq!(
+            classify(&message),
+            Some(Content::Text {
+                text: "look https://ex.com/a, ok".into(),
+                preview: Some(p.preview.clone()),
+            })
+        );
+        assert_eq!(thumbnail_of(&message), p.thumbnail);
+    }
+
+    #[test]
+    fn outgoing_preview_keeps_quote_and_mentions() {
+        let mentions = vec![
+            "491702222222@s.whatsapp.net".to_owned(),
+            "491703333333@s.whatsapp.net".to_owned(),
+        ];
+        let quote = wa::ContextInfo {
+            stanza_id: Some("quoted".to_owned()),
+            ..Default::default()
+        };
+        let mut message = outgoing_text("hi https://ex.com/a".into(), Some(quote), &mentions);
+        attach_preview(&mut message, "https://ex.com/a", &composed_preview());
+        let context = context_of(&message).expect("context");
+        assert_eq!(context.stanza_id.as_deref(), Some("quoted"));
+        assert_eq!(context.mentioned_jid, mentions);
+    }
+
+    #[tokio::test]
+    async fn outgoing_preview_is_attached_and_stored_only_for_the_first_link() {
+        let (mut worker, _events, _, _) = receipt_tests::worker();
+        let text = "see https://ex.com/a, ok".to_owned();
+        let (message, content, thumbnail) =
+            worker.compose_text(text.clone(), None, &[], Some(composed_preview()));
+        assert!(message.extended_text_message.is_set());
+        assert!(matches!(
+            content,
+            Content::Text {
+                preview: Some(_),
+                ..
+            }
+        ));
+        assert_eq!(thumbnail, composed_preview().thumbnail);
+        // A text whose first link changed carries no stale card.
+        let (message, content, thumbnail) = worker.compose_text(
+            "see https://other.com/".into(),
+            None,
+            &[],
+            Some(composed_preview()),
+        );
+        assert!(!message.extended_text_message.is_set());
+        assert!(matches!(content, Content::Text { preview: None, .. }));
+        assert_eq!(thumbnail, None);
+        worker.link_previews_disabled = true;
+        let (message, _, thumbnail) =
+            worker.compose_text(text, None, &[], Some(composed_preview()));
+        assert!(!message.extended_text_message.is_set());
+        assert_eq!(thumbnail, None);
+    }
+
+    #[tokio::test]
+    async fn fetch_refused_while_disabled() {
+        let (mut worker, events, _, _) = receipt_tests::worker();
+        worker.link_previews_disabled = true;
+        worker
+            .handle_command(Command::FetchLinkPreview {
+                url: "https://ex.com/a".into(),
+            })
+            .await;
+        assert!(matches!(
+            events.try_recv().unwrap(),
+            Event::LinkPreview { preview: None, .. }
+        ));
+        assert!(worker.preview_fetch.is_none());
+    }
+
     #[test]
     fn a_spot_goes_out_as_a_location_and_comes_back_as_one() {
         let message = outgoing_location(-23.5505, -46.6333, None);
@@ -17615,6 +18232,7 @@ fn offline_worker(
         privacy_warned: false,
         privacy_recovering: false,
         privacy_generation: 0,
+        blocklist: Default::default(),
         message_removals_in_flight: HashSet::new(),
         contact_generation: 0,
 
@@ -17665,6 +18283,10 @@ fn offline_worker(
         keep_chats_archived: true,
         phone_unarchive_chats: None,
         phone_unarchive_unread: false,
+        link_previews_disabled: false,
+        link_previews_unknown: false,
+        link_previews_reading: false,
+        preview_fetch: None,
         online_wanted: false,
         online_changed: Instant::now(),
         online_sent: None,
@@ -17711,6 +18333,7 @@ fn offline_worker(
         pending_outbound_order: None,
         read_sync: ReadSync::default(),
         favorite_chats: Default::default(),
+        chat_export: Default::default(),
         poll_decrypting: 0,
         poll_history: Default::default(),
         background_history: Default::default(),
@@ -17727,7 +18350,6 @@ fn offline_worker(
         outgoing_call_request: None,
         call_preparing_signals: Default::default(),
         call_video_preparing: None,
-        disappearing_pending: HashSet::new(),
         call_prepare_generation: 0,
         call_devices: Default::default(),
         call_device_discovery: Default::default(),
@@ -17744,6 +18366,7 @@ fn offline_worker(
         poll_sending: HashSet::new(),
         interactive_sending: HashMap::new(),
         awaiting_ack: HashMap::new(),
+        early_acks: HashMap::new(),
         receipts_watch: None,
         receipts_pruned: Instant::now(),
         early: Default::default(),
@@ -18355,7 +18978,7 @@ mod receipt_tests {
             .try_iter()
             .filter_map(|event| match event {
                 Event::Error(message) => Some(message),
-                Event::GroupSaving { .. } => Some("saving".into()),
+                Event::GroupSaving { .. } | Event::TimerSaving { .. } => Some("saving".into()),
                 _ => None,
             })
             .collect()
@@ -18442,6 +19065,7 @@ mod receipt_tests {
             .handle_command(Command::GroupEdited {
                 chat: chat.into(),
                 edit: GroupEdit::Name("Trip".into()),
+                session: worker.privacy_generation,
                 result: Ok(()),
             })
             .await;
@@ -18475,6 +19099,7 @@ mod receipt_tests {
             .handle_command(Command::GroupEdited {
                 chat: chat.into(),
                 edit: GroupEdit::Name("Trip".into()),
+                session: worker.privacy_generation,
                 result: Err("received a server error response: code=403, text='forbidden'".into()),
             })
             .await;
@@ -18506,11 +19131,16 @@ mod receipt_tests {
                 GroupEdit::Picture { removed: true },
                 "Could not remove the group's photo.",
             ),
+            (
+                GroupEdit::Timer(604_800),
+                "Could not change disappearing messages.",
+            ),
         ] {
             worker
                 .handle_command(Command::GroupEdited {
                     chat: chat.into(),
                     edit,
+                    session: worker.privacy_generation,
                     result: Err("IQ request timed out".into()),
                 })
                 .await;
@@ -18531,6 +19161,7 @@ mod receipt_tests {
             .handle_command(Command::GroupEdited {
                 chat: chat.into(),
                 edit: GroupEdit::Picture { removed: true },
+                session: worker.privacy_generation,
                 result: Ok(()),
             })
             .await;
@@ -22283,7 +22914,9 @@ mod receipt_tests {
     }
 
     /// Enumerates synthetic send commands and matching unsent payloads with a shared quote target.
-    fn reply_sends(quoting: Option<crate::model::ReplyTarget>) -> Vec<(Command, Unsent)> {
+    pub(super) fn reply_sends(
+        quoting: Option<crate::model::ReplyTarget>,
+    ) -> Vec<(Command, Unsent)> {
         let gif = Gif {
             id: "fixture-gif".into(),
             still: None,
@@ -22298,6 +22931,7 @@ mod receipt_tests {
                     text: "Reply fixture".into(),
                     quoting: quoting.clone(),
                     mentions: Vec::new(),
+                    preview: None,
                 },
                 Unsent::Text("Reply fixture".into()),
             ),
@@ -24260,5 +24894,68 @@ mod sync_profile_tests {
         assert_eq!(config.full_sync_days_limit, Some(365));
         assert_eq!(config.on_demand_ready, Some(true));
         assert_eq!(config.complete_on_demand_ready, Some(true));
+    }
+}
+
+#[cfg(test)]
+mod lottie_sticker_tests {
+    use super::*;
+
+    #[test]
+    fn recognizes_nested_lottie_sticker_and_keeps_its_media_type() {
+        let sticker = wa::message::StickerMessage {
+            mimetype: Some("application/was".to_owned()),
+            is_lottie: Some(true),
+            is_animated: Some(true),
+            ..Default::default()
+        };
+        let nested = wa::Message {
+            sticker_message: MessageField::some(sticker),
+            ..Default::default()
+        };
+        let wrapper = wa::message::FutureProofMessage {
+            message: MessageField::some(nested),
+        };
+        let message = wa::Message {
+            lottie_sticker_message: MessageField::some(wrapper),
+            ..Default::default()
+        };
+        let content = classify(&message).expect("recognized Lottie");
+        assert!(matches!(
+            content,
+            Content::Sticker { media, animated: true } if media.mime == "application/was"
+        ));
+        assert!(sticker_of(message.get_base_message()).is_some());
+    }
+
+    #[test]
+    fn still_recognizes_regular_webp_stickers() {
+        let sticker = wa::message::StickerMessage {
+            mimetype: Some("image/webp".to_owned()),
+            ..Default::default()
+        };
+        let message = wa::Message {
+            sticker_message: MessageField::some(sticker),
+            ..Default::default()
+        };
+        assert!(matches!(
+            classify(&message),
+            Some(Content::Sticker { media, animated: false }) if media.mime == "image/webp"
+        ));
+    }
+}
+
+#[cfg(test)]
+mod gif_pagination_tests {
+    use super::gif_next_offset;
+    #[test]
+    fn pages_use_raw_counts_and_stop_at_the_end_or_api_limit() {
+        assert_eq!(gif_next_offset("cats", 24, 24, Some(60)), Some(48));
+        assert_eq!(gif_next_offset("cats", 48, 12, Some(60)), None);
+        assert_eq!(gif_next_offset("cats", 24, 0, Some(60)), None);
+        assert_eq!(gif_next_offset("cats", 0, 24, None), Some(24));
+        assert_eq!(gif_next_offset("cats", 24, 8, None), None);
+        assert_eq!(gif_next_offset("", 480, 24, Some(1000)), None);
+        assert_eq!(gif_next_offset("cats", 4992, 24, Some(10000)), None);
     }
 }

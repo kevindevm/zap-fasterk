@@ -36,8 +36,10 @@ aes = "0.9"
 cbc = { version = "0.2", features = ["alloc", "block-padding"] }
 hkdf = "0.13"
 hmac = "0.13"
-# Reads .wastickers zip archives.
+# Reads .wastickers and WhatsApp Lottie (.was) archives.
 zip = { version = "9", default-features = false, features = ["deflate"] }
+# In-process Lottie rasterizer; no GIF encoder or native rendering dependency.
+rasterlottie = { version = "0.2.4", default-features = false, features = ["images", "text"] }
 clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -138,36 +140,36 @@ libwebp-sys2 = { version = "0.2", features = ["1_2"] }
 # Shared foundation of Carmine's egui apps (github.com/crmne/fastframe). Every
 # crate comes from the same revision.
 # Bundled gettext catalogs: lookups and system language detection.
-fastframe-i18n = { git = "https://github.com/crmne/fastframe", tag = "v0.15.2" }
+fastframe-i18n = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # The icons! table, a loader that survives reduce_texture_memory, and the Lucide
 # icons shared with Spotifast.
-fastframe-icons = { git = "https://github.com/crmne/fastframe", tag = "v0.15.2" }
+fastframe-icons = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # The platform's interface font (Inter where there is none), and installed
 # fonts for other scripts.
-fastframe-fonts = { git = "https://github.com/crmne/fastframe", tag = "v0.15.2" }
+fastframe-fonts = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # Colour emoji in the platform's own style, with the bundled Noto behind
 # them, drawn off the interface thread.
-fastframe-emoji = { git = "https://github.com/crmne/fastframe", tag = "v0.15.2" }
+fastframe-emoji = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # Follows the desktop's hinting and glyph coverage, live through the portal.
-fastframe-text = { git = "https://github.com/crmne/fastframe", tag = "v0.15.2", features = ["watch"] }
+fastframe-text = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1", features = ["watch"] }
 # Palette files, the shared presets, and following Omarchy's theme live.
-fastframe-theme = { git = "https://github.com/crmne/fastframe", tag = "v0.15.2" }
+fastframe-theme = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # Logs to stderr and a per-run file, and records panics without their payload.
-fastframe-log = { git = "https://github.com/crmne/fastframe", tag = "v0.15.2" }
+fastframe-log = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # The tray item: StatusNotifier on Linux, tray-icon on Windows and macOS.
-fastframe-tray = { git = "https://github.com/crmne/fastframe", tag = "v0.15.2" }
+fastframe-tray = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # Keeps ZapFast running without a window and recovers off-screen windows.
-fastframe-shell = { git = "https://github.com/crmne/fastframe", tag = "v0.15.2" }
+fastframe-shell = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # One running copy per user: the lock, and the channel a second launch uses.
-fastframe-instance = { git = "https://github.com/crmne/fastframe", tag = "v0.15.2" }
+fastframe-instance = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # The wheel step, and on Linux touchpad scale, glide and axis lock.
-fastframe-scroll = { git = "https://github.com/crmne/fastframe", tag = "v0.15.2" }
+fastframe-scroll = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # Native desktop preferences, power events, and durable file replacement.
-fastframe-desktop = { git = "https://github.com/crmne/fastframe", tag = "v0.15.2" }
-fastframe-power = { git = "https://github.com/crmne/fastframe", tag = "v0.15.2" }
-fastframe-file = { git = "https://github.com/crmne/fastframe", tag = "v0.15.2" }
+fastframe-desktop = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
+fastframe-power = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
+fastframe-file = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # Self-update from GitHub releases with signed checksums, a helper and rollback.
-fastframe-update = { git = "https://github.com/crmne/fastframe", tag = "v0.15.2", features = ["reqwest"] }
+fastframe-update = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1", features = ["reqwest"] }
 
 [patch.crates-io]
 # crmne/egui apps-0.36.2, shared with Spotifast, RekordFlash and TonePush: egui
@@ -255,4 +257,4 @@ opt-level = 2
 [build-dependencies]
 # Compiles the PO catalogs to Rust, leaving out unfinished entries. Ordinary
 # builds do not need gettext tools.
-fastframe-i18n = { git = "https://github.com/crmne/fastframe", tag = "v0.15.2", features = ["build"] }
+fastframe-i18n = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1", features = ["build"] }

@@ -358,6 +358,7 @@ pub(crate) fn can_select(content: &Content) -> bool {
             | Content::Unsupported { .. }
             | Content::Poll { .. }
             | Content::Interactive { .. }
+            | Content::DisappearingTimer { .. }
     )
 }
 
@@ -396,6 +397,46 @@ struct ArchiveRestoreTask {
         std::sync::mpsc::Receiver<Result<Option<crate::archive::backup::BackupSummary>, String>>,
 }
 
+/// How long the composer's text rests before its link is previewed.
+const PREVIEW_PAUSE: f64 = 0.5;
+
+/// The link preview for the message being written, with the account, chat
+/// and link it was asked for. It shows only while all three are still the
+/// ones on screen.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ComposerPreview {
+    pub account: AccountId,
+    pub chat: ChatId,
+    pub url: String,
+    pub state: LinkPreviewState,
+}
+
+impl ComposerPreview {
+    /// The preview, once it has come and was not dismissed.
+    pub fn ready(&self) -> Option<&crate::model::ComposedPreview> {
+        match &self.state {
+            LinkPreviewState::Ready(preview) => Some(preview),
+            LinkPreviewState::Loading | LinkPreviewState::Dismissed => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum LinkPreviewState {
+    /// Asked for; the card says it is loading.
+    Loading,
+    /// Shown above the composer, and sent with the message.
+    Ready(crate::model::ComposedPreview),
+    /// Taken away with its X, or nothing usable came back: no card, and
+    /// this link is not asked for again.
+    Dismissed,
+}
+
+/// The composer's link that a preview would be made for.
+fn composer_link(text: &str) -> Option<String> {
+    crate::safety::first_link(text).filter(|url| crate::safety::preview_url(url).is_some())
+}
+
 pub struct App {
     pub dirs: AppDirs,
     pub settings: Settings,
@@ -432,6 +473,16 @@ pub struct App {
     pub composer: String,
     pub(crate) emoticon_undo: Option<EmoticonUndo>,
     composer_mentions: Vec<ComposerMention>,
+    /// The link preview above the composer.
+    pub composer_preview: Option<ComposerPreview>,
+    /// egui time of the last composer change, while its pause runs.
+    preview_typed_at: Option<f64>,
+    /// The account, chat and composer text the preview watch saw last, to
+    /// tell when it changes.
+    preview_seen: Option<(AccountId, Option<ChatId>, String)>,
+    /// Whether attachments were staged when the watch last saw a change, so
+    /// staging or removing them makes it look again.
+    preview_staged: bool,
     /// Byte offset of the `:` starting the active emoji query.
     pub emoji_start: Option<usize>,
     /// Keyboard-highlighted emoji in suggestions or the full picker.
@@ -578,6 +629,8 @@ pub struct App {
     pub selection_view: std::sync::Arc<std::sync::Mutex<Option<egui::Rect>>>,
     pub gif_query: String,
     pub gif_results: Vec<Gif>,
+    pub gif_next_offset: Option<usize>,
+    gif_request: u64,
     /// Whether a GIF search is active.
     pub gif_pending: bool,
     pub gif_error: Option<GifError>,
@@ -1268,6 +1321,10 @@ impl App {
             composer: String::new(),
             emoticon_undo: None,
             composer_mentions: Vec::new(),
+            composer_preview: None,
+            preview_typed_at: None,
+            preview_seen: None,
+            preview_staged: false,
             emoji_start: None,
             emoji_selected: 0,
             mention_start: None,
@@ -1343,6 +1400,8 @@ impl App {
             selection_view: Default::default(),
             gif_query: String::new(),
             gif_results: Vec::new(),
+            gif_next_offset: None,
+            gif_request: 0,
             gif_pending: false,
             gif_error: None,
             sticker_shelf: StickerShelf::default(),
@@ -1622,6 +1681,12 @@ impl App {
     /// Drops App-owned pointers into the previous account's chats and media.
     fn clear_account_ui(&mut self) {
         self.invalidate_composer_undo();
+        self.gif_request = self.gif_request.wrapping_add(1);
+        self.gif_query.clear();
+        self.gif_results.clear();
+        self.gif_next_offset = None;
+        self.gif_pending = false;
+        self.gif_error = None;
         self.forward_recipients.clear();
         self.forward_reviewing = false;
         // The locked folder and the picker show the previous account's chats
@@ -3715,6 +3780,29 @@ impl App {
                 }
             }
 
+            Event::Blocklist { state, error } => {
+                self.blocklist = state;
+                if !self.events_hidden
+                    && let Some(error) = error
+                {
+                    self.toast_error(error.message(self.locale).into_owned());
+                }
+            }
+            Event::BlocklistMapped {
+                from,
+                to,
+                chats,
+                state,
+            } => {
+                if !self.events_hidden
+                    && let Some(Dialog::ConfirmBlock { chat, .. }) = &mut self.dialog
+                    && chat == &from
+                {
+                    *chat = to;
+                }
+                self.blocklist = state;
+                self.apply_backend_event(Event::Chats(chats), live);
+            }
             Event::Link(status) => {
                 if live && status != self.link {
                     let text = match &status {
@@ -3740,6 +3828,32 @@ impl App {
                 self.me_name = name;
                 self.me_about = about;
             }
+            Event::LinkPreviewsDisabled(disabled) => {
+                self.link_previews_disabled = disabled;
+                // Only this event's own account is touched: the composer
+                // state is the window's, and may belong to another account.
+                let origin = self.account().id.clone();
+                // Turned back on, the text is asked about afresh.
+                if !disabled
+                    && self
+                        .preview_seen
+                        .as_ref()
+                        .is_some_and(|seen| seen.0 == origin)
+                {
+                    self.preview_seen = None;
+                }
+                // A card already above the composer goes with the setting,
+                // and a hidden account's loading one, whose answer is lost.
+                if disabled
+                    && self.composer_preview.as_ref().is_some_and(|preview| {
+                        preview.account == origin
+                            && (!self.events_hidden || preview.state == LinkPreviewState::Loading)
+                    })
+                {
+                    self.composer_preview = None;
+                }
+            }
+            Event::LinkPreview { url, preview } => self.link_preview_arrived(url, preview),
             Event::Labels(labels) => {
                 self.labels = labels;
                 self.prune_labels();
@@ -4017,7 +4131,7 @@ impl App {
             Event::PollCreated { chat, error } => {
                 self.poll_creating = false;
                 if let Some(error) = error {
-                    self.toast_error(error);
+                    self.toast_error(crate::blocking::localize_error(self.locale, error));
                 } else if live && self.dialog == Some(Dialog::CreatePoll(chat)) {
                     self.dialog = None;
                     self.poll_draft = Default::default();
@@ -4030,7 +4144,7 @@ impl App {
             } => {
                 self.poll_voting.remove(&(chat, message));
                 if let Some(error) = error {
-                    self.toast_error(error);
+                    self.toast_error(crate::blocking::localize_error(self.locale, error));
                 }
             }
             Event::ForwardLimit {
@@ -4098,16 +4212,35 @@ impl App {
                     self.avatars.insert(id, path);
                 }
             }
-            Event::Gifs { query, results } => {
-                if query == self.gif_query {
+            Event::Gifs {
+                query,
+                offset,
+                request,
+                results,
+            } => {
+                if query == self.gif_query && request == self.gif_request && self.gif_pending {
                     self.gif_pending = false;
                     match results {
                         Ok(results) => {
-                            self.gif_results = results;
+                            self.gif_next_offset = results.next_offset;
+                            if offset == 0 {
+                                self.gif_results = results.gifs;
+                            } else {
+                                let mut ids: std::collections::HashSet<_> =
+                                    self.gif_results.iter().map(|gif| gif.id.clone()).collect();
+                                self.gif_results.extend(
+                                    results
+                                        .gifs
+                                        .into_iter()
+                                        .filter(|gif| ids.insert(gif.id.clone())),
+                                );
+                            }
                             self.gif_error = None;
                         }
                         Err(error) => {
-                            self.gif_results.clear();
+                            if offset == 0 {
+                                self.gif_results.clear();
+                            }
                             self.gif_error = Some(error);
                         }
                     }
@@ -4645,6 +4778,39 @@ impl App {
                 }
             }
             Event::Info(message) => self.toast(message),
+            Event::ChatExportProgress { request, counts } => {
+                if self
+                    .chat_export
+                    .as_ref()
+                    .is_some_and(|(pending, _)| *pending == request)
+                {
+                    self.chat_export = Some((request, counts));
+                }
+            }
+            Event::ChatExportFinished { request, result } => {
+                if self
+                    .chat_export
+                    .as_ref()
+                    .is_some_and(|(pending, _)| *pending == request)
+                {
+                    self.chat_export = None;
+                    if live && matches!(self.dialog, Some(Dialog::ExportChat { .. })) {
+                        self.dialog = None;
+                    }
+                    match result {
+                        Ok(Some((path, counts))) => {
+                            let message = crate::i18n::gettext(self.locale, "Saved {path}. Messages: {messages}; attachments: {files}; unavailable: {missing}.")
+                                .replace("{path}", &path.display().to_string())
+                                .replace("{messages}", &counts.messages.to_string())
+                                .replace("{files}", &counts.files.to_string())
+                                .replace("{missing}", &counts.missing.to_string());
+                            self.report_chat_export(message, false);
+                        }
+                        Ok(None) => {}
+                        Err(error) => self.report_chat_export(error, true),
+                    }
+                }
+            }
             Event::ClipboardImage(result) => {
                 self.handle_clipboard_image(result, write_clipboard_image);
             }
@@ -4794,6 +4960,13 @@ impl App {
                     self.group_saving.remove(&chat);
                 }
             }
+            Event::TimerSaving { chat, saving } => {
+                if saving {
+                    self.timer_saving.insert(chat);
+                } else {
+                    self.timer_saving.remove(&chat);
+                }
+            }
             Event::EditRefused {
                 chat,
                 id,
@@ -4854,6 +5027,23 @@ impl App {
                             "Could not confirm the pin request; check your phone before retrying",
                         )
                     }
+                    "Unblock this contact to send messages." => {
+                        crate::i18n::gettext(self.locale, "Unblock this contact to send messages.")
+                    }
+                    "Unblock this contact to call them." => {
+                        crate::i18n::gettext(self.locale, "Unblock this contact to call them.")
+                    }
+                    "Connect to WhatsApp to change disappearing messages." => crate::i18n::gettext(
+                        self.locale,
+                        "Connect to WhatsApp to change disappearing messages.",
+                    ),
+                    "Could not change disappearing messages." => {
+                        crate::i18n::gettext(self.locale, "Could not change disappearing messages.")
+                    }
+                    "Only admins can change disappearing messages." => crate::i18n::gettext(
+                        self.locale,
+                        "Only admins can change disappearing messages.",
+                    ),
                     _ => message.into(),
                 };
                 self.toast_error(localized);
@@ -5008,6 +5198,10 @@ impl App {
 
                 self.poll_voting.clear();
                 self.interactive_sending.clear();
+                // A change in flight belonged to that account. Its completion
+                // is discarded, so nothing else would clear this.
+                self.group_saving.clear();
+                self.timer_saving.clear();
                 self.poll_creating = false;
                 self.poll_draft = Default::default();
                 self.notifications.clear_account(&account);
@@ -5025,6 +5219,7 @@ impl App {
                 self.show_starred = false;
                 self.stars.clear();
                 self.account_privacy = crate::privacy::Snapshot::default();
+                self.blocklist = Default::default();
                 self.account_receipts_off = false;
                 self.open_chat = None;
                 // Every recorded place named a chat of the account that just
@@ -5501,6 +5696,9 @@ impl App {
             Unsent::Sticker | Unsent::Gif => {}
         }
         let message = match reason {
+            Refusal::Blocked => {
+                crate::i18n::gettext(self.locale, "Unblock this contact to send messages.")
+            }
             Refusal::Offline => crate::i18n::gettext(
                 self.locale,
                 "Not sent: Zap Fasterk is not connected to WhatsApp.",
@@ -6420,6 +6618,143 @@ impl App {
         }
     }
 
+    /// Asks for a preview of the composer's link once its text has rested
+    /// for [`PREVIEW_PAUSE`] at egui time `now`, and drops the card when the
+    /// link is gone. Returns how long until the pause ends, for a repaint
+    /// then, while one is running.
+    pub(crate) fn watch_link_preview(&mut self, now: f64) -> Option<Duration> {
+        let unchanged = self
+            .preview_seen
+            .as_ref()
+            .is_some_and(|(account, chat, text)| {
+                *account == self.account().id && *chat == self.open_chat && *text == self.composer
+            })
+            && self.preview_staged == !self.pending.is_empty();
+        if !unchanged {
+            self.preview_staged = !self.pending.is_empty();
+            self.preview_seen = Some((
+                self.account().id.clone(),
+                self.open_chat.clone(),
+                self.composer.clone(),
+            ));
+            self.preview_typed_at = Some(now);
+        }
+        let waited = now - self.preview_typed_at?;
+        if waited < PREVIEW_PAUSE {
+            return Some(Duration::from_secs_f64(PREVIEW_PAUSE - waited));
+        }
+        self.preview_typed_at = None;
+        let link = self
+            .open_chat
+            .clone()
+            .filter(|chat| {
+                self.editing.is_none()
+                    && !self.link_previews_disabled
+                    && self.chat(chat).is_some_and(Chat::can_send)
+            })
+            .zip(composer_link(&self.composer));
+        let Some((chat, url)) = link else {
+            // No link, or none to preview: no card, and a dismissed one is
+            // forgotten with its text.
+            self.composer_preview = None;
+            return None;
+        };
+        if !self.pending.is_empty() {
+            // A caption never gets a card, but a dismissed or finished one
+            // is kept for its link; only a fetch still running is dropped,
+            // to be asked for again once the attachments are gone.
+            if self
+                .composer_preview
+                .as_ref()
+                .is_some_and(|preview| preview.state == LinkPreviewState::Loading)
+            {
+                self.composer_preview = None;
+            }
+            return None;
+        }
+        let account = self.account().id.clone();
+        if self.composer_preview.as_ref().is_some_and(|preview| {
+            preview.account == account && preview.chat == chat && preview.url == url
+        }) {
+            return None;
+        }
+        self.composer_preview = Some(ComposerPreview {
+            account,
+            chat,
+            url: url.clone(),
+            state: LinkPreviewState::Loading,
+        });
+        self.backend.send(Command::FetchLinkPreview { url });
+        None
+    }
+
+    /// The composer's preview while it belongs to `text` in `chat` of the
+    /// account on screen, and previews may be shown.
+    fn preview_for(&self, chat: &str, text: &str) -> Option<&ComposerPreview> {
+        if self.link_previews_disabled || self.editing.is_some() || !self.pending.is_empty() {
+            return None;
+        }
+        let url = composer_link(text)?;
+        self.composer_preview.as_ref().filter(|preview| {
+            preview.account == self.account().id && preview.chat == chat && preview.url == url
+        })
+    }
+
+    /// The card above the open chat's composer, whatever its state.
+    pub(crate) fn shown_preview(&self) -> Option<&ComposerPreview> {
+        self.preview_for(self.open_chat.as_deref()?, &self.composer)
+    }
+
+    /// The preview a message sent from the composer now would carry.
+    pub fn current_preview(&self) -> Option<&crate::model::ComposedPreview> {
+        self.shown_preview()?.ready()
+    }
+
+    /// Files a fetched preview with the request it answers. A hidden
+    /// account's answer is not for the window's composer, and a phone that
+    /// turned previews off since gets none.
+    pub(crate) fn link_preview_arrived(
+        &mut self,
+        url: String,
+        preview: Option<crate::model::ComposedPreview>,
+    ) {
+        if self.events_hidden || self.link_previews_disabled {
+            // An answer dropped for being hidden must not leave its card
+            // loading: forget it and the text seen, so the pause runs and
+            // asks again on return.
+            if self.events_hidden {
+                // `account()` is the answer's own account while hidden; the
+                // composer state may be another account's.
+                let origin = self.account().id.clone();
+                if self.composer_preview.as_ref().is_some_and(|asked| {
+                    asked.account == origin
+                        && asked.url == url
+                        && asked.state == LinkPreviewState::Loading
+                }) {
+                    self.composer_preview = None;
+                }
+                if self
+                    .preview_seen
+                    .as_ref()
+                    .is_some_and(|seen| seen.0 == origin)
+                {
+                    self.preview_seen = None;
+                }
+            }
+            return;
+        }
+        let account = self.account().id.clone();
+        if let Some(asked) = self.composer_preview.as_mut().filter(|asked| {
+            asked.account == account && asked.url == url && asked.state == LinkPreviewState::Loading
+        }) {
+            asked.state = match preview {
+                Some(preview) => LinkPreviewState::Ready(preview),
+                // Nothing usable: no card, and no asking again.
+                None => LinkPreviewState::Dismissed,
+            };
+        }
+    }
+
     /// Scrolls the open chat to its true bottom, below the newest message
     /// and anything drawn under it, such as the typing bubble, exactly as
     /// the return-to-bottom button's click does (`Action::ScrollToBottom`):
@@ -6695,6 +7030,15 @@ impl App {
             text: text.clone(),
             mentions: self.composer_mentions.clone(),
         };
+        // Only a preview ready for this very text goes with it; one still
+        // loading is not waited for.
+        let preview = self
+            .preview_for(&chat, &text)
+            .and_then(ComposerPreview::ready)
+            .cloned();
+        // Whatever is typed next is watched afresh, the same link included.
+        self.composer_preview = None;
+        self.preview_seen = None;
         let (text, mentions) = self.encode_composer_mentions(&chat, text);
         self.emoji_start = None;
         self.mention_start = None;
@@ -6719,6 +7063,7 @@ impl App {
             text,
             quoting,
             mentions,
+            preview,
         });
         self.follow_outgoing();
     }
@@ -7413,8 +7758,38 @@ impl App {
         {
             return;
         }
+        let destination = match &action {
+            Action::SendText { chat, .. }
+            | Action::SendLocation { chat, .. }
+            | Action::ReplyInteractive { chat, .. }
+            | Action::CreatePoll { chat, .. }
+            | Action::VotePoll { chat, .. }
+            | Action::React { chat, .. } => Some(chat.as_str()),
+            Action::SendPending { account, chat, .. } if account == &self.account().id => {
+                Some(chat.as_str())
+            }
+            Action::SendGif(_)
+            | Action::SendSticker(_)
+            | Action::ShareStickerPack(_)
+            | Action::StartRecording
+            | Action::MakeSticker { send: true } => self.open_chat.as_deref(),
+            _ => None,
+        };
+        if destination.is_some_and(|chat| self.blocklist.contains(chat)) {
+            self.toast_error(crate::i18n::gettext(
+                self.locale,
+                "Unblock this contact to send messages.",
+            ));
+            return;
+        }
         let automatic_download = matches!(action, Action::DownloadAutomatic { .. });
         match action {
+            Action::FetchBlocklist => self.backend.send(Command::FetchBlocklist),
+            Action::SetBlocked { chat, blocked } => {
+                if self.is_connected() && self.blocklist.editable() {
+                    self.backend.send(Command::SetBlocked { chat, blocked });
+                }
+            }
             Action::ToggleCallLog => {
                 self.call_log_open = !self.call_log_open;
                 if self.call_log_open {
@@ -7422,7 +7797,12 @@ impl App {
                 }
             }
             Action::StartCall(chat) => {
-                if self.accounts.iter().any(|account| {
+                if self.blocklist.contains(&chat) {
+                    self.toast_error(crate::i18n::gettext(
+                        self.locale,
+                        "Unblock this contact to call them.",
+                    ));
+                } else if self.accounts.iter().any(|account| {
                     account.call_preparing
                         || account.pending_call_request.is_some()
                         || account
@@ -7442,7 +7822,12 @@ impl App {
                 }
             }
             Action::StartVideoCall(chat) => {
-                if self.accounts.iter().any(|account| {
+                if self.blocklist.contains(&chat) {
+                    self.toast_error(crate::i18n::gettext(
+                        self.locale,
+                        "Unblock this contact to call them.",
+                    ));
+                } else if self.accounts.iter().any(|account| {
                     account.call_preparing
                         || account.pending_call_request.is_some()
                         || account
@@ -8127,6 +8512,23 @@ impl App {
                 self.backend
                     .send(Command::SaveAttachmentAs { source: path, name });
             }
+            Action::ExportChat {
+                chat,
+                include_media,
+            } => {
+                if self.chat(&chat).is_some_and(|chat| !chat.locked) && self.chat_export.is_none() {
+                    self.sync_chat_export_permission();
+                    self.chat_export_sequence = self.chat_export_sequence.wrapping_add(1);
+                    let request = self.chat_export_sequence;
+                    self.chat_export = Some((request, Default::default()));
+                    self.backend.send(Command::ExportChat {
+                        request,
+                        chat,
+                        include_media,
+                    });
+                }
+            }
+            Action::CancelChatExport => self.backend.send(Command::CancelChatExport),
             Action::DragAttachment(path) => {
                 #[cfg(test)]
                 ctx.data_mut(|data| {
@@ -8247,6 +8649,14 @@ impl App {
                 self.reply_to = None;
                 self.reply_when_loaded = None;
             }
+            Action::DismissLinkPreview => {
+                if let Some(chat) = self.open_chat.clone()
+                    && self.preview_for(&chat, &self.composer).is_some()
+                    && let Some(shown) = self.composer_preview.as_mut()
+                {
+                    shown.state = LinkPreviewState::Dismissed;
+                }
+            }
             Action::SetStar {
                 chat,
                 message,
@@ -8276,19 +8686,21 @@ impl App {
                 self.selection = None;
             }
             Action::ToggleForwardRecipient(id) => {
-                if matches!(self.dialog, Some(Dialog::Forward { .. }))
-                    && !self.forward_reviewing
-                    && self.chat(&id).is_some_and(|chat| chat.can_send())
+                if !matches!(self.dialog, Some(Dialog::Forward { .. }))
+                    || self.forward_reviewing
+                    || self.blocklist.contains(&id)
+                    || !self.chat(&id).is_some_and(|chat| chat.can_send())
                 {
-                    if self.forward_recipients.contains(&id) {
-                        self.forward_recipients.retain(|recipient| recipient != &id);
-                    } else if self.forward_limit == 1 {
-                        // A message that may go to one chat only: the new choice
-                        // replaces the old one, as a radio button would.
-                        self.forward_recipients = vec![id];
-                    } else if self.forward_recipients.len() < self.forward_limit {
-                        self.forward_recipients.push(id);
-                    }
+                    return;
+                }
+                if self.forward_recipients.contains(&id) {
+                    self.forward_recipients.retain(|recipient| recipient != &id);
+                } else if self.forward_limit == 1 {
+                    // A message that may go to one chat only: the new choice
+                    // replaces the old one, as a radio button would.
+                    self.forward_recipients = vec![id];
+                } else if self.forward_recipients.len() < self.forward_limit {
+                    self.forward_recipients.push(id);
                 }
             }
             Action::ReviewForward => {
@@ -8321,7 +8733,9 @@ impl App {
                 let writable: std::collections::HashSet<_> = self
                     .chats
                     .iter()
-                    .filter(|chat| crate::ui::dialogs::forwardable(chat))
+                    .filter(|chat| {
+                        crate::ui::dialogs::forwardable(chat) && !self.blocklist.contains(&chat.id)
+                    })
                     .map(|chat| chat.id.clone())
                     .collect();
                 let count = self.forward_recipients.len();
@@ -9098,13 +9512,20 @@ impl App {
                 }
             }
             Action::SearchGifs(query) => {
-                self.gif_query = query.clone();
-                self.gif_pending = true;
-                self.gif_error = None;
-                self.backend.send(Command::SearchGifs {
-                    query,
-                    key: self.settings.effective_giphy_key().unwrap_or_default(),
-                });
+                self.gif_query = query.trim().to_owned();
+                self.gif_results.clear();
+                self.gif_next_offset = None;
+                self.request_gif_page(0);
+            }
+            Action::MoreGifs => {
+                if !self.gif_pending
+                    && let Some(offset) = self.gif_next_offset
+                {
+                    self.request_gif_page(offset);
+                }
+            }
+            Action::FormatComposer { format, start, end } => {
+                self.format_composer(ctx, format, start, end);
             }
             Action::SendGif(gif) => {
                 if let Some(chat) = self.open_chat.clone() {
@@ -9268,6 +9689,9 @@ impl App {
                 if dialog == Dialog::Statuses {
                     self.backend.send(Command::Statuses);
                 }
+                if dialog == Dialog::BlockedContacts {
+                    self.backend.send(Command::FetchBlocklist);
+                }
                 if let Dialog::ChatInfo(chat) = &dialog {
                     self.gallery.tab = None;
                     if self.gallery_accessible(chat) {
@@ -9317,10 +9741,25 @@ impl App {
                 self.dialog = Some(dialog);
             }
             Action::CloseDialog => {
+                if matches!(self.dialog, Some(Dialog::ExportChat { .. }))
+                    && self.chat_export.is_some()
+                {
+                    self.backend.send(Command::CancelChatExport);
+                }
                 self.backup_draft = crate::ui::archive_backup::BackupDraft::default();
                 self.cancel_contact_dialog_request();
                 self.clear_chat_lock_entry();
-                self.dialog = None;
+                self.dialog = if matches!(
+                    self.dialog,
+                    Some(Dialog::ConfirmBlock {
+                        from_list: true,
+                        ..
+                    })
+                ) {
+                    Some(Dialog::BlockedContacts)
+                } else {
+                    None
+                };
                 self.invite = None;
                 self.forward_search.clear();
                 self.forward_recipients.clear();
@@ -10541,6 +10980,49 @@ impl App {
         }
     }
 
+    /// A lock cancels exports for every account, including those off screen.
+    fn sync_chat_export_permission(&mut self) {
+        let allowed = !self.app_lock.is_locked();
+        for account in &mut self.accounts {
+            if account.chat_export_allowed_sent != Some(allowed) {
+                account.backend.send(Command::SetChatExportAllowed(allowed));
+                account.chat_export_allowed_sent = Some(allowed);
+            }
+        }
+    }
+
+    /// Shows a chat-export outcome, naming the account when it is not on
+    /// screen. A hidden account never touches the window's dialogs, but its
+    /// outcome still reaches the reader as a labeled toast and announcement.
+    fn report_chat_export(&mut self, message: String, failed: bool) {
+        let message = if self.events_hidden {
+            let account = self.account().display_label(self.locale);
+            let template = crate::i18n::gettext(self.locale, "{}: {}");
+            let mut parts = template.splitn(3, "{}");
+            format!(
+                "{}{}{}{}{}",
+                parts.next().unwrap_or_default(),
+                account,
+                parts.next().unwrap_or_default(),
+                message,
+                parts.next().unwrap_or_default(),
+            )
+        } else {
+            message
+        };
+        if self.events_hidden
+            && !self.app_lock.is_locked()
+            && self.accessibility_announcements.len() < 8
+        {
+            self.accessibility_announcements.push(message.clone());
+        }
+        if failed {
+            self.toast_error(message);
+        } else {
+            self.toast(message);
+        }
+    }
+
     /// Forward recovery policy only when the account policy or lock changes.
     fn report_background_history(&mut self) {
         let paused = self.app_lock.is_locked();
@@ -10670,6 +11152,7 @@ impl App {
         }
         self.report_presence();
         self.report_background_history();
+        self.sync_chat_export_permission();
         self.handle_power();
         self.track_focus(ctx, Instant::now());
         self.handle_tray();
@@ -11434,6 +11917,7 @@ impl App {
         self.window_focused = focused;
         self.report_presence();
         self.report_background_history();
+        self.sync_chat_export_permission();
         if locked {
             // Files dropped or pasted on the lock screen go nowhere.
             self.dropping = false;
@@ -11444,6 +11928,11 @@ impl App {
         }
         crate::ui::show(self, ui);
         self.apply_actions(ctx);
+        // After the view and its actions, so a change this frame starts the
+        // pause from now. Nobody types behind the lock screen.
+        if !locked && let Some(wait) = self.watch_link_preview(ctx.input(|input| input.time)) {
+            ctx.request_repaint_after(wait);
+        }
         let title = self.accessible_window_title();
         let title_id = egui::Id::new("native-window-title");
         if ctx.data(|data| data.get_temp::<String>(title_id)).as_ref() != Some(&title) {
@@ -11487,6 +11976,82 @@ impl App {
                 format!("{name}, Zap Fasterk")
             },
         )
+    }
+
+    fn format_composer(
+        &mut self,
+        ctx: &egui::Context,
+        format: crate::model::ComposerFormat,
+        start: usize,
+        end: usize,
+    ) {
+        if self.open_chat.is_none()
+            || self.current_chat().is_some_and(|chat| !chat.can_send())
+            || start >= end
+            || end > self.composer.chars().count()
+        {
+            return;
+        }
+        let spans = composer_format_spans(&self.composer, start, end, format);
+        let (Some(first), Some(last)) = (spans.first(), spans.last()) else {
+            return;
+        };
+        let marker = format.marker();
+        let selected = (
+            first.0 + marker.len(),
+            last.1 + marker.len() * (2 * spans.len() - 1),
+        );
+        let byte = |at| {
+            self.composer
+                .char_indices()
+                .nth(at)
+                .map_or(self.composer.len(), |(byte, _)| byte)
+        };
+        let bytes: Vec<(usize, usize)> = spans
+            .iter()
+            .map(|&(from, to)| (byte(from), byte(to)))
+            .collect();
+        let id = egui::Id::new("composer-text");
+        let mut state = egui::TextEdit::load_state(ctx, id).unwrap_or_default();
+        let original = egui::text::CCursorRange::two(
+            egui::text::CCursor::new(start),
+            egui::text::CCursor::new(end),
+        );
+        let mut undo = state.undoer();
+        undo.add_undo(&(original, self.composer.clone()));
+        // From the end, so each insertion leaves the offsets before it valid.
+        for &(from, to) in bytes.iter().rev() {
+            self.composer.insert_str(to, marker);
+            self.composer.insert_str(from, marker);
+        }
+        let range = egui::text::CCursorRange::two(
+            egui::text::CCursor::new(selected.0),
+            egui::text::CCursor::new(selected.1),
+        );
+        // Feeding the edited state clears redos left by an earlier Undo.
+        undo.feed_state(
+            ctx.input(|input| input.time),
+            &(range, self.composer.clone()),
+        );
+        state.set_undoer(undo);
+        state.cursor.set_char_range(Some(range));
+        egui::TextEdit::store_state(ctx, id, state);
+        ctx.memory_mut(|memory| memory.request_focus(id));
+        self.emoji_start = None;
+        self.mention_start = None;
+        self.focus_composer = true;
+    }
+
+    fn request_gif_page(&mut self, offset: usize) {
+        self.gif_request = self.gif_request.wrapping_add(1);
+        self.gif_pending = true;
+        self.gif_error = None;
+        self.backend.send(Command::SearchGifs {
+            query: self.gif_query.clone(),
+            key: self.settings.effective_giphy_key().unwrap_or_default(),
+            offset,
+            request: self.gif_request,
+        });
     }
 
     /// Inserts text at the composer cursor or end.
@@ -12190,6 +12755,35 @@ fn notification_eligible(chat: &Chat, now: i64, message_at: i64) -> bool {
     now - message_at <= 60
 }
 
+/// The character ranges of `text` to wrap in `format`'s markers for a
+/// selection. Markup does not close a marker after a space and reads one line
+/// at a time, so each range stops short of the whitespace at its edges, and a
+/// selection over several lines gets a range per line that has text. Monospace
+/// is one range, since its marker is not limited to a line on the phone.
+fn composer_format_spans(
+    text: &str,
+    start: usize,
+    end: usize,
+    format: crate::model::ComposerFormat,
+) -> Vec<(usize, usize)> {
+    let chars: Vec<char> = text.chars().collect();
+    let trim = |from: usize, to: usize| {
+        let lead = chars[from..to].iter().position(|c| !c.is_whitespace())?;
+        let trail = chars[from..to].iter().rposition(|c| !c.is_whitespace())?;
+        Some((from + lead, from + trail + 1))
+    };
+    if matches!(format, crate::model::ComposerFormat::Monospace) {
+        return trim(start, end).into_iter().collect();
+    }
+    let mut from = start;
+    let mut spans = Vec::new();
+    for line in chars[start..end].split(|c| *c == '\n') {
+        spans.extend(trim(from, from + line.len()));
+        from += line.len() + 1;
+    }
+    spans
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -12219,6 +12813,180 @@ mod tests {
         ));
         app.flush_undo(now, &egui::Context::default());
         assert!(commands.try_recv().is_err());
+    }
+
+    fn composer_app(text: &str) -> (super::App, egui::Context) {
+        let mut app = app();
+        app.chats
+            .push(super::Chat::new("first".into(), "First".into()));
+        app.open_chat("first".into());
+        app.composer = text.into();
+        (app, egui::Context::default())
+    }
+
+    #[test]
+    fn gif_pages_append_retry_and_ignore_overtaken_searches() {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        let gif = |id: &str| crate::model::Gif {
+            id: id.into(),
+            still: None,
+            mp4: "https://example.test/gif.mp4".into(),
+            width: 100,
+            height: 100,
+        };
+        let page = |request, offset, ids: &[&str], next_offset| crate::backend::Event::Gifs {
+            query: "cats".into(),
+            request,
+            offset,
+            results: Ok(crate::model::GifPage {
+                gifs: ids.iter().map(|id| gif(id)).collect(),
+                next_offset,
+            }),
+        };
+        app.apply(crate::model::Action::SearchGifs("cats".into()), &ctx);
+        let first = app.gif_request;
+        app.apply(crate::model::Action::SearchGifs("cats".into()), &ctx);
+        let current = app.gif_request;
+        app.apply_backend_event(page(first, 0, &["stale"], None), false);
+        assert!(app.gif_pending);
+        assert!(app.gif_results.is_empty());
+        app.apply_backend_event(page(current, 0, &["one", "two"], Some(24)), false);
+        app.apply(crate::model::Action::MoreGifs, &ctx);
+        let more = app.gif_request;
+        app.apply(crate::model::Action::MoreGifs, &ctx);
+        assert_eq!(app.gif_request, more, "one page request at a time");
+        app.apply_backend_event(
+            crate::backend::Event::Gifs {
+                query: "cats".into(),
+                offset: 24,
+                request: more,
+                results: Err(crate::model::GifError {
+                    message: "offline".into(),
+                    bad_key: false,
+                }),
+            },
+            false,
+        );
+        assert_eq!(app.gif_results.len(), 2);
+        assert_eq!(app.gif_next_offset, Some(24));
+        app.apply(crate::model::Action::MoreGifs, &ctx);
+        app.apply_backend_event(page(app.gif_request, 24, &["two", "three"], None), false);
+        assert_eq!(
+            app.gif_results
+                .iter()
+                .map(|gif| gif.id.as_str())
+                .collect::<Vec<_>>(),
+            ["one", "two", "three"]
+        );
+        assert!(!app.gif_pending);
+        assert!(app.gif_error.is_none());
+        assert!(app.gif_next_offset.is_none());
+        app.apply(crate::model::Action::SearchGifs("cats".into()), &ctx);
+        let old_account = app.gif_request;
+        app.apply_backend_event(page(old_account, 0, &["old-account"], Some(24)), false);
+        app.apply(crate::model::Action::MoreGifs, &ctx);
+        let late = app.gif_request;
+        app.clear_account_ui();
+        assert!(app.gif_results.is_empty());
+        assert!(app.gif_query.is_empty());
+        assert!(app.gif_next_offset.is_none());
+        assert!(!app.gif_pending);
+        app.apply(crate::model::Action::SearchGifs("cats".into()), &ctx);
+        app.apply_backend_event(page(late, 24, &["late-old-account"], None), false);
+        assert!(app.gif_pending);
+        assert!(app.gif_results.is_empty());
+        app.apply_backend_event(page(app.gif_request, 0, &["new-account"], None), false);
+        assert_eq!(app.gif_results[0].id, "new-account");
+    }
+
+    /// Markup never closes after a space and is read line by line, so a
+    /// marker beside a selected space or across a line stays literal.
+    #[test]
+    fn composer_formatting_stops_at_edge_spaces_and_wraps_each_line() {
+        use crate::model::ComposerFormat::{self, Bold, Italic, Monospace, Strikethrough};
+        let format = |text: &str, start, end, format: ComposerFormat| {
+            let (mut app, ctx) = composer_app(text);
+            app.format_composer(&ctx, format, start, end);
+            let range = egui::TextEdit::load_state(&ctx, egui::Id::new("composer-text"))
+                .and_then(|state| state.cursor.char_range())
+                .map(|range| {
+                    let sorted = range.as_sorted_char_range();
+                    sorted.start.0..sorted.end.0
+                });
+            (app.composer, range)
+        };
+        assert_eq!(
+            format("say hello there", 3, 10, Bold),
+            ("say *hello* there".into(), Some(5..10))
+        );
+        assert_eq!(
+            format("one \n\n  two é\n", 0, 14, Italic),
+            ("_one_ \n\n  _two é_\n".into(), Some(1..16))
+        );
+        assert_eq!(
+            format("👋 a\nb 👋", 2, 5, Strikethrough),
+            ("👋 ~a~\n~b~ 👋".into(), Some(3..8))
+        );
+        // A selected run of spaces has nothing to format.
+        assert_eq!(format("a  \n b", 1, 5, Bold).0, "a  \n b");
+        // Monospace spans lines, as one ``` pair.
+        assert_eq!(
+            format(" a\nb ", 0, 5, Monospace),
+            (" ```a\nb``` ".into(), Some(4..7))
+        );
+        // The same selections read back with no marker left literal.
+        for (text, start, end) in [("say hello there", 3, 10), ("one \n\n  two é", 0, 13)] {
+            let (formatted, _) = format(text, start, end, Bold);
+            assert_eq!(crate::markup::plain(&formatted, &[]), text);
+        }
+    }
+
+    #[test]
+    fn composer_formatting_wraps_unicode_selection_and_can_be_undone() {
+        use crate::model::ComposerFormat;
+        for format in [
+            ComposerFormat::Bold,
+            ComposerFormat::Italic,
+            ComposerFormat::Strikethrough,
+            ComposerFormat::Monospace,
+        ] {
+            let (mut app, ctx) = composer_app("Hi 👋 café!");
+            app.format_composer(&ctx, format, 3, 9);
+            let marker = format.marker();
+            assert_eq!(app.composer, format!("Hi {marker}👋 café{marker}!"));
+            let state = egui::TextEdit::load_state(&ctx, egui::Id::new("composer-text")).unwrap();
+            let range = state.cursor.char_range().unwrap();
+            assert_eq!(
+                range.as_sorted_char_range().start.0..range.as_sorted_char_range().end.0,
+                3 + marker.len()..9 + marker.len()
+            );
+            let mut undo = state.undoer();
+            let before = undo.undo(&(range, app.composer.clone())).unwrap().clone();
+            assert_eq!(before.1, "Hi 👋 café!");
+            assert_eq!(undo.redo(&before).unwrap().1, app.composer);
+            let unchanged = app.composer.clone();
+            app.format_composer(&ctx, format, 4, 4);
+            app.format_composer(&ctx, format, 0, 1000);
+            assert_eq!(app.composer, unchanged);
+            // A different format after Undo starts a new edit, not a redo branch.
+            let mut state =
+                egui::TextEdit::load_state(&ctx, egui::Id::new("composer-text")).unwrap();
+            let range = state.cursor.char_range().unwrap();
+            let mut undo = state.undoer();
+            let before = undo.undo(&(range, app.composer.clone())).unwrap().clone();
+            app.composer = before.1;
+            state.cursor.set_char_range(Some(before.0));
+            state.set_undoer(undo);
+            egui::TextEdit::store_state(&ctx, egui::Id::new("composer-text"), state);
+            app.format_composer(&ctx, ComposerFormat::Italic, 3, 9);
+            let state = egui::TextEdit::load_state(&ctx, egui::Id::new("composer-text")).unwrap();
+            assert!(
+                !state
+                    .undoer()
+                    .has_redo(&(state.cursor.char_range().unwrap(), app.composer.clone()))
+            );
+        }
     }
 
     #[test]
@@ -12656,6 +13424,552 @@ mod tests {
         App::headless(AppDirs::under(&root), Settings::default()).0
     }
 
+    const PREVIEW_CHAT: &str = "fixture@s.whatsapp.net";
+    const PREVIEW_URL: &str = "https://ex.com/a";
+
+    /// An app with [`PREVIEW_CHAT`] open, on a backend that records
+    /// commands and delivers the events the test sends.
+    fn composer_preview_app() -> (
+        App,
+        tokio::sync::mpsc::UnboundedReceiver<Command>,
+        std::sync::mpsc::Sender<Event>,
+    ) {
+        let mut app = app();
+        let (backend, commands, events) = Backend::recording_with_events();
+        app.backend = backend;
+        app.chats
+            .push(Chat::new(PREVIEW_CHAT.into(), "Fixture".into()));
+        app.open_chat = Some(PREVIEW_CHAT.into());
+        (app, commands, events)
+    }
+
+    fn composed_preview(url: &str) -> crate::model::ComposedPreview {
+        crate::model::ComposedPreview {
+            preview: crate::model::LinkPreview {
+                url: url.into(),
+                title: Some("Fixture title".into()),
+                description: Some("Fixture description".into()),
+                video: false,
+                image: None,
+                image_sha256: None,
+            },
+            thumbnail: None,
+        }
+    }
+
+    /// A real picture for the card test, so it paints its room headless.
+    fn tiny_thumbnail() -> Vec<u8> {
+        let mut jpeg = Vec::new();
+        image::RgbImage::new(6, 4)
+            .write_to(
+                &mut std::io::Cursor::new(&mut jpeg),
+                image::ImageFormat::Jpeg,
+            )
+            .expect("jpeg");
+        jpeg
+    }
+
+    fn preview_fetches(
+        commands: &mut tokio::sync::mpsc::UnboundedReceiver<Command>,
+    ) -> Vec<String> {
+        std::iter::from_fn(|| commands.try_recv().ok())
+            .filter_map(|command| match command {
+                Command::FetchLinkPreview { url } => Some(url),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Types `text` at `at` and lets it rest past the pause.
+    fn rest_on(app: &mut App, text: &str, at: f64) {
+        app.composer = text.into();
+        app.watch_link_preview(at);
+        app.watch_link_preview(at + 0.6);
+    }
+
+    /// Sends the composer the way its Send key does.
+    fn send_composer(app: &mut App) {
+        let text = std::mem::take(&mut app.composer);
+        app.apply(
+            Action::SendText {
+                chat: PREVIEW_CHAT.into(),
+                text,
+                quoting: None,
+            },
+            &egui::Context::default(),
+        );
+    }
+
+    fn sent_preview(
+        commands: &mut tokio::sync::mpsc::UnboundedReceiver<Command>,
+    ) -> Option<Option<crate::model::ComposedPreview>> {
+        std::iter::from_fn(|| commands.try_recv().ok()).find_map(|command| match command {
+            Command::SendText { preview, .. } => Some(preview),
+            _ => None,
+        })
+    }
+
+    /// A link typed in the composer is asked for once the text has rested
+    /// for half a second, and not before.
+    #[test]
+    fn composer_preview_link_in_composer_requests_preview_after_pause() {
+        let mut app = app();
+        let (backend, mut commands) = Backend::recording();
+        app.backend = backend;
+        app.chats
+            .push(Chat::new(PREVIEW_CHAT.into(), "Fixture".into()));
+        app.open_chat(PREVIEW_CHAT.into());
+        let ctx = egui::Context::default();
+        composer_undo_boundary_frame(&mut app, &ctx, 0.0, vec![]);
+        composer_undo_boundary_frame(
+            &mut app,
+            &ctx,
+            0.1,
+            vec![egui::Event::Text("hi https://ex.com/a".into())],
+        );
+        assert_eq!(app.composer, "hi https://ex.com/a");
+        composer_undo_boundary_frame(&mut app, &ctx, 0.3, vec![]);
+        composer_undo_boundary_frame(&mut app, &ctx, 0.55, vec![]);
+        assert!(
+            preview_fetches(&mut commands).is_empty(),
+            "not before the pause"
+        );
+        composer_undo_boundary_frame(&mut app, &ctx, 0.65, vec![]);
+        composer_undo_boundary_frame(&mut app, &ctx, 1.5, vec![]);
+        composer_undo_boundary_frame(&mut app, &ctx, 3.0, vec![]);
+        assert_eq!(
+            preview_fetches(&mut commands),
+            [PREVIEW_URL],
+            "exactly once"
+        );
+    }
+
+    /// The state check asks the window back for the end of the pause, so no
+    /// frame has to come by chance and none spins in between.
+    #[test]
+    fn composer_preview_pause_asks_for_a_frame_at_its_end() {
+        let (mut app, _commands, _events) = composer_preview_app();
+        app.composer = "hi https://ex.com/a".into();
+        let wait = app.watch_link_preview(1.0).unwrap();
+        assert!((wait.as_secs_f64() - 0.5).abs() < 1e-6, "{wait:?}");
+        let wait = app.watch_link_preview(1.2).unwrap();
+        assert!((wait.as_secs_f64() - 0.3).abs() < 1e-6, "{wait:?}");
+        assert_eq!(app.watch_link_preview(1.5), None);
+        assert_eq!(app.watch_link_preview(1.6), None, "nothing to wait for");
+    }
+
+    #[test]
+    fn composer_preview_ready_preview_is_sent() {
+        let (mut app, mut commands, events) = composer_preview_app();
+        rest_on(&mut app, "hi https://ex.com/a", 0.0);
+        assert_eq!(preview_fetches(&mut commands), [PREVIEW_URL]);
+        assert_eq!(app.current_preview(), None, "still loading");
+        events
+            .send(Event::LinkPreview {
+                url: PREVIEW_URL.into(),
+                preview: Some(composed_preview(PREVIEW_URL)),
+            })
+            .unwrap();
+        app.handle_events();
+        assert_eq!(app.current_preview(), Some(&composed_preview(PREVIEW_URL)));
+        send_composer(&mut app);
+        assert_eq!(
+            sent_preview(&mut commands),
+            Some(Some(composed_preview(PREVIEW_URL)))
+        );
+        assert!(app.composer_preview.is_none(), "the card went with it");
+    }
+
+    /// A page with nothing to show leaves no card, and is not asked again.
+    #[test]
+    fn composer_preview_failed_fetch_shows_nothing() {
+        let (mut app, mut commands, events) = composer_preview_app();
+        rest_on(&mut app, "hi https://ex.com/a", 0.0);
+        events
+            .send(Event::LinkPreview {
+                url: PREVIEW_URL.into(),
+                preview: None,
+            })
+            .unwrap();
+        app.handle_events();
+        assert_eq!(app.current_preview(), None);
+        rest_on(&mut app, "hi https://ex.com/a again", 1.0);
+        assert_eq!(preview_fetches(&mut commands), [PREVIEW_URL]);
+        send_composer(&mut app);
+        assert_eq!(sent_preview(&mut commands), Some(None));
+    }
+
+    #[test]
+    fn composer_preview_dismissed_preview_is_not_sent() {
+        let (mut app, mut commands, events) = composer_preview_app();
+        let arrive = |url: &str| {
+            events
+                .send(Event::LinkPreview {
+                    url: url.into(),
+                    preview: Some(composed_preview(url)),
+                })
+                .unwrap();
+        };
+        rest_on(&mut app, "hi https://ex.com/a", 0.0);
+        arrive(PREVIEW_URL);
+        app.handle_events();
+        app.apply(Action::DismissLinkPreview, &egui::Context::default());
+        assert_eq!(app.current_preview(), None);
+        send_composer(&mut app);
+        assert_eq!(sent_preview(&mut commands), Some(None));
+
+        // Dismissing is for that link only: sent, it is offered again, and
+        // another link in the same text brings a card of its own.
+        rest_on(&mut app, "hi https://ex.com/a", 1.0);
+        assert_eq!(preview_fetches(&mut commands), [PREVIEW_URL]);
+        arrive(PREVIEW_URL);
+        app.handle_events();
+        app.apply(Action::DismissLinkPreview, &egui::Context::default());
+        rest_on(&mut app, "hi https://ex.com/a, see", 2.0);
+        assert!(preview_fetches(&mut commands).is_empty(), "still dismissed");
+        assert_eq!(app.current_preview(), None);
+        rest_on(&mut app, "hi https://ex.com/b", 3.0);
+        assert_eq!(preview_fetches(&mut commands), ["https://ex.com/b"]);
+        arrive("https://ex.com/b");
+        app.handle_events();
+        assert_eq!(
+            app.current_preview(),
+            Some(&composed_preview("https://ex.com/b"))
+        );
+    }
+
+    #[test]
+    fn composer_preview_sending_while_loading_sends_plain() {
+        let (mut app, mut commands, events) = composer_preview_app();
+        rest_on(&mut app, "hi https://ex.com/a", 0.0);
+        assert_eq!(preview_fetches(&mut commands), [PREVIEW_URL]);
+        send_composer(&mut app);
+        assert_eq!(sent_preview(&mut commands), Some(None), "sent at once");
+        // The answer that comes after has nothing to go with.
+        events
+            .send(Event::LinkPreview {
+                url: PREVIEW_URL.into(),
+                preview: Some(composed_preview(PREVIEW_URL)),
+            })
+            .unwrap();
+        app.handle_events();
+        assert_eq!(app.current_preview(), None);
+        assert!(app.composer_preview.is_none());
+    }
+
+    #[test]
+    fn composer_preview_late_result_ignored_in_other_chat() {
+        let (mut app, mut commands, events) = composer_preview_app();
+        let other = "other@s.whatsapp.net";
+        app.chats.push(Chat::new(other.into(), "Other".into()));
+        rest_on(&mut app, "hi https://ex.com/a", 0.0);
+        assert_eq!(preview_fetches(&mut commands), [PREVIEW_URL]);
+        // The reader moves to another chat holding the same link.
+        app.open_chat = Some(other.into());
+        app.composer = "also https://ex.com/a".into();
+        app.watch_link_preview(1.0);
+        let arrive = || {
+            events
+                .send(Event::LinkPreview {
+                    url: PREVIEW_URL.into(),
+                    preview: Some(composed_preview(PREVIEW_URL)),
+                })
+                .unwrap();
+        };
+        arrive();
+        app.handle_events();
+        assert_eq!(app.current_preview(), None, "the first chat's answer");
+        app.watch_link_preview(1.6);
+        assert_eq!(preview_fetches(&mut commands), [PREVIEW_URL], "its own");
+        assert_eq!(app.current_preview(), None);
+        arrive();
+        app.handle_events();
+        assert_eq!(app.current_preview(), Some(&composed_preview(PREVIEW_URL)));
+        // And back in the first chat, nothing of the other's shows.
+        app.open_chat = Some(PREVIEW_CHAT.into());
+        app.composer = "hi https://ex.com/a".into();
+        assert_eq!(app.current_preview(), None);
+    }
+
+    #[test]
+    fn composer_preview_hidden_account_result_ignored() {
+        let (mut app, mut commands, _events) = composer_preview_app();
+        rest_on(&mut app, "hi https://ex.com/a", 0.0);
+        assert_eq!(preview_fetches(&mut commands), [PREVIEW_URL]);
+        app.events_hidden = true;
+        app.apply_backend_event(
+            Event::LinkPreview {
+                url: PREVIEW_URL.into(),
+                preview: Some(composed_preview(PREVIEW_URL)),
+            },
+            false,
+        );
+        app.events_hidden = false;
+        assert_eq!(app.current_preview(), None);
+    }
+
+    /// An answer dropped while its account was hidden does not leave the
+    /// card loading: back on the account, the pause asks again.
+    #[test]
+    fn composer_preview_hidden_account_result_is_asked_again() {
+        let (mut app, mut commands, _events) = composer_preview_app();
+        rest_on(&mut app, "hi https://ex.com/a", 0.0);
+        assert_eq!(preview_fetches(&mut commands), [PREVIEW_URL]);
+        app.events_hidden = true;
+        app.apply_backend_event(
+            Event::LinkPreview {
+                url: PREVIEW_URL.into(),
+                preview: Some(composed_preview(PREVIEW_URL)),
+            },
+            false,
+        );
+        app.events_hidden = false;
+        app.watch_link_preview(1.0);
+        app.watch_link_preview(1.6);
+        assert_eq!(preview_fetches(&mut commands), [PREVIEW_URL]);
+    }
+
+    /// A hidden account's dropped answer leaves the card and pause of the
+    /// account on screen alone.
+    #[test]
+    fn composer_preview_hidden_answer_leaves_other_account_alone() {
+        let directory = tempfile::tempdir().unwrap();
+        let (mut app, _hidden_commands) = two_accounts(directory.path());
+        let (backend, mut commands) = Backend::recording();
+        app.backend = backend;
+        app.chats
+            .push(Chat::new(PREVIEW_CHAT.into(), "Fixture".into()));
+        app.open_chat = Some(PREVIEW_CHAT.into());
+        rest_on(&mut app, "hi https://ex.com/a", 0.0);
+        assert_eq!(preview_fetches(&mut commands), [PREVIEW_URL]);
+        // Typing again starts a pause that is still running.
+        app.composer = "hi https://ex.com/a!".into();
+        app.watch_link_preview(2.0);
+        let (card, seen, typed_at) = (
+            app.composer_preview.clone(),
+            app.preview_seen.clone(),
+            app.preview_typed_at,
+        );
+        assert!(typed_at.is_some());
+        // The other account's answer, applied the way `handle_events` does.
+        app.active = 1;
+        app.events_hidden = true;
+        app.apply_backend_event(
+            Event::LinkPreview {
+                url: PREVIEW_URL.into(),
+                preview: Some(composed_preview(PREVIEW_URL)),
+            },
+            false,
+        );
+        app.events_hidden = false;
+        app.active = 0;
+        assert_eq!(app.composer_preview, card);
+        assert_eq!(app.preview_seen, seen);
+        assert_eq!(app.preview_typed_at, typed_at);
+        app.watch_link_preview(2.6);
+        assert!(preview_fetches(&mut commands).is_empty(), "asked once");
+    }
+
+    /// A caption never gets a card: with attachments staged nothing is
+    /// fetched, and taking them away lets the link be asked for afresh.
+    #[test]
+    fn composer_preview_staged_attachment_requests_nothing() {
+        let (mut app, mut commands, _events) = composer_preview_app();
+        app.pending.push(Pending::File("a.png".into()));
+        rest_on(&mut app, "hi https://ex.com/a", 0.0);
+        assert!(preview_fetches(&mut commands).is_empty());
+        assert!(app.composer_preview.is_none());
+        app.pending.clear();
+        app.watch_link_preview(2.0);
+        app.watch_link_preview(2.6);
+        assert_eq!(preview_fetches(&mut commands), [PREVIEW_URL]);
+    }
+
+    /// A dismissed card stays dismissed while attachments come and go.
+    #[test]
+    fn composer_preview_dismissal_survives_staged_attachments() {
+        let (mut app, mut commands, _events) = composer_preview_app();
+        rest_on(&mut app, "hi https://ex.com/a", 0.0);
+        assert_eq!(preview_fetches(&mut commands), [PREVIEW_URL]);
+        app.composer_preview.as_mut().unwrap().state = LinkPreviewState::Dismissed;
+        app.pending.push(Pending::File("a.png".into()));
+        app.watch_link_preview(1.0);
+        app.watch_link_preview(1.6);
+        app.pending.clear();
+        app.watch_link_preview(2.0);
+        app.watch_link_preview(2.6);
+        assert!(preview_fetches(&mut commands).is_empty());
+        assert_eq!(
+            app.composer_preview.as_ref().map(|card| &card.state),
+            Some(&LinkPreviewState::Dismissed)
+        );
+        assert_eq!(app.current_preview(), None);
+        send_composer(&mut app);
+        assert_eq!(sent_preview(&mut commands), Some(None));
+    }
+
+    #[test]
+    fn composer_preview_disabled_setting_requests_nothing() {
+        let (mut app, mut commands, events) = composer_preview_app();
+        app.link_previews_disabled = true;
+        rest_on(&mut app, "hi https://ex.com/a", 0.0);
+        assert!(preview_fetches(&mut commands).is_empty());
+        events
+            .send(Event::LinkPreview {
+                url: PREVIEW_URL.into(),
+                preview: Some(composed_preview(PREVIEW_URL)),
+            })
+            .unwrap();
+        app.handle_events();
+        assert!(app.composer_preview.is_none());
+        assert_eq!(app.current_preview(), None);
+        send_composer(&mut app);
+        assert_eq!(sent_preview(&mut commands), Some(None));
+    }
+
+    /// The phone's setting turning on drops a card already shown, and an
+    /// answer still on its way when it does.
+    #[test]
+    fn composer_preview_setting_turned_on_drops_the_card() {
+        let (mut app, mut commands, events) = composer_preview_app();
+        let arrive = || {
+            events
+                .send(Event::LinkPreview {
+                    url: PREVIEW_URL.into(),
+                    preview: Some(composed_preview(PREVIEW_URL)),
+                })
+                .unwrap();
+        };
+        rest_on(&mut app, "hi https://ex.com/a", 0.0);
+        arrive();
+        app.handle_events();
+        assert!(app.current_preview().is_some());
+        events.send(Event::LinkPreviewsDisabled(true)).unwrap();
+        app.handle_events();
+        assert!(app.composer_preview.is_none());
+        assert_eq!(app.current_preview(), None);
+
+        events.send(Event::LinkPreviewsDisabled(false)).unwrap();
+        app.handle_events();
+        rest_on(&mut app, "hi https://ex.com/a again", 1.0);
+        assert_eq!(preview_fetches(&mut commands), [PREVIEW_URL, PREVIEW_URL]);
+        events.send(Event::LinkPreviewsDisabled(true)).unwrap();
+        arrive();
+        app.handle_events();
+        assert_eq!(app.current_preview(), None);
+        send_composer(&mut app);
+        assert_eq!(sent_preview(&mut commands), Some(None));
+    }
+
+    #[test]
+    fn composer_preview_editing_never_previews() {
+        let (mut app, mut commands, _events) = composer_preview_app();
+        let mut row = message(PREVIEW_CHAT, "edited-message", crate::util::now() - 60);
+        row.from_me = true;
+        row.status = Delivery::Sent;
+        app.conversations
+            .entry(PREVIEW_CHAT.into())
+            .or_default()
+            .merge(vec![row], false);
+        app.editing = Some("edited-message".into());
+        rest_on(&mut app, "hi https://ex.com/a", 0.0);
+        assert!(preview_fetches(&mut commands).is_empty());
+        send_composer(&mut app);
+        let sent: Vec<_> = std::iter::from_fn(|| commands.try_recv().ok()).collect();
+        assert!(
+            sent.iter().any(|command| matches!(command,
+                Command::EditText { chat, id, text, mentions, .. }
+                    if chat == PREVIEW_CHAT && id == "edited-message"
+                        && text == "hi https://ex.com/a" && mentions.is_empty())),
+            "{sent:?}"
+        );
+        assert!(
+            !sent
+                .iter()
+                .any(|command| matches!(command, Command::SendText { .. }))
+        );
+    }
+
+    /// The card sits above the composer's pill; its X dismisses it.
+    #[test]
+    fn composer_preview_card_is_drawn_above_the_pill_and_dismissed() {
+        let mut app = app();
+        let (backend, mut commands, events) = Backend::recording_with_events();
+        app.backend = backend;
+        app.chats
+            .push(Chat::new(PREVIEW_CHAT.into(), "Fixture".into()));
+        app.open_chat(PREVIEW_CHAT.into());
+        let ctx = egui::Context::default();
+        let card = |ctx: &egui::Context| {
+            ctx.data(|data| {
+                data.get_temp::<egui::Rect>(crate::ui::conversation::link_preview_strip_id())
+            })
+        };
+        composer_undo_boundary_frame(&mut app, &ctx, 0.0, vec![]);
+        app.composer = "hi https://ex.com/a".into();
+        composer_undo_boundary_frame(&mut app, &ctx, 0.1, vec![]);
+        composer_undo_boundary_frame(&mut app, &ctx, 0.7, vec![]);
+        assert_eq!(preview_fetches(&mut commands), [PREVIEW_URL]);
+        composer_undo_boundary_frame(&mut app, &ctx, 0.8, vec![]);
+        assert!(card(&ctx).is_some(), "loading shows a quiet card");
+        events
+            .send(Event::LinkPreview {
+                url: PREVIEW_URL.into(),
+                preview: Some(crate::model::ComposedPreview {
+                    thumbnail: Some(tiny_thumbnail()),
+                    ..composed_preview(PREVIEW_URL)
+                }),
+            })
+            .unwrap();
+        app.handle_events();
+        ctx.data_mut(|data| {
+            data.remove::<egui::Rect>(crate::ui::conversation::link_preview_strip_id())
+        });
+        composer_undo_boundary_frame(&mut app, &ctx, 0.9, vec![]);
+        let strip = card(&ctx).expect("the ready card");
+        let pill = ctx
+            .data(|data| data.get_temp::<egui::Rect>(crate::ui::conversation::composer_pill_id()))
+            .unwrap();
+        assert!(strip.bottom() <= pill.top(), "{strip:?} above {pill:?}");
+        assert!(strip.height() >= 64.0, "room for the thumbnail: {strip:?}");
+        let close = ctx
+            .data(|data| data.get_temp::<egui::Rect>(egui::Id::new("link-preview-dismiss")))
+            .unwrap();
+        let at = close.center();
+        composer_undo_boundary_frame(
+            &mut app,
+            &ctx,
+            1.0,
+            vec![
+                egui::Event::PointerMoved(at),
+                egui::Event::PointerButton {
+                    pos: at,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        composer_undo_boundary_frame(
+            &mut app,
+            &ctx,
+            1.05,
+            vec![egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert_eq!(app.current_preview(), None, "dismissed");
+        assert_eq!(app.composer, "hi https://ex.com/a", "the text stays");
+        ctx.data_mut(|data| {
+            data.remove::<egui::Rect>(crate::ui::conversation::link_preview_strip_id())
+        });
+        composer_undo_boundary_frame(&mut app, &ctx, 1.1, vec![]);
+        assert!(card(&ctx).is_none(), "a dismissed card is not drawn");
+    }
+
     #[test]
     fn call_click_before_connection_is_explained_and_never_queued_for_later() {
         for video in [false, true] {
@@ -12683,6 +13997,188 @@ mod tests {
                 "reconnect cannot place the earlier rejected call"
             );
         }
+    }
+
+    #[test]
+    fn blocking_preserves_drafts_and_returns_to_the_list_after_confirmation() {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        let (backend, mut commands) = Backend::recording();
+        app.backend = backend;
+        app.link = LinkStatus::Connected;
+        let chat = "15550002222@s.whatsapp.net";
+        app.chats.push(Chat::new(chat.into(), "Fixture".into()));
+        app.open_chat = Some(chat.into());
+        app.composer = "Unsent fixture".into();
+        app.pending.push(Pending::File("fixture.png".into()));
+        app.recording = Some(Recorder::simulated(app.waker.clone()));
+        app.blocklist.ids = Some([chat.into()].into());
+        app.apply(
+            Action::SendText {
+                chat: chat.into(),
+                text: app.composer.clone(),
+                quoting: None,
+            },
+            &ctx,
+        );
+        assert_eq!(app.composer, "Unsent fixture");
+        assert_eq!(app.pending.len(), 1);
+        assert!(commands.try_recv().is_err());
+        assert!(
+            app.recording.is_some(),
+            "blocking does not discard an ongoing recording"
+        );
+        app.apply(Action::CancelRecording, &ctx);
+        app.apply(Action::StartRecording, &ctx);
+        assert!(
+            app.recording.is_none(),
+            "a blocked chat cannot start a recording"
+        );
+        // The forward picker refuses a blocked recipient, and confirming a
+        // review that only holds one drops it instead of sending.
+        app.apply(
+            Action::ShowDialog(Dialog::Forward {
+                chat: "source".into(),
+                messages: vec!["m".into()],
+            }),
+            &ctx,
+        );
+        assert!(
+            matches!(commands.try_recv(), Ok(Command::ForwardLimit { .. })),
+            "opening the dialog asks for the limit"
+        );
+        app.forward_limit = 1;
+        app.apply(Action::ToggleForwardRecipient(chat.into()), &ctx);
+        assert!(app.forward_recipients.is_empty());
+        app.forward_recipients = vec![chat.into()];
+        app.apply(Action::ConfirmForward, &ctx);
+        assert!(app.forward_recipients.is_empty());
+        assert!(
+            commands.try_recv().is_err(),
+            "a blocked recipient is dropped, not sent"
+        );
+        assert!(
+            app.toasts
+                .iter()
+                .any(|toast| toast.message.contains("no longer writable"))
+        );
+        for blocked in [false, true] {
+            app.dialog = Some(Dialog::ConfirmBlock {
+                chat: chat.into(),
+                blocked,
+                from_list: true,
+            });
+            app.apply(
+                Action::SetBlocked {
+                    chat: chat.into(),
+                    blocked,
+                },
+                &ctx,
+            );
+            assert!(
+                matches!(commands.try_recv(), Ok(Command::SetBlocked { blocked: value, .. }) if value == blocked)
+            );
+            assert!(
+                app.blocklist.contains(chat),
+                "the server has not confirmed a change"
+            );
+            app.apply(Action::CloseDialog, &ctx);
+            assert_eq!(app.dialog, Some(Dialog::BlockedContacts));
+        }
+        app.dialog = Some(Dialog::ConfirmBlock {
+            chat: chat.into(),
+            blocked: false,
+            from_list: true,
+        });
+        app.apply(Action::CloseDialog, &ctx);
+        assert_eq!(app.dialog, Some(Dialog::BlockedContacts));
+        assert!(commands.try_recv().is_err(), "cancel sends nothing");
+    }
+
+    #[test]
+    fn blocking_events_stay_with_their_account_and_logout_forgets_them() {
+        let directory = tempfile::tempdir().unwrap();
+        let (mut app, _) = two_accounts(directory.path());
+        let chat = "15550002222@s.whatsapp.net";
+        app.composer = "Visible draft".into();
+        let dialog = Some(Dialog::ConfirmBlock {
+            chat: "200000000000001@lid".into(),
+            blocked: false,
+            from_list: true,
+        });
+        app.dialog = dialog.clone();
+        let state = crate::blocking::Blocklist {
+            ids: Some([chat.into()].into()),
+            ..Default::default()
+        };
+        app.active = 1;
+        app.events_hidden = true;
+        app.apply_backend_event(
+            Event::Blocklist {
+                state,
+                error: Some(crate::blocking::Failure::Refused),
+            },
+            false,
+        );
+        let mut mapped = Chat::new(chat.into(), "Hidden fixture".into());
+        mapped.locked = true;
+        app.apply_backend_event(
+            Event::BlocklistMapped {
+                from: "200000000000001@lid".into(),
+                to: chat.into(),
+                chats: vec![mapped],
+                state: app.blocklist.clone(),
+            },
+            false,
+        );
+        app.events_hidden = false;
+        app.active = 0;
+        assert!(!app.blocklist.contains(chat));
+        assert!(app.accounts[1].blocklist.contains(chat));
+        assert_eq!(app.composer, "Visible draft");
+        assert_eq!(app.dialog, dialog);
+        assert!(app.toasts.is_empty());
+        app.switch_account(&AccountId::parse("2").unwrap());
+        app.handle_link(LinkStatus::LoggedOut, true);
+        assert!(app.blocklist.ids.is_none());
+    }
+
+    /// A timer change going out marks its chat as saving until WhatsApp
+    /// answers it, and logging out drops a change still in flight with the
+    /// account it belonged to.
+    #[test]
+    fn timer_saving_arrives_with_the_event_and_leaves_on_logout() {
+        let mut app = app();
+        let chat = "15550000001@s.whatsapp.net".to_owned();
+        app.apply_backend_event(
+            Event::TimerSaving {
+                chat: chat.clone(),
+                saving: true,
+            },
+            true,
+        );
+        assert!(app.timer_saving.contains(chat.as_str()));
+        app.apply_backend_event(
+            Event::TimerSaving {
+                chat,
+                saving: false,
+            },
+            true,
+        );
+        assert!(app.timer_saving.is_empty());
+    }
+
+    /// A group or timer change still in flight belongs to the account that
+    /// went away. Logging out drops its saving state, since the completion
+    /// that would have cleared it is discarded.
+    #[test]
+    fn logout_drops_a_change_that_was_still_saving() {
+        let mut app = app();
+        app.group_saving.insert("120363000000000001@g.us".into());
+        app.timer_saving.insert("15550000001@s.whatsapp.net".into());
+        app.handle_link(LinkStatus::LoggedOut, true);
+        assert!(app.group_saving.is_empty());
+        assert!(app.timer_saving.is_empty());
     }
 
     #[test]
@@ -15295,6 +16791,91 @@ mod tests {
         app.accounts.push(second);
         app.active = 0;
         (app, commands)
+    }
+
+    /// Export state follows its account and ignores progress from an older request.
+    #[test]
+    fn chat_exports_are_account_local_and_ignore_stale_progress() {
+        let directory = tempfile::tempdir().unwrap();
+        let (mut app, mut commands) = two_accounts(directory.path());
+        app.active = 1;
+        app.chats
+            .push(Chat::new("fixture".into(), "Fixture".into()));
+        app.apply(
+            Action::ExportChat {
+                chat: "fixture".into(),
+                include_media: true,
+            },
+            &egui::Context::default(),
+        );
+        assert!(matches!(
+            commands.try_recv().unwrap(),
+            Command::SetChatExportAllowed(true)
+        ));
+        let request = match commands.try_recv().unwrap() {
+            Command::ExportChat {
+                request,
+                chat,
+                include_media: true,
+            } => {
+                assert_eq!(chat, "fixture");
+                request
+            }
+            _ => panic!("expected an account-local export"),
+        };
+        assert!(app.accounts[0].chat_export.is_none());
+        app.apply_backend_event(
+            Event::ChatExportFinished {
+                request: request.wrapping_add(1),
+                result: Ok(None),
+            },
+            false,
+        );
+        assert!(app.chat_export.is_some());
+        app.apply_backend_event(
+            Event::ChatExportFinished {
+                request,
+                result: Ok(None),
+            },
+            false,
+        );
+        assert!(app.chat_export.is_none());
+    }
+
+    /// Hidden-account results report their account while preserving the visible account's dialog.
+    #[test]
+    fn hidden_account_exports_report_outcomes_without_closing_the_visible_dialog() {
+        for failed in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let (mut app, _) = two_accounts(directory.path());
+            app.accounts[1].me_name = Some("Studio".into());
+            app.accounts[1].chat_export = Some((7, Default::default()));
+            app.dialog = Some(Dialog::ExportChat {
+                chat: "visible".into(),
+                include_media: false,
+            });
+            app.active = 1;
+            app.events_hidden = true;
+            let result = if failed {
+                Err("Synthetic storage failure".into())
+            } else {
+                Ok(Some((PathBuf::from("fixture.txt"), Default::default())))
+            };
+            app.apply_backend_event(Event::ChatExportFinished { request: 7, result }, false);
+            assert!(app.chat_export.is_none());
+            assert!(
+                matches!(&app.dialog, Some(Dialog::ExportChat { chat, .. }) if chat == "visible")
+            );
+            let said = app.accessibility_announcements.join(" ");
+            let expected = if failed {
+                "Studio: Synthetic storage failure"
+            } else {
+                "Studio: Saved fixture.txt"
+            };
+            assert!(said.contains(expected), "{said}");
+            app.events_hidden = false;
+            app.active = 0;
+        }
     }
 
     #[test]

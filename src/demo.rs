@@ -426,6 +426,7 @@ pub fn populate(app: &mut App) {
     // Demo mode has no backend to handle downloads.
     app.account_mut().settings.auto_download = false;
     app.link = LinkStatus::Connected;
+    app.blocklist.ids = Some(Default::default());
     app.me = Some(ME.to_owned());
     app.me_name = Some("Carmine".to_owned());
     app.chats.clear();
@@ -652,6 +653,9 @@ pub fn populate(app: &mut App) {
                         url: "https://spotifast.rocks/".into(),
                         title: Some("spotifast.rocks".into()),
                         description: Some("Spotify, native and fast. A lightweight Spotify client written in Rust with egui.".into()),
+                        video: false,
+                        image: None,
+                        image_sha256: None,
                     }),
                 },
             );
@@ -2159,6 +2163,24 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
                 app.dialog = Some(Dialog::ResumeRestoredAccount(app.account().id.clone()));
             }
             "chat" | "" => {}
+            "blocked" | "blocked-contacts" | "block-confirm" => {
+                const DOROTHY: &str = "12025550137@s.whatsapp.net";
+                app.blocklist.ids = Some(if part == "block-confirm" {
+                    Default::default()
+                } else {
+                    [SAMPLES[0].id.into(), DOROTHY.into()].into()
+                });
+                if part == "blocked-contacts" {
+                    app.dialog = Some(Dialog::BlockedContacts);
+                }
+                if part == "block-confirm" {
+                    app.dialog = Some(Dialog::ConfirmBlock {
+                        chat: SAMPLES[0].id.into(),
+                        blocked: true,
+                        from_list: false,
+                    });
+                }
+            }
             "phone-menu" => phone_menu_sample(app),
             "queued-messages" => queued::setup(app, false),
             "queued-messages-stress" => queued::setup(app, true),
@@ -2874,6 +2896,22 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
             "clear-chat" => {
                 app.dialog = app.open_chat.clone().map(Dialog::ConfirmClearChat);
             }
+            "export-chat" | "export-chat-progress" => {
+                app.dialog = app.open_chat.clone().map(|chat| Dialog::ExportChat {
+                    chat,
+                    include_media: true,
+                });
+                if part == "export-chat-progress" {
+                    app.chat_export = Some((
+                        1,
+                        crate::archive::chat_export::Counts {
+                            messages: 128,
+                            files: 12,
+                            missing: 2,
+                        },
+                    ));
+                }
+            }
             "select" => {
                 if let Some(chat) = app.open_chat.clone() {
                     let ids: Vec<String> = app
@@ -3187,6 +3225,37 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
             "composer-tools" => {
                 app.open_chat = Some(SAMPLES[0].id.to_owned());
                 app.composer_tools_open = true;
+                app.focus_composer = true;
+            }
+            // The card above the composer for a link being written, loaded
+            // and shown.
+            "link-preview" | "link-preview-loading" => {
+                const LINK: &str = "https://spotifast.rocks/";
+                app.open_chat = Some(SAMPLES[0].id.to_owned());
+                app.composer = format!("Have you tried {LINK} yet?");
+                app.composer_preview = Some(crate::app::ComposerPreview {
+                    account: app.account().id.clone(),
+                    chat: SAMPLES[0].id.to_owned(),
+                    url: LINK.to_owned(),
+                    state: if part == "link-preview" {
+                        crate::app::LinkPreviewState::Ready(crate::model::ComposedPreview {
+                            preview: LinkPreview {
+                                url: LINK.to_owned(),
+                                title: Some("spotifast.rocks".into()),
+                                description: Some(
+                                    "Spotify, native and fast. A lightweight Spotify client written in Rust with egui."
+                                        .into(),
+                                ),
+                                video: false,
+                                image: None,
+                                image_sha256: None,
+                            },
+                            thumbnail: Some(stock::thumbnail(stock::SPOTIFAST)),
+                        })
+                    } else {
+                        crate::app::LinkPreviewState::Loading
+                    },
+                });
                 app.focus_composer = true;
             }
             "mention" => {
@@ -3631,7 +3700,8 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
             "sticker-pack-message" | "sticker-pack-view" => {
                 shared_pack_sample(app, part == "sticker-pack-view")
             }
-            "gifs" => {
+            "gifs" | "gifs-more" => {
+                app.gif_next_offset = (part == "gifs-more").then_some(24);
                 app.picker = Some(crate::model::PickerTab::Gifs);
                 app.settings.giphy_key = "demo".into();
                 app.gif_results = (0..6)
@@ -6316,6 +6386,9 @@ mod tests {
             "draft-priority,light",
             "document-draft-priority",
             "document-draft-priority,light",
+            "blocked",
+            "blocked-contacts",
+            "block-confirm",
             "chat-menu",
             "chat-header-menu",
             "channel",
@@ -6427,6 +6500,10 @@ mod tests {
             "toasts",
             "delete-chat",
             "clear-chat",
+            "export-chat",
+            "export-chat,light",
+            "export-chat-progress",
+            "export-chat-progress,light",
             "invite",
             "unread-divider",
             "quotes",
@@ -6468,6 +6545,9 @@ mod tests {
             "sticker-pack-view",
             "typing",
             "composer-tools",
+            "link-preview",
+            "link-preview,light",
+            "link-preview-loading",
             "mention",
             "emoji-complete",
             "reply",
@@ -6914,7 +6994,7 @@ mod tests {
     }
 
     /// Runs one frame with input events.
-    fn frame_with(app: &mut App, ctx: &egui::Context, events: Vec<egui::Event>) {
+    pub(super) fn frame_with(app: &mut App, ctx: &egui::Context, events: Vec<egui::Event>) {
         let mut output = ctx.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
@@ -7743,7 +7823,7 @@ mod tests {
         );
     }
 
-    fn key(key: egui::Key, modifiers: egui::Modifiers) -> egui::Event {
+    pub(super) fn key(key: egui::Key, modifiers: egui::Modifiers) -> egui::Event {
         egui::Event::Key {
             key,
             physical_key: None,
@@ -9479,7 +9559,7 @@ mod tests {
         }
     }
 
-    fn primary(pos: egui::Pos2, pressed: bool) -> egui::Event {
+    pub(super) fn primary(pos: egui::Pos2, pressed: bool) -> egui::Event {
         egui::Event::PointerButton {
             pos,
             button: egui::PointerButton::Primary,
@@ -9783,6 +9863,108 @@ mod tests {
         assert_eq!(app.picker, None);
         assert_eq!(app.settings.recent_emoji.first(), Some(&app.composer));
         assert!(ctx.memory(|memory| memory.has_focus(egui::Id::new("composer-text"))));
+    }
+
+    #[test]
+    fn composer_format_menu_preserves_selection_for_mouse_and_keyboard() {
+        for keyboard in [false, true] {
+            let mut app = app();
+            let ctx = egui::Context::default();
+            ctx.enable_accesskit();
+            app.attach(&ctx);
+            app.composer = "Hi 👋 café!".into();
+            render(&mut app, &ctx);
+            let id = egui::Id::new("composer-text");
+            let mut state = egui::TextEdit::load_state(&ctx, id).unwrap();
+            state
+                .cursor
+                .set_char_range(Some(egui::text::CCursorRange::two(
+                    egui::text::CCursor::new(3),
+                    egui::text::CCursor::new(9),
+                )));
+            egui::TextEdit::store_state(&ctx, id, state);
+            ctx.memory_mut(|memory| memory.request_focus(id));
+            render(&mut app, &ctx);
+            let rect = ctx.read_response(id).unwrap().rect;
+            let at = rect.center();
+            let secondary = |pressed| egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Secondary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            };
+            if keyboard {
+                frame_with(
+                    &mut app,
+                    &ctx,
+                    vec![key(egui::Key::F10, egui::Modifiers::SHIFT)],
+                );
+            } else {
+                frame_with(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(at), secondary(true)],
+                );
+                frame_with(&mut app, &ctx, vec![secondary(false)]);
+            }
+            let nodes = accessible_nodes(&mut app, &ctx, vec![]);
+            let bold = nodes
+                .iter()
+                .find(|(label, _, _)| label == "Bold")
+                .expect("Bold menu item")
+                .2;
+            if keyboard {
+                frame_with(
+                    &mut app,
+                    &ctx,
+                    vec![key(egui::Key::Enter, egui::Modifiers::NONE)],
+                );
+            } else {
+                frame_with(&mut app, &ctx, vec![egui::Event::PointerMoved(bold)]);
+                frame_with(&mut app, &ctx, vec![primary(bold, true)]);
+                frame_with(&mut app, &ctx, vec![primary(bold, false)]);
+            }
+            assert_eq!(app.composer, "Hi *👋 café*!", "keyboard={keyboard}");
+            assert_eq!(ctx.memory(|memory| memory.focused()), Some(id));
+            frame_with(
+                &mut app,
+                &ctx,
+                vec![key(egui::Key::Z, egui::Modifiers::COMMAND)],
+            );
+            assert_eq!(
+                app.composer, "Hi 👋 café!",
+                "one Undo removes the formatting"
+            );
+            frame_with(
+                &mut app,
+                &ctx,
+                vec![key(
+                    egui::Key::Z,
+                    egui::Modifiers {
+                        command: true,
+                        shift: true,
+                        ..Default::default()
+                    },
+                )],
+            );
+            assert_eq!(app.composer, "Hi *👋 café*!");
+            if keyboard {
+                frame_with(
+                    &mut app,
+                    &ctx,
+                    vec![key(egui::Key::F10, egui::Modifiers::SHIFT)],
+                );
+                render(&mut app, &ctx);
+                frame_with(
+                    &mut app,
+                    &ctx,
+                    vec![key(egui::Key::Escape, egui::Modifiers::NONE)],
+                );
+                assert!(!egui::Popup::is_id_open(&ctx, id.with("popup")));
+                assert_eq!(ctx.memory(|memory| memory.focused()), Some(id));
+                assert_eq!(app.composer, "Hi *👋 café*!");
+            }
+        }
     }
 
     #[test]
@@ -11024,7 +11206,7 @@ mod tests {
     }
 
     /// One frame with AccessKit on; returns (label, role, centre) per node.
-    fn accessible_nodes(
+    pub(super) fn accessible_nodes(
         app: &mut App,
         ctx: &egui::Context,
         events: Vec<egui::Event>,
@@ -14442,6 +14624,9 @@ mod tests {
                         url: "https://example.com/selection-fixture".into(),
                         title: Some("Fixture preview".into()),
                         description: None,
+                        video: false,
+                        image: None,
+                        image_sha256: None,
                     }),
                 },
             );
@@ -19104,8 +19289,15 @@ mod bubble_detail_tests {
 #[cfg(test)]
 mod independent_text_scale_tests {
     use super::tests::app;
+    use super::tests::{accessible_nodes, frame_with, key, primary, render};
     use super::*;
     use crate::model::Action;
+
+    /// Same 1180x780 frame `frame_with` draws; the height parameter only
+    /// keeps ported tests readable.
+    fn frame_sized(app: &mut App, ctx: &egui::Context, _height: f32, events: Vec<egui::Event>) {
+        frame_with(app, ctx, events);
+    }
 
     fn frame(
         app: &mut App,
@@ -19271,6 +19463,101 @@ mod independent_text_scale_tests {
                 assert!((emoji_widths[1] - emoji_widths[3]).abs() < 0.1);
             }
         }
+    }
+
+    #[test]
+    fn enter_retries_a_failed_gif_page_without_clearing_results() {
+        for (next, query, expected_offset, retained) in [
+            (Some(24), " cats ", 24, 6),
+            (None, "cats", 0, 0),
+            (Some(24), "dogs", 0, 0),
+        ] {
+            let mut app = app();
+            app.backend.record_demo_commands();
+            let ctx = egui::Context::default();
+            app.attach(&ctx);
+            apply_flags(&mut app, Some("gifs-more"));
+            app.gif_query = "cats".into();
+            app.picker_search = query.into();
+            app.gif_next_offset = next;
+            app.gif_error = Some(crate::model::GifError {
+                message: "Page failed".into(),
+                bad_key: false,
+            });
+            render(&mut app, &ctx);
+            ctx.memory_mut(|memory| memory.request_focus(egui::Id::new("gif-search")));
+            frame_sized(
+                &mut app,
+                &ctx,
+                780.0,
+                vec![key(egui::Key::Enter, egui::Modifiers::NONE)],
+            );
+            assert_eq!(
+                app.gif_results.len(),
+                retained,
+                "query={query}, next={next:?}"
+            );
+            assert!(
+                app.backend
+                    .take_demo_commands()
+                    .iter()
+                    .any(|command| matches!(command,
+                crate::backend::Command::SearchGifs { offset, query: sent, .. }
+                    if *offset == expected_offset && sent == query.trim()))
+            );
+        }
+    }
+
+    #[test]
+    fn a_later_gif_key_error_keeps_results_and_retries_the_same_page() {
+        let mut app = app();
+        app.backend.record_demo_commands();
+        let ctx = egui::Context::default();
+        ctx.enable_accesskit();
+        app.attach(&ctx);
+        apply_flags(&mut app, Some("gifs-more"));
+        app.gif_error = Some(crate::model::GifError {
+            message: "Key rejected".into(),
+            bad_key: true,
+        });
+        for _ in 0..3 {
+            render(&mut app, &ctx);
+        }
+        assert_eq!(app.gif_results.len(), 6);
+        app.settings.giphy_key = "corrected-offline-demo".into();
+        let search = ctx.read_response(egui::Id::new("gif-search")).unwrap().rect;
+        frame_sized(
+            &mut app,
+            &ctx,
+            780.0,
+            vec![
+                egui::Event::PointerMoved(egui::pos2(search.center().x, search.bottom() + 40.0)),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: egui::vec2(0.0, -1000.0),
+                    modifiers: egui::Modifiers::NONE,
+                    phase: egui::TouchPhase::Move,
+                },
+            ],
+        );
+        render(&mut app, &ctx);
+        let nodes = accessible_nodes(&mut app, &ctx, vec![]);
+        let retry = nodes
+            .iter()
+            .find(|(label, _, _)| label == "Retry")
+            .expect("Retry stays visible with the key prompt")
+            .2;
+        frame_sized(
+            &mut app,
+            &ctx,
+            780.0,
+            vec![egui::Event::PointerMoved(retry)],
+        );
+        frame_sized(&mut app, &ctx, 780.0, vec![primary(retry, true)]);
+        frame_sized(&mut app, &ctx, 780.0, vec![primary(retry, false)]);
+        assert_eq!(app.gif_results.len(), 6);
+        assert!(app.backend.take_demo_commands().iter().any(|command| matches!(command,
+            crate::backend::Command::SearchGifs { offset: 24, key, .. } if key == "corrected-offline-demo")));
     }
 
     #[test]

@@ -133,6 +133,7 @@ fn connection_kind(kind: &str) -> bool {
 impl Worker {
     pub(super) fn destination_writable(&self, chat: &str) -> bool {
         self.privacy_ready
+            && !self.blocklist.contains(&self.canonical_str(chat))
             && match self.archive.chat(chat) {
                 Ok(Some(chat)) => chat.can_send(),
                 Ok(None) => super::ChatKind::from_id(chat) != super::ChatKind::Broadcast,
@@ -836,6 +837,7 @@ mod tests {
                 text: text.into(),
                 quoting: None,
                 mentions: Vec::new(),
+                preview: None,
             })
             .await;
     }

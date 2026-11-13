@@ -125,6 +125,23 @@ pub fn paint(ui: &egui::Ui, galley: &egui::Galley, origin: Pos2, placements: &[S
     fastframe_emoji::paint(ui, galley, origin, placements);
 }
 
+/// Display name and `:shortcode:` for an emoji in the interface language.
+/// Spanish comes from CLDR; anything the table lacks falls back to English.
+pub fn display(
+    emoji: &'static emojis::Emoji,
+    locale: crate::i18n::Locale,
+) -> (&'static str, String) {
+    if locale == crate::i18n::Locale::Spanish
+        && let Some((name, _, slug)) = crate::emoji_es::spanish(emoji.as_str())
+    {
+        return (name, format!(":{slug}:"));
+    }
+    let shortcode = emoji
+        .shortcode()
+        .map_or_else(|| emoji.name().replace([' ', '-'], "_"), str::to_owned);
+    (emoji.name(), format!(":{shortcode}:"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,6 +152,19 @@ mod tests {
             .system(false)
             .bundled(BUNDLED)
             .load()
+    }
+
+    #[test]
+    fn display_names_spanish_shortcode_and_name() {
+        let laughing = emojis::get("😂").expect("known emoji");
+        assert_eq!(
+            display(laughing, crate::i18n::Locale::Spanish),
+            ("cara llorando de risa", ":felicidad:".to_owned())
+        );
+        assert_eq!(
+            display(laughing, crate::i18n::Locale::English),
+            ("face with tears of joy", ":joy:".to_owned())
+        );
     }
 
     #[test]
@@ -156,6 +186,15 @@ mod tests {
     #[test]
     fn the_bundled_font_renders_colour_emoji() {
         let picture = bundled().render("\u{1F600}", 72).expect("grinning face");
+        assert_eq!(picture.size[1], 72);
+        assert!(picture.has_colour());
+    }
+
+    #[test]
+    fn the_bundled_font_renders_newer_emoji() {
+        let picture = bundled()
+            .render("\u{1FAEB}", 72)
+            .expect("distorted face joins the font");
         assert_eq!(picture.size[1], 72);
         assert!(picture.has_colour());
     }

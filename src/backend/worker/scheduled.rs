@@ -46,6 +46,7 @@ impl super::Worker {
                 item.text.clone(),
                 quoting.map(crate::model::ReplyTarget::from),
                 item.mentions.clone(),
+                None,
             );
             if let Err(error) = self.archive.delete_scheduled(item.id) {
                 log::warn!("scheduled text not dropped: {error}");
@@ -97,6 +98,7 @@ impl super::Worker {
                 item.text.clone(),
                 quoting.map(crate::model::ReplyTarget::from),
                 item.mentions.clone(),
+                None,
             );
         }
         self.drop_scheduled(item.id, item.media_path.as_deref());

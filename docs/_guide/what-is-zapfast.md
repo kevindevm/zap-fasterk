@@ -30,7 +30,7 @@ RAM, compared with 1.13 GB for WhatsApp Web and its Chromium processes.
   messages. You can add captions to attachments and send one photo as a
   WhatsApp view-once message.
 - **Plays media in the chat.** Voice messages, videos, round video messages,
-  GIFs, and animated stickers play in place. H.264 videos in MP4 files play
+  GIFs, and animated WebP and supported Lottie stickers play in place. H.264 videos in MP4 files play
   after downloading to the local cache; other formats open in your system
   player. [Download limits and playback controls](/using-zapfast/#videos-and-photos).
 - **Uses interactive messages.** Business templates show their text, images,
