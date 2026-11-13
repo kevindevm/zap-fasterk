@@ -411,8 +411,7 @@ impl StickerPreview {
         Self {
             chat: None,
             message: None,
-            animated: lottie
-                || bytes.as_deref().is_some_and(webp_moves),
+            animated: lottie || bytes.as_deref().is_some_and(webp_moves),
             hash: bytes
                 .as_deref()
                 .map(crate::backend::sticker_store::content_hash),

@@ -422,7 +422,9 @@ fn header(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> Rect {
                 let (subtitle, color) = subtitle(app, chat);
                 // More and Search, and Back in a narrow window, each on its
                 // own glass with room around it on a vibrant window.
-                let calls = chat.kind == crate::model::ChatKind::Direct && !chat.locked;
+                let calls = chat.kind == crate::model::ChatKind::Direct
+                    && !chat.locked
+                    && !app.blocklist.contains(&chat.id);
                 let buttons = if narrow { 3.0 } else { 2.0 } + if calls { 2.0 } else { 0.0 };
                 let right_controls = if palette.vibrant() {
                     buttons * 36.0 + (buttons - 0.5) * BUTTON_GAP + (BUTTON_GLASS - 30.0)
@@ -619,6 +621,7 @@ fn header(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> Rect {
                     crate::i18n::gettext(app.locale, "Archive")
                 };
                 let clear_label = crate::i18n::gettext(app.locale, "Clear chat");
+                let export_label = crate::i18n::gettext(app.locale, "Export chat…");
                 let copy_number_label = crate::i18n::gettext(app.locale, "Copy number");
                 let close_label = crate::i18n::gettext(app.locale, "Close chat");
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -648,9 +651,11 @@ fn header(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> Rect {
                             pin_label.as_ref(),
                             archive_label.as_ref(),
                             clear_label.as_ref(),
+                            export_label.as_ref(),
                             leave_label.as_ref(),
                             copy_number_label.as_ref(),
                             close_label.as_ref(),
+                            &super::blocking::label(app, &chat.id),
                         ],
                         true,
                     );
@@ -698,8 +703,22 @@ fn header(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> Rect {
                                 app.actions
                                     .push(Action::SetArchived(chat.id.clone(), !chat.archived));
                             }
-                            // Clearing reaches the phone, so it waits for a
-                            // connection, as deleting does in the chat list.
+                            if widgets::menu_item_enabled(
+                                ui,
+                                &palette,
+                                Some(Icon::Download),
+                                export_label.as_ref(),
+                                !chat.locked && app.chat_export.is_none(),
+                            ) {
+                                app.actions.push(Action::ShowDialog(Dialog::ExportChat {
+                                    chat: chat.id.clone(),
+                                    include_media: false,
+                                }));
+                            }
+                            // Blocking, clearing and deleting reach WhatsApp, so
+                            // they wait for a connection, as deleting does in
+                            // the chat list.
+                            super::blocking::menu(app, ui, &chat.id);
                             if widgets::menu_item_enabled(
                                 ui,
                                 &palette,
@@ -741,8 +760,7 @@ fn header(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> Rect {
                                 app.actions.push(Action::CloseChat);
                             }
                         });
-                    if chat.kind == crate::model::ChatKind::Direct
-                        && !chat.locked
+                    if calls
                         && theme::icon_button(
                             ui,
                             Icon::Phone,
@@ -1352,6 +1370,23 @@ fn composer(app: &mut App, ui: &mut egui::Ui, chat: &Chat) {
                 && selected_chat == chat.id
             {
                 selection_bar(app, ui, &chat.id, &selected);
+                return;
+            }
+            if app.blocklist.contains(&chat.id) {
+                if app.recording.is_some() {
+                    widgets::raised(ui, &palette, composer_pill(&palette), |ui| {
+                        recording_strip(app, ui)
+                    });
+                }
+                ui.vertical_centered(|ui| {
+                    theme::text(
+                        ui,
+                        crate::i18n::gettext(app.locale, "You blocked this contact"),
+                        theme::regular(13.5),
+                        palette.secondary,
+                    );
+                    super::blocking::button(app, ui, &chat.id, Stop::Composer);
+                });
                 return;
             }
             if !chat.can_send() {
@@ -2822,17 +2857,14 @@ fn messages(app: &mut App, ui: &mut egui::Ui, chat: &Chat, under: f32) {
     let mut actions = Vec::new();
     let mut anchored = false;
     // The first unread message is the count-th incoming one from the end.
+    // Rows ZapFast filed for itself (a timer notice) are never counted as
+    // unread, so counting one here would put the divider on the wrong row.
     let divider = app
         .unread_divider
         .as_ref()
         .filter(|divider| divider.chat == chat.id)
         .and_then(|divider| {
-            conversation
-                .messages
-                .iter()
-                .rev()
-                .filter(|message| !message.from_me)
-                .nth(divider.count.saturating_sub(1) as usize)
+            unread_divider_message(&conversation.messages, divider.count)
                 .map(|message| (message.id.clone(), divider.count, divider.placed))
         });
     let mut divider_placed = false;
@@ -4407,6 +4439,37 @@ struct MessageRun {
     tailed: bool,
 }
 
+/// The message the unread divider sits before: the `count`-th incoming row
+/// from the end. Rows ZapFast filed for itself (a timer notice) are never
+/// counted as unread, so counting one here would put the divider on the
+/// wrong row.
+fn unread_divider_message(messages: &[Message], count: u32) -> Option<&Message> {
+    messages
+        .iter()
+        .rev()
+        .filter(|message| !message.from_me && !crate::model::timer_notice_id(&message.id))
+        .nth(count.saturating_sub(1) as usize)
+}
+
+/// The system row a disappearing-message timer change leaves in the
+/// transcript: a centred chip naming who changed it and to what, as the
+/// phone shows it. It is not a message, so nothing selects or copies it.
+fn timer_notice(
+    ui: &mut egui::Ui,
+    view: &View<'_>,
+    message: &Message,
+    seconds: u32,
+) -> egui::Response {
+    let name = if message.from_me {
+        crate::i18n::gettext(view.locale, "You").into_owned()
+    } else {
+        (view.names_or)(&message.sender, message.sender_name.as_deref())
+    };
+    let text = crate::util::disappearing_change(view.locale, &name, seconds);
+    ui.vertical_centered(|ui| widgets::chip(ui, &view.palette, &text))
+        .inner
+}
+
 /// Draws a message row and returns its bubble response for scrolling.
 fn bubble(
     ui: &mut egui::Ui,
@@ -4416,6 +4479,11 @@ fn bubble(
     run: MessageRun,
     actions: &mut Vec<Action>,
 ) -> Option<egui::Response> {
+    // A timer change is a system row, not a message: a centred chip naming
+    // who changed it and to what, with no bubble, avatar, or selection.
+    if let Content::DisappearingTimer { seconds } = &message.content {
+        return Some(timer_notice(ui, view, message, *seconds));
+    }
     let MessageRun {
         show_sender,
         show_avatar,
@@ -5029,7 +5097,9 @@ fn bubbleless(palette: &Palette, message: &Message) -> bool {
 }
 
 fn same_run(message: &Message, next: &Message) -> bool {
-    message.from_me == next.from_me
+    !matches!(message.content, Content::DisappearingTimer { .. })
+        && !matches!(next.content, Content::DisappearingTimer { .. })
+        && message.from_me == next.from_me
         && (message.from_me || message.sender == next.sender)
         && crate::util::day_key(message.timestamp) == crate::util::day_key(next.timestamp)
 }
@@ -5448,7 +5518,10 @@ fn bubble_frame(
 
 /// Minimum shared width for cards inside message bubbles.
 fn message_shortcut(message: &Message, key: Key, mentions: &[markup::Mention]) -> Option<Action> {
-    if matches!(message.content, Content::Call { .. }) {
+    if matches!(
+        message.content,
+        Content::Call { .. } | Content::DisappearingTimer { .. }
+    ) {
         return None;
     }
     let local = message.from_me && message.status.is_local();
@@ -7183,7 +7256,10 @@ fn selection_can_revoke(messages: &[Message], selected: &[String], now: i64) -> 
     for message in messages {
         if remaining.remove(message.id.as_str()) {
             if !message.from_me
-                || matches!(message.content, Content::Revoked)
+                || matches!(
+                    message.content,
+                    Content::Revoked | Content::DisappearingTimer { .. }
+                )
                 || now - message.timestamp > crate::app::REVOKE_WINDOW.as_secs() as i64
             {
                 return false;
@@ -8410,6 +8486,11 @@ fn content(
                     );
                 },
             );
+            None
+        }
+        Content::DisappearingTimer { .. } => {
+            // Drawn as a centred system row by `bubble`, which returns before
+            // the bubble is built. This arm only keeps the match exhaustive.
             None
         }
         Content::Unsupported { what } => {
@@ -12301,6 +12382,61 @@ mod tests {
         ));
         assert!(!selection_can_revoke(&[first], &selected, now));
         assert!(!selection_can_revoke(&[], &[], now));
+    }
+
+    fn notice_row(id: &str, from_me: bool) -> Message {
+        Message {
+            id: id.into(),
+            chat: "synthetic-chat".into(),
+            sender: "synthetic-sender".into(),
+            sender_name: None,
+            from_me,
+            timestamp: 1,
+            history_order: None,
+            content: Content::DisappearingTimer { seconds: 86_400 },
+            status: Delivery::None,
+            delivered_at: None,
+            read_at: None,
+            quoted: None,
+            reactions: Vec::new(),
+            edited: false,
+            mentions: Vec::new(),
+            forwarded: false,
+            thumbnail: None,
+        }
+    }
+
+    /// The unread divider skips the rows the unread count leaves out, so the
+    /// count-th real incoming message is the right one.
+    #[test]
+    fn the_unread_divider_skips_timer_notices() {
+        let mut old = notice_row("old", false);
+        old.content = Content::text("old");
+        let mut newest = notice_row("newest", false);
+        newest.content = Content::text("newest");
+        let rows = vec![old, notice_row("zapfast-timer-1", false), newest];
+        assert_eq!(unread_divider_message(&rows, 1).unwrap().id, "newest");
+        // The notice is never counted, so the second real message is chosen.
+        assert_eq!(unread_divider_message(&rows, 2).unwrap().id, "old");
+        assert!(unread_divider_message(&rows, 3).is_none());
+    }
+
+    /// A timer notice ends the run on either side of it, so the bubbles
+    /// around it keep their tails.
+    #[test]
+    fn timer_notices_break_message_runs_on_both_sides() {
+        for from_me in [false, true] {
+            let mut text = notice_row("text", from_me);
+            text.content = Content::text("Hello");
+            let notice = notice_row("zapfast-timer-1", from_me);
+            assert!(same_run(&text, &text));
+            assert!(!same_run(&text, &notice));
+            assert!(!same_run(&notice, &text));
+            assert!(!same_run(&notice, &notice));
+            let rows = [text.clone(), notice, text];
+            assert!(last_of_run(&rows, 0));
+            assert!(last_of_run(&rows, 2));
+        }
     }
 
     #[test]

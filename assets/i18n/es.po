@@ -1023,6 +1023,36 @@ msgstr "Aún no se conocen grupos vinculados."
 msgid "Change disappearing messages"
 msgstr "Cambiar mensajes temporales"
 
+#: src/model.rs
+msgid "Disappearing messages changed"
+msgstr "Mensajes temporales cambiados"
+
+#: src/backend/worker/disappearing.rs
+msgid "Choose Off, 24 hours, 7 days, or 90 days."
+msgstr "Elige Desactivado, 24 horas, 7 días o 90 días."
+
+#: src/backend/worker/disappearing.rs
+msgid "Connect to WhatsApp to change disappearing messages."
+msgstr "Conéctate a WhatsApp para cambiar los mensajes temporales."
+
+#: src/backend/worker/disappearing.rs
+msgid "Could not change disappearing messages."
+msgstr "No se pudieron cambiar los mensajes temporales."
+
+#: src/backend/worker.rs src/backend/worker/disappearing.rs
+msgid "Only admins can change disappearing messages."
+msgstr "Solo los administradores pueden cambiar los mensajes temporales."
+
+#: src/util.rs
+#, rust-format
+msgid "{name} turned off disappearing messages"
+msgstr "{name} desactivó los mensajes temporales"
+
+#: src/util.rs
+#, rust-format
+msgid "{name} changed the disappearing messages setting to {duration}"
+msgstr "{name} cambió el ajuste de mensajes temporales a {duration}"
+
 #: src/ui/dialogs.rs:2568
 msgid "Description"
 msgstr "Descripción"
@@ -4342,3 +4372,161 @@ msgstr "{} grupo en común"
 #: src/ui/dialogs.rs
 msgid "{} groups in common"
 msgstr "{} grupos en común"
+
+#: src/blocking.rs
+msgid "Connect to WhatsApp to block or unblock contacts."
+msgstr "Conéctate a WhatsApp para bloquear o desbloquear contactos."
+
+#: src/blocking.rs
+msgid "Could not change this contact's block. Try again, or use WhatsApp on your phone."
+msgstr "No se pudo cambiar el bloqueo de este contacto. Inténtalo de nuevo o usa WhatsApp en tu teléfono."
+
+#: src/blocking.rs
+msgid "Unblock this contact to send messages."
+msgstr "Desbloquea este contacto para enviar mensajes."
+
+#: src/blocking.rs
+msgid "Unblock this contact to call them."
+msgstr "Desbloquea este contacto para llamarlo."
+
+#: src/ui/blocking.rs
+msgid "Block contact"
+msgstr "Bloquear contacto"
+
+#: src/ui/blocking.rs
+msgid "Unblock contact"
+msgstr "Desbloquear contacto"
+
+#: src/ui/blocking.rs
+msgid "Block contact?"
+msgstr "¿Bloquear contacto?"
+
+#: src/ui/blocking.rs
+msgid "Unblock contact?"
+msgstr "¿Desbloquear contacto?"
+
+#: src/ui/blocking.rs
+#, rust-format
+msgid "Block {name}? You will no longer receive their direct messages or calls. This keeps your chat history."
+msgstr "¿Bloquear a {name}? Ya no recibirás sus mensajes directos ni llamadas. Esto conserva tu historial de chat."
+
+#: src/ui/blocking.rs
+#, rust-format
+msgid "Unblock {name}? You will be able to exchange messages and calls again."
+msgstr "¿Desbloquear a {name}? Podrás intercambiar mensajes y llamadas de nuevo."
+
+#: src/ui/blocking.rs
+msgid "Block"
+msgstr "Bloquear"
+
+#: src/ui/blocking.rs
+msgid "Unblock"
+msgstr "Desbloquear"
+
+#: src/ui/blocking.rs
+msgid "Blocked contacts"
+msgstr "Contactos bloqueados"
+
+#: src/ui/blocking.rs
+msgid "Could not load blocked contacts."
+msgstr "No se pudieron cargar los contactos bloqueados."
+
+#: src/ui/blocking.rs
+msgid "No blocked contacts"
+msgstr "Sin contactos bloqueados"
+
+#: src/ui/conversation.rs
+msgid "You blocked this contact"
+msgstr "Bloqueaste este contacto"
+
+#: src/ui/settings.rs
+msgid "Manage"
+msgstr "Gestionar"
+
+#: src/ui/chat_export.rs
+msgid "Export chat"
+msgstr "Exportar chat"
+
+#: src/ui/chat_export.rs
+msgid "Save all messages stored on this computer. Missing history and attachments will not be downloaded."
+msgstr "Guarda todos los mensajes almacenados en este equipo. No se descargarán el historial ni los adjuntos faltantes."
+
+#: src/ui/chat_export.rs
+msgid "Exported files are not encrypted. Locked chats cannot be exported."
+msgstr "Los archivos exportados no están cifrados. Los chats bloqueados no se pueden exportar."
+
+#: src/ui/chat_export.rs
+msgid "Include downloaded attachments (ZIP)"
+msgstr "Incluir los adjuntos descargados (ZIP)"
+
+#: src/ui/chat_export.rs
+msgid "Exporting…"
+msgstr "Exportando…"
+
+#: src/ui/chat_export.rs
+msgid "{messages} messages, {files} attachments; {missing} unavailable"
+msgstr "{messages} mensajes, {files} adjuntos; {missing} no disponibles"
+
+#: src/ui/chat_export.rs
+msgid "Export…"
+msgstr "Exportar…"
+
+#: src/ui/conversation.rs
+msgid "Export chat…"
+msgstr "Exportar chat…"
+
+#: src/app.rs
+msgid "Saved {path}. Messages: {messages}; attachments: {files}; unavailable: {missing}."
+msgstr "Guardado {path}. Mensajes: {messages}; adjuntos: {files}; no disponibles: {missing}."
+
+#: src/app.rs
+msgid "{}: {}"
+msgstr "{}: {}"
+
+#: src/backend/worker/chat_export.rs
+msgid "This chat is not available for export"
+msgstr "Este chat no está disponible para exportar"
+
+#: src/backend/worker/chat_export.rs
+msgid "The export stopped unexpectedly"
+msgstr "La exportación se detuvo inesperadamente"
+
+#: src/backend/worker/chat_export.rs
+msgid "Export cancellation is pending while storage finishes responding"
+msgstr "La cancelación de la exportación está pendiente mientras el almacenamiento termina de responder"
+
+#: src/backend/worker/chat_export.rs
+msgid "Export cancelled"
+msgstr "Exportación cancelada"
+
+#: src/backend/worker/chat_export.rs
+msgid "Choose an export folder"
+msgstr "Elige una carpeta para la exportación"
+
+#: src/backend/worker/chat_export.rs
+msgid "Choose a folder outside Zap Fasterk's application data"
+msgstr "Elige una carpeta fuera de los datos de aplicación de Zap Fasterk"
+
+#: src/archive/chat_export.rs
+msgid "The archive is unavailable"
+msgstr "El archivo no está disponible"
+
+#: src/archive/chat_export.rs
+msgid "This chat is no longer available"
+msgstr "Este chat ya no está disponible"
+
+#: src/archive/chat_export.rs
+msgid "Locked chats cannot be exported"
+msgstr "Los chats bloqueados no se pueden exportar"
+
+#: src/archive/chat_export.rs
+msgid "An archived message could not be read"
+msgstr "No se pudo leer un mensaje archivado"
+
+#: src/archive/chat_export.rs
+msgid "An attachment could not be read; try exporting without attachments"
+msgstr "No se pudo leer un adjunto; prueba a exportar sin adjuntos"
+
+#: src/archive/chat_export.rs
+msgid "An attachment is not a regular file"
+msgstr "Un adjunto no es un archivo normal"

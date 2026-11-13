@@ -15,6 +15,7 @@ mod archive_sync;
 mod automation;
 pub mod backup;
 mod call_log;
+pub mod chat_export;
 mod communities;
 mod disappearing;
 mod drafts;
@@ -1102,6 +1103,7 @@ impl Archive {
              unread = MIN(unread, (SELECT COUNT(*) FROM messages
                  WHERE chat = ?1 AND from_me = 0
                  AND id NOT GLOB 'local-call:*' AND id NOT GLOB 'call-log:*'
+                 AND id NOT GLOB 'zapfast-timer-*'
                  AND timestamp > MAX(COALESCE(read_through, 0), ?2))) WHERE id = ?1",
             params![id, timestamp],
         )?;
@@ -1119,6 +1121,7 @@ impl Archive {
                  JOIN messages boundary ON boundary.chat = m.chat AND boundary.id = ?2
                  WHERE m.chat = ?1 AND m.from_me = 0
                  AND m.id NOT GLOB 'local-call:*' AND m.id NOT GLOB 'call-log:*'
+                 AND m.id NOT GLOB 'zapfast-timer-*'
                  AND (m.timestamp > boundary.timestamp
                       OR (m.timestamp = boundary.timestamp AND
                           (COALESCE(m.history_order, 9223372036854775807), m.rowid) >
@@ -1169,7 +1172,7 @@ impl Archive {
             return Ok(unread);
         };
         let remaining: u32 = self.connection.query_row(
-            "SELECT COUNT(*) FROM messages WHERE chat = ?1 AND from_me = 0 AND id NOT GLOB 'local-call:*' AND id NOT GLOB 'call-log:*' AND timestamp > ?2",
+            "SELECT COUNT(*) FROM messages WHERE chat = ?1 AND from_me = 0 AND id NOT GLOB 'local-call:*' AND id NOT GLOB 'call-log:*' AND id NOT GLOB 'zapfast-timer-*' AND timestamp > ?2",
             params![id, through],
             |row| row.get(0),
         )?;
@@ -1275,6 +1278,7 @@ impl Archive {
         let mut statement = self.connection.prepare(
             "SELECT id, sender FROM messages WHERE chat = ?1 AND from_me = 0
              AND id NOT GLOB 'local-call:*' AND id NOT GLOB 'call-log:*'
+             AND id NOT GLOB 'zapfast-timer-*'
              AND timestamp >= COALESCE((SELECT read_through FROM chats WHERE id = ?1), -1)
              ORDER BY timestamp DESC, COALESCE(history_order, 9223372036854775807) DESC, rowid DESC LIMIT ?2",
         )?;
@@ -1917,6 +1921,7 @@ impl Archive {
              FROM messages
              WHERE chat = ?1 AND timestamp >= ?2 AND timestamp < ?3
              AND json_valid(content)
+             AND json_extract(content, '$.kind') != 'disappearing_timer'
              AND (?4 IS NULL OR {SEARCHED_TEXT} LIKE ?4 ESCAPE '\\')
              ORDER BY timestamp DESC, COALESCE(history_order, 9223372036854775807) DESC, rowid DESC
              LIMIT ?5"
@@ -2698,7 +2703,7 @@ impl Archive {
         let id: Option<String> = self
             .connection
             .query_row(
-                "SELECT id FROM messages WHERE chat = ?1 AND id NOT GLOB 'local-call:*' AND id NOT GLOB 'call-log:*' ORDER BY timestamp ASC, COALESCE(history_order, 9223372036854775807) ASC, rowid ASC LIMIT 1",
+                "SELECT id FROM messages WHERE chat = ?1 AND id NOT GLOB 'local-call:*' AND id NOT GLOB 'call-log:*' AND id NOT GLOB 'zapfast-timer-*' ORDER BY timestamp ASC, COALESCE(history_order, 9223372036854775807) ASC, rowid ASC LIMIT 1",
                 params![chat],
                 |row| row.get(0),
             )
@@ -3708,6 +3713,121 @@ pub(crate) mod tests {
             forwarded: false,
             thumbnail: None,
         }
+    }
+
+    /// A disappearing-timer notice as the worker files it, under the prefix
+    /// the archive's queries filter on, so a change to either fails a test.
+    pub(crate) fn timer_notice(chat: &str, suffix: &str, timestamp: i64) -> Message {
+        let mut notice = message(
+            chat,
+            &format!("{}{suffix}", crate::model::TIMER_NOTICE_PREFIX),
+            timestamp,
+            false,
+        );
+        notice.content = Content::DisappearingTimer { seconds: 86_400 };
+        notice
+    }
+
+    /// The system row a timer change leaves is stored as structured content
+    /// and reloads as the same variant, not as prose; search never matches it.
+    #[test]
+    fn a_timer_notice_round_trips_and_stays_out_of_search() {
+        let archive = Archive::in_memory().expect("opens");
+        let chat = "1@s.whatsapp.net";
+        archive.ensure_chat(chat, "Ada").expect("chat");
+        let mut notice = message(chat, "timer", 100, false);
+        notice.content = Content::DisappearingTimer { seconds: 604_800 };
+        archive.insert_message(&notice, None).expect("insert");
+
+        let loaded = archive
+            .message(chat, "timer")
+            .expect("reads")
+            .expect("exists");
+        assert_eq!(
+            loaded.content,
+            Content::DisappearingTimer { seconds: 604_800 }
+        );
+        assert_eq!(loaded.summary(), "Disappearing messages: 7 days");
+        assert!(
+            archive
+                .search_messages("Disappearing", 10)
+                .expect("search")
+                .is_empty(),
+            "a timer notice is not searchable"
+        );
+        // A date-only search in the chat (an empty needle) is not a text
+        // search: the notice must be kept out of it as well, or it shows as a
+        // result nothing can scroll to.
+        archive
+            .insert_message(&message(chat, "hello", 150, false), None)
+            .expect("insert");
+        let found: Vec<String> = archive
+            .search_chat_messages(chat, "", Some(0), Some(200), 10)
+            .expect("search")
+            .into_iter()
+            .map(|message| message.id)
+            .collect();
+        assert_eq!(found, vec!["hello"], "only real messages are listed");
+    }
+
+    /// A timer notice is not a message the reader owes a receipt for, and it
+    /// must not keep a chat looking unread after the real message was read.
+    #[test]
+    fn a_timer_notice_does_not_keep_a_chat_unread() {
+        let archive = Archive::in_memory().expect("opens");
+        let chat = "1@s.whatsapp.net";
+        archive.ensure_chat(chat, "Ada").expect("chat");
+        archive
+            .insert_message(&message(chat, "real", 100, false), None)
+            .expect("insert");
+        let notice = timer_notice(chat, "change", 200);
+        archive.insert_message(&notice, None).expect("insert");
+
+        // The id path counts only the real incoming messages after the read.
+        archive.bump_unread(chat).expect("bump");
+        archive.mark_read_to(chat, "real").expect("read");
+        assert_eq!(archive.chat(chat).expect("chat").expect("exists").unread, 0);
+
+        // The timestamp path counts the same way.
+        archive.bump_unread(chat).expect("bump");
+        archive.mark_read_through(chat, 100).expect("read through");
+        assert_eq!(archive.chat(chat).expect("chat").expect("exists").unread, 0);
+    }
+
+    /// The local rows ZapFast invents (call entries, disappearing-timer
+    /// notices) have no counterpart on the phone: a receipt for their id would
+    /// name a message the phone never sent, and a history anchor for one would
+    /// ask for something it does not hold.
+    #[test]
+    fn synthetic_rows_stay_out_of_receipts_and_history_anchors() {
+        let archive = Archive::in_memory().expect("opens");
+        let chat = "1@s.whatsapp.net";
+        archive.ensure_chat(chat, "A").expect("chat");
+        let call = "local-call:1";
+        let notice = format!("{}1", crate::model::TIMER_NOTICE_PREFIX);
+        for (id, at) in [(call, 40), (notice.as_str(), 50)] {
+            archive
+                .insert_message(&message(chat, id, at, false), None)
+                .expect("insert");
+        }
+        archive
+            .insert_message(&message(chat, "m1", 100, false), None)
+            .expect("insert");
+        archive
+            .insert_message(&message(chat, "m2", 200, false), None)
+            .expect("insert");
+        assert_eq!(
+            archive.oldest(chat).expect("oldest").expect("row").id,
+            "m1",
+            "the phone-history anchor is a real message"
+        );
+        let ids: Vec<String> = archive
+            .unread_incoming(chat, 10)
+            .expect("ids")
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        assert_eq!(ids, vec!["m2", "m1"], "receipts name only real messages");
     }
 
     #[test]

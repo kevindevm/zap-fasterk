@@ -193,6 +193,8 @@ supported history metadata; complete cross-device call history is not guaranteed
 - **Last seen**, **Online**, **Profile photo**, **About**, **Groups**, **Read
   receipts**, **Calls**: your WhatsApp account privacy, stored on WhatsApp's
   servers and shared with your phone. They can be changed while connected.
+- **Blocked contacts**: view your WhatsApp account's blocked contacts and unblock
+  them, including people without a local chat. Changes require a connection.
 - **App lock**: hide Zap Fasterk behind a password. See [App lock](#app-lock).
 
 **System**

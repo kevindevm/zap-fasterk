@@ -12,6 +12,7 @@ pub mod autostart;
 pub mod backdrop;
 pub mod backend;
 pub mod bidi;
+pub mod blocking;
 pub mod call_audio;
 mod call_codec;
 mod call_processing;

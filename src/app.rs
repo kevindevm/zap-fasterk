@@ -358,6 +358,7 @@ pub(crate) fn can_select(content: &Content) -> bool {
             | Content::Unsupported { .. }
             | Content::Poll { .. }
             | Content::Interactive { .. }
+            | Content::DisappearingTimer { .. }
     )
 }
 
@@ -3725,6 +3726,29 @@ impl App {
                 }
             }
 
+            Event::Blocklist { state, error } => {
+                self.blocklist = state;
+                if !self.events_hidden
+                    && let Some(error) = error
+                {
+                    self.toast_error(error.message(self.locale).into_owned());
+                }
+            }
+            Event::BlocklistMapped {
+                from,
+                to,
+                chats,
+                state,
+            } => {
+                if !self.events_hidden
+                    && let Some(Dialog::ConfirmBlock { chat, .. }) = &mut self.dialog
+                    && chat == &from
+                {
+                    *chat = to;
+                }
+                self.blocklist = state;
+                self.apply_backend_event(Event::Chats(chats), live);
+            }
             Event::Link(status) => {
                 if live && status != self.link {
                     let text = match &status {
@@ -4027,7 +4051,7 @@ impl App {
             Event::PollCreated { chat, error } => {
                 self.poll_creating = false;
                 if let Some(error) = error {
-                    self.toast_error(error);
+                    self.toast_error(crate::blocking::localize_error(self.locale, error));
                 } else if live && self.dialog == Some(Dialog::CreatePoll(chat)) {
                     self.dialog = None;
                     self.poll_draft = Default::default();
@@ -4040,7 +4064,7 @@ impl App {
             } => {
                 self.poll_voting.remove(&(chat, message));
                 if let Some(error) = error {
-                    self.toast_error(error);
+                    self.toast_error(crate::blocking::localize_error(self.locale, error));
                 }
             }
             Event::ForwardLimit {
@@ -4674,6 +4698,39 @@ impl App {
                 }
             }
             Event::Info(message) => self.toast(message),
+            Event::ChatExportProgress { request, counts } => {
+                if self
+                    .chat_export
+                    .as_ref()
+                    .is_some_and(|(pending, _)| *pending == request)
+                {
+                    self.chat_export = Some((request, counts));
+                }
+            }
+            Event::ChatExportFinished { request, result } => {
+                if self
+                    .chat_export
+                    .as_ref()
+                    .is_some_and(|(pending, _)| *pending == request)
+                {
+                    self.chat_export = None;
+                    if live && matches!(self.dialog, Some(Dialog::ExportChat { .. })) {
+                        self.dialog = None;
+                    }
+                    match result {
+                        Ok(Some((path, counts))) => {
+                            let message = crate::i18n::gettext(self.locale, "Saved {path}. Messages: {messages}; attachments: {files}; unavailable: {missing}.")
+                                .replace("{path}", &path.display().to_string())
+                                .replace("{messages}", &counts.messages.to_string())
+                                .replace("{files}", &counts.files.to_string())
+                                .replace("{missing}", &counts.missing.to_string());
+                            self.report_chat_export(message, false);
+                        }
+                        Ok(None) => {}
+                        Err(error) => self.report_chat_export(error, true),
+                    }
+                }
+            }
             Event::ClipboardImage(result) => {
                 self.handle_clipboard_image(result, write_clipboard_image);
             }
@@ -4823,6 +4880,13 @@ impl App {
                     self.group_saving.remove(&chat);
                 }
             }
+            Event::TimerSaving { chat, saving } => {
+                if saving {
+                    self.timer_saving.insert(chat);
+                } else {
+                    self.timer_saving.remove(&chat);
+                }
+            }
             Event::EditRefused {
                 chat,
                 id,
@@ -4883,6 +4947,23 @@ impl App {
                             "Could not confirm the pin request; check your phone before retrying",
                         )
                     }
+                    "Unblock this contact to send messages." => {
+                        crate::i18n::gettext(self.locale, "Unblock this contact to send messages.")
+                    }
+                    "Unblock this contact to call them." => {
+                        crate::i18n::gettext(self.locale, "Unblock this contact to call them.")
+                    }
+                    "Connect to WhatsApp to change disappearing messages." => crate::i18n::gettext(
+                        self.locale,
+                        "Connect to WhatsApp to change disappearing messages.",
+                    ),
+                    "Could not change disappearing messages." => {
+                        crate::i18n::gettext(self.locale, "Could not change disappearing messages.")
+                    }
+                    "Only admins can change disappearing messages." => crate::i18n::gettext(
+                        self.locale,
+                        "Only admins can change disappearing messages.",
+                    ),
                     _ => message.into(),
                 };
                 self.toast_error(localized);
@@ -5037,6 +5118,10 @@ impl App {
 
                 self.poll_voting.clear();
                 self.interactive_sending.clear();
+                // A change in flight belonged to that account. Its completion
+                // is discarded, so nothing else would clear this.
+                self.group_saving.clear();
+                self.timer_saving.clear();
                 self.poll_creating = false;
                 self.poll_draft = Default::default();
                 self.notifications.clear_account(&account);
@@ -5054,6 +5139,7 @@ impl App {
                 self.show_starred = false;
                 self.stars.clear();
                 self.account_privacy = crate::privacy::Snapshot::default();
+                self.blocklist = Default::default();
                 self.account_receipts_off = false;
                 self.open_chat = None;
                 // Every recorded place named a chat of the account that just
@@ -5530,6 +5616,9 @@ impl App {
             Unsent::Sticker | Unsent::Gif => {}
         }
         let message = match reason {
+            Refusal::Blocked => {
+                crate::i18n::gettext(self.locale, "Unblock this contact to send messages.")
+            }
             Refusal::Offline => crate::i18n::gettext(
                 self.locale,
                 "Not sent: Zap Fasterk is not connected to WhatsApp.",
@@ -7442,8 +7531,38 @@ impl App {
         {
             return;
         }
+        let destination = match &action {
+            Action::SendText { chat, .. }
+            | Action::SendLocation { chat, .. }
+            | Action::ReplyInteractive { chat, .. }
+            | Action::CreatePoll { chat, .. }
+            | Action::VotePoll { chat, .. }
+            | Action::React { chat, .. } => Some(chat.as_str()),
+            Action::SendPending { account, chat, .. } if account == &self.account().id => {
+                Some(chat.as_str())
+            }
+            Action::SendGif(_)
+            | Action::SendSticker(_)
+            | Action::ShareStickerPack(_)
+            | Action::StartRecording
+            | Action::MakeSticker { send: true } => self.open_chat.as_deref(),
+            _ => None,
+        };
+        if destination.is_some_and(|chat| self.blocklist.contains(chat)) {
+            self.toast_error(crate::i18n::gettext(
+                self.locale,
+                "Unblock this contact to send messages.",
+            ));
+            return;
+        }
         let automatic_download = matches!(action, Action::DownloadAutomatic { .. });
         match action {
+            Action::FetchBlocklist => self.backend.send(Command::FetchBlocklist),
+            Action::SetBlocked { chat, blocked } => {
+                if self.is_connected() && self.blocklist.editable() {
+                    self.backend.send(Command::SetBlocked { chat, blocked });
+                }
+            }
             Action::ToggleCallLog => {
                 self.call_log_open = !self.call_log_open;
                 if self.call_log_open {
@@ -7451,7 +7570,12 @@ impl App {
                 }
             }
             Action::StartCall(chat) => {
-                if self.accounts.iter().any(|account| {
+                if self.blocklist.contains(&chat) {
+                    self.toast_error(crate::i18n::gettext(
+                        self.locale,
+                        "Unblock this contact to call them.",
+                    ));
+                } else if self.accounts.iter().any(|account| {
                     account.call_preparing
                         || account.pending_call_request.is_some()
                         || account
@@ -7471,7 +7595,12 @@ impl App {
                 }
             }
             Action::StartVideoCall(chat) => {
-                if self.accounts.iter().any(|account| {
+                if self.blocklist.contains(&chat) {
+                    self.toast_error(crate::i18n::gettext(
+                        self.locale,
+                        "Unblock this contact to call them.",
+                    ));
+                } else if self.accounts.iter().any(|account| {
                     account.call_preparing
                         || account.pending_call_request.is_some()
                         || account
@@ -8156,6 +8285,23 @@ impl App {
                 self.backend
                     .send(Command::SaveAttachmentAs { source: path, name });
             }
+            Action::ExportChat {
+                chat,
+                include_media,
+            } => {
+                if self.chat(&chat).is_some_and(|chat| !chat.locked) && self.chat_export.is_none() {
+                    self.sync_chat_export_permission();
+                    self.chat_export_sequence = self.chat_export_sequence.wrapping_add(1);
+                    let request = self.chat_export_sequence;
+                    self.chat_export = Some((request, Default::default()));
+                    self.backend.send(Command::ExportChat {
+                        request,
+                        chat,
+                        include_media,
+                    });
+                }
+            }
+            Action::CancelChatExport => self.backend.send(Command::CancelChatExport),
             Action::DragAttachment(path) => {
                 #[cfg(test)]
                 ctx.data_mut(|data| {
@@ -8305,19 +8451,21 @@ impl App {
                 self.selection = None;
             }
             Action::ToggleForwardRecipient(id) => {
-                if matches!(self.dialog, Some(Dialog::Forward { .. }))
-                    && !self.forward_reviewing
-                    && self.chat(&id).is_some_and(|chat| chat.can_send())
+                if !matches!(self.dialog, Some(Dialog::Forward { .. }))
+                    || self.forward_reviewing
+                    || self.blocklist.contains(&id)
+                    || !self.chat(&id).is_some_and(|chat| chat.can_send())
                 {
-                    if self.forward_recipients.contains(&id) {
-                        self.forward_recipients.retain(|recipient| recipient != &id);
-                    } else if self.forward_limit == 1 {
-                        // A message that may go to one chat only: the new choice
-                        // replaces the old one, as a radio button would.
-                        self.forward_recipients = vec![id];
-                    } else if self.forward_recipients.len() < self.forward_limit {
-                        self.forward_recipients.push(id);
-                    }
+                    return;
+                }
+                if self.forward_recipients.contains(&id) {
+                    self.forward_recipients.retain(|recipient| recipient != &id);
+                } else if self.forward_limit == 1 {
+                    // A message that may go to one chat only: the new choice
+                    // replaces the old one, as a radio button would.
+                    self.forward_recipients = vec![id];
+                } else if self.forward_recipients.len() < self.forward_limit {
+                    self.forward_recipients.push(id);
                 }
             }
             Action::ReviewForward => {
@@ -8350,7 +8498,9 @@ impl App {
                 let writable: std::collections::HashSet<_> = self
                     .chats
                     .iter()
-                    .filter(|chat| crate::ui::dialogs::forwardable(chat))
+                    .filter(|chat| {
+                        crate::ui::dialogs::forwardable(chat) && !self.blocklist.contains(&chat.id)
+                    })
                     .map(|chat| chat.id.clone())
                     .collect();
                 let count = self.forward_recipients.len();
@@ -9304,6 +9454,9 @@ impl App {
                 if dialog == Dialog::Statuses {
                     self.backend.send(Command::Statuses);
                 }
+                if dialog == Dialog::BlockedContacts {
+                    self.backend.send(Command::FetchBlocklist);
+                }
                 if let Dialog::ChatInfo(chat) = &dialog {
                     self.gallery.tab = None;
                     if self.gallery_accessible(chat) {
@@ -9353,10 +9506,25 @@ impl App {
                 self.dialog = Some(dialog);
             }
             Action::CloseDialog => {
+                if matches!(self.dialog, Some(Dialog::ExportChat { .. }))
+                    && self.chat_export.is_some()
+                {
+                    self.backend.send(Command::CancelChatExport);
+                }
                 self.backup_draft = crate::ui::archive_backup::BackupDraft::default();
                 self.cancel_contact_dialog_request();
                 self.clear_chat_lock_entry();
-                self.dialog = None;
+                self.dialog = if matches!(
+                    self.dialog,
+                    Some(Dialog::ConfirmBlock {
+                        from_list: true,
+                        ..
+                    })
+                ) {
+                    Some(Dialog::BlockedContacts)
+                } else {
+                    None
+                };
                 self.invite = None;
                 self.forward_search.clear();
                 self.forward_recipients.clear();
@@ -10577,6 +10745,49 @@ impl App {
         }
     }
 
+    /// A lock cancels exports for every account, including those off screen.
+    fn sync_chat_export_permission(&mut self) {
+        let allowed = !self.app_lock.is_locked();
+        for account in &mut self.accounts {
+            if account.chat_export_allowed_sent != Some(allowed) {
+                account.backend.send(Command::SetChatExportAllowed(allowed));
+                account.chat_export_allowed_sent = Some(allowed);
+            }
+        }
+    }
+
+    /// Shows a chat-export outcome, naming the account when it is not on
+    /// screen. A hidden account never touches the window's dialogs, but its
+    /// outcome still reaches the reader as a labeled toast and announcement.
+    fn report_chat_export(&mut self, message: String, failed: bool) {
+        let message = if self.events_hidden {
+            let account = self.account().display_label(self.locale);
+            let template = crate::i18n::gettext(self.locale, "{}: {}");
+            let mut parts = template.splitn(3, "{}");
+            format!(
+                "{}{}{}{}{}",
+                parts.next().unwrap_or_default(),
+                account,
+                parts.next().unwrap_or_default(),
+                message,
+                parts.next().unwrap_or_default(),
+            )
+        } else {
+            message
+        };
+        if self.events_hidden
+            && !self.app_lock.is_locked()
+            && self.accessibility_announcements.len() < 8
+        {
+            self.accessibility_announcements.push(message.clone());
+        }
+        if failed {
+            self.toast_error(message);
+        } else {
+            self.toast(message);
+        }
+    }
+
     /// Forward recovery policy only when the account policy or lock changes.
     fn report_background_history(&mut self) {
         let paused = self.app_lock.is_locked();
@@ -10706,6 +10917,7 @@ impl App {
         }
         self.report_presence();
         self.report_background_history();
+        self.sync_chat_export_permission();
         self.handle_power();
         self.track_focus(ctx, Instant::now());
         self.handle_tray();
@@ -11470,6 +11682,7 @@ impl App {
         self.window_focused = focused;
         self.report_presence();
         self.report_background_history();
+        self.sync_chat_export_permission();
         if locked {
             // Files dropped or pasted on the lock screen go nowhere.
             self.dropping = false;
@@ -12364,7 +12577,8 @@ mod tests {
 
     fn composer_app(text: &str) -> (super::App, egui::Context) {
         let mut app = app();
-        app.chats.push(super::Chat::new("first".into(), "First".into()));
+        app.chats
+            .push(super::Chat::new("first".into(), "First".into()));
         app.open_chat("first".into());
         app.composer = text.into();
         (app, egui::Context::default())
@@ -12997,6 +13211,188 @@ mod tests {
                 "reconnect cannot place the earlier rejected call"
             );
         }
+    }
+
+    #[test]
+    fn blocking_preserves_drafts_and_returns_to_the_list_after_confirmation() {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        let (backend, mut commands) = Backend::recording();
+        app.backend = backend;
+        app.link = LinkStatus::Connected;
+        let chat = "15550002222@s.whatsapp.net";
+        app.chats.push(Chat::new(chat.into(), "Fixture".into()));
+        app.open_chat = Some(chat.into());
+        app.composer = "Unsent fixture".into();
+        app.pending.push(Pending::File("fixture.png".into()));
+        app.recording = Some(Recorder::simulated(app.waker.clone()));
+        app.blocklist.ids = Some([chat.into()].into());
+        app.apply(
+            Action::SendText {
+                chat: chat.into(),
+                text: app.composer.clone(),
+                quoting: None,
+            },
+            &ctx,
+        );
+        assert_eq!(app.composer, "Unsent fixture");
+        assert_eq!(app.pending.len(), 1);
+        assert!(commands.try_recv().is_err());
+        assert!(
+            app.recording.is_some(),
+            "blocking does not discard an ongoing recording"
+        );
+        app.apply(Action::CancelRecording, &ctx);
+        app.apply(Action::StartRecording, &ctx);
+        assert!(
+            app.recording.is_none(),
+            "a blocked chat cannot start a recording"
+        );
+        // The forward picker refuses a blocked recipient, and confirming a
+        // review that only holds one drops it instead of sending.
+        app.apply(
+            Action::ShowDialog(Dialog::Forward {
+                chat: "source".into(),
+                messages: vec!["m".into()],
+            }),
+            &ctx,
+        );
+        assert!(
+            matches!(commands.try_recv(), Ok(Command::ForwardLimit { .. })),
+            "opening the dialog asks for the limit"
+        );
+        app.forward_limit = 1;
+        app.apply(Action::ToggleForwardRecipient(chat.into()), &ctx);
+        assert!(app.forward_recipients.is_empty());
+        app.forward_recipients = vec![chat.into()];
+        app.apply(Action::ConfirmForward, &ctx);
+        assert!(app.forward_recipients.is_empty());
+        assert!(
+            commands.try_recv().is_err(),
+            "a blocked recipient is dropped, not sent"
+        );
+        assert!(
+            app.toasts
+                .iter()
+                .any(|toast| toast.message.contains("no longer writable"))
+        );
+        for blocked in [false, true] {
+            app.dialog = Some(Dialog::ConfirmBlock {
+                chat: chat.into(),
+                blocked,
+                from_list: true,
+            });
+            app.apply(
+                Action::SetBlocked {
+                    chat: chat.into(),
+                    blocked,
+                },
+                &ctx,
+            );
+            assert!(
+                matches!(commands.try_recv(), Ok(Command::SetBlocked { blocked: value, .. }) if value == blocked)
+            );
+            assert!(
+                app.blocklist.contains(chat),
+                "the server has not confirmed a change"
+            );
+            app.apply(Action::CloseDialog, &ctx);
+            assert_eq!(app.dialog, Some(Dialog::BlockedContacts));
+        }
+        app.dialog = Some(Dialog::ConfirmBlock {
+            chat: chat.into(),
+            blocked: false,
+            from_list: true,
+        });
+        app.apply(Action::CloseDialog, &ctx);
+        assert_eq!(app.dialog, Some(Dialog::BlockedContacts));
+        assert!(commands.try_recv().is_err(), "cancel sends nothing");
+    }
+
+    #[test]
+    fn blocking_events_stay_with_their_account_and_logout_forgets_them() {
+        let directory = tempfile::tempdir().unwrap();
+        let (mut app, _) = two_accounts(directory.path());
+        let chat = "15550002222@s.whatsapp.net";
+        app.composer = "Visible draft".into();
+        let dialog = Some(Dialog::ConfirmBlock {
+            chat: "200000000000001@lid".into(),
+            blocked: false,
+            from_list: true,
+        });
+        app.dialog = dialog.clone();
+        let state = crate::blocking::Blocklist {
+            ids: Some([chat.into()].into()),
+            ..Default::default()
+        };
+        app.active = 1;
+        app.events_hidden = true;
+        app.apply_backend_event(
+            Event::Blocklist {
+                state,
+                error: Some(crate::blocking::Failure::Refused),
+            },
+            false,
+        );
+        let mut mapped = Chat::new(chat.into(), "Hidden fixture".into());
+        mapped.locked = true;
+        app.apply_backend_event(
+            Event::BlocklistMapped {
+                from: "200000000000001@lid".into(),
+                to: chat.into(),
+                chats: vec![mapped],
+                state: app.blocklist.clone(),
+            },
+            false,
+        );
+        app.events_hidden = false;
+        app.active = 0;
+        assert!(!app.blocklist.contains(chat));
+        assert!(app.accounts[1].blocklist.contains(chat));
+        assert_eq!(app.composer, "Visible draft");
+        assert_eq!(app.dialog, dialog);
+        assert!(app.toasts.is_empty());
+        app.switch_account(&AccountId::parse("2").unwrap());
+        app.handle_link(LinkStatus::LoggedOut, true);
+        assert!(app.blocklist.ids.is_none());
+    }
+
+    /// A timer change going out marks its chat as saving until WhatsApp
+    /// answers it, and logging out drops a change still in flight with the
+    /// account it belonged to.
+    #[test]
+    fn timer_saving_arrives_with_the_event_and_leaves_on_logout() {
+        let mut app = app();
+        let chat = "15550000001@s.whatsapp.net".to_owned();
+        app.apply_backend_event(
+            Event::TimerSaving {
+                chat: chat.clone(),
+                saving: true,
+            },
+            true,
+        );
+        assert!(app.timer_saving.contains(chat.as_str()));
+        app.apply_backend_event(
+            Event::TimerSaving {
+                chat,
+                saving: false,
+            },
+            true,
+        );
+        assert!(app.timer_saving.is_empty());
+    }
+
+    /// A group or timer change still in flight belongs to the account that
+    /// went away. Logging out drops its saving state, since the completion
+    /// that would have cleared it is discarded.
+    #[test]
+    fn logout_drops_a_change_that_was_still_saving() {
+        let mut app = app();
+        app.group_saving.insert("120363000000000001@g.us".into());
+        app.timer_saving.insert("15550000001@s.whatsapp.net".into());
+        app.handle_link(LinkStatus::LoggedOut, true);
+        assert!(app.group_saving.is_empty());
+        assert!(app.timer_saving.is_empty());
     }
 
     #[test]
@@ -15609,6 +16005,91 @@ mod tests {
         app.accounts.push(second);
         app.active = 0;
         (app, commands)
+    }
+
+    /// Export state follows its account and ignores progress from an older request.
+    #[test]
+    fn chat_exports_are_account_local_and_ignore_stale_progress() {
+        let directory = tempfile::tempdir().unwrap();
+        let (mut app, mut commands) = two_accounts(directory.path());
+        app.active = 1;
+        app.chats
+            .push(Chat::new("fixture".into(), "Fixture".into()));
+        app.apply(
+            Action::ExportChat {
+                chat: "fixture".into(),
+                include_media: true,
+            },
+            &egui::Context::default(),
+        );
+        assert!(matches!(
+            commands.try_recv().unwrap(),
+            Command::SetChatExportAllowed(true)
+        ));
+        let request = match commands.try_recv().unwrap() {
+            Command::ExportChat {
+                request,
+                chat,
+                include_media: true,
+            } => {
+                assert_eq!(chat, "fixture");
+                request
+            }
+            _ => panic!("expected an account-local export"),
+        };
+        assert!(app.accounts[0].chat_export.is_none());
+        app.apply_backend_event(
+            Event::ChatExportFinished {
+                request: request.wrapping_add(1),
+                result: Ok(None),
+            },
+            false,
+        );
+        assert!(app.chat_export.is_some());
+        app.apply_backend_event(
+            Event::ChatExportFinished {
+                request,
+                result: Ok(None),
+            },
+            false,
+        );
+        assert!(app.chat_export.is_none());
+    }
+
+    /// Hidden-account results report their account while preserving the visible account's dialog.
+    #[test]
+    fn hidden_account_exports_report_outcomes_without_closing_the_visible_dialog() {
+        for failed in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let (mut app, _) = two_accounts(directory.path());
+            app.accounts[1].me_name = Some("Studio".into());
+            app.accounts[1].chat_export = Some((7, Default::default()));
+            app.dialog = Some(Dialog::ExportChat {
+                chat: "visible".into(),
+                include_media: false,
+            });
+            app.active = 1;
+            app.events_hidden = true;
+            let result = if failed {
+                Err("Synthetic storage failure".into())
+            } else {
+                Ok(Some((PathBuf::from("fixture.txt"), Default::default())))
+            };
+            app.apply_backend_event(Event::ChatExportFinished { request: 7, result }, false);
+            assert!(app.chat_export.is_none());
+            assert!(
+                matches!(&app.dialog, Some(Dialog::ExportChat { chat, .. }) if chat == "visible")
+            );
+            let said = app.accessibility_announcements.join(" ");
+            let expected = if failed {
+                "Studio: Synthetic storage failure"
+            } else {
+                "Studio: Saved fixture.txt"
+            };
+            assert!(said.contains(expected), "{said}");
+            app.events_hidden = false;
+            app.active = 0;
+        }
     }
 
     #[test]

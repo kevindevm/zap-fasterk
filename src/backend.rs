@@ -168,6 +168,22 @@ pub struct ScheduledPhoto {
 
 #[derive(Debug)]
 pub enum Command {
+    FetchBlocklist,
+    SetBlocked {
+        chat: ChatId,
+        blocked: bool,
+    },
+    /// Internal replies from the library, bound to the requesting session.
+    BlocklistFetched {
+        generation: u64,
+        result: Result<Vec<ChatId>, ()>,
+    },
+    BlockedSet {
+        generation: u64,
+        chat: ChatId,
+        blocked: bool,
+        result: Result<(), ()>,
+    },
     Automation(crate::automation::Pending),
     Statuses,
     DownloadStatus(String),
@@ -312,6 +328,26 @@ pub enum Command {
     Composing {
         chat: ChatId,
         composing: bool,
+    },
+    SetChatExportAllowed(bool),
+    ExportChat {
+        request: u64,
+        chat: ChatId,
+        include_media: bool,
+    },
+    CancelChatExport,
+    ChatExportTarget {
+        request: u64,
+        include_media: bool,
+        target: Option<PathBuf>,
+    },
+    ChatExportProgress {
+        request: u64,
+        counts: crate::archive::chat_export::Counts,
+    },
+    ChatExportFinished {
+        request: u64,
+        result: Result<Option<(PathBuf, crate::archive::chat_export::Counts)>, String>,
     },
     /// Stores the open chat's unsent text, so it survives a restart.
     SaveDraft {
@@ -536,12 +572,15 @@ pub enum Command {
         chat: ChatId,
         seconds: u32,
     },
-    DisappearingTimerSet {
-        generation: u64,
+    /// Internal: a disappearing-timer change went out. `Ok` carries the sent
+    /// message's id and setting time, whose server ack decides whether the
+    /// timer is written. `session` identifies the account this completion
+    /// belongs to.
+    TimerSet {
         chat: ChatId,
+        session: u64,
         seconds: u32,
-        requested_at: i64,
-        error: Option<String>,
+        result: Result<(String, i64), String>,
     },
     /// Locks or unlocks a chat (the locked folder).
     SetLocked(ChatId, bool),
@@ -688,10 +727,13 @@ pub enum Command {
         chat: ChatId,
         jpeg: Option<Vec<u8>>,
     },
-    /// Internal: WhatsApp answered a change to a group's name or photo.
+    /// Internal: WhatsApp answered a change to a group's name, photo or
+    /// timer. `session` is the account session the change was sent under; a
+    /// completion from a departed session is discarded.
     GroupEdited {
         chat: ChatId,
         edit: GroupEdit,
+        session: u64,
         result: Result<(), String>,
     },
     /// Internal: the server accepted a profile change.
@@ -1189,6 +1231,17 @@ pub enum SendFailure {
 
 #[derive(Debug)]
 pub enum Event {
+    Blocklist {
+        state: crate::blocking::Blocklist,
+        error: Option<crate::blocking::Failure>,
+    },
+    /// Apply a privacy-id mapping together with its chat locks and blocklist.
+    BlocklistMapped {
+        from: ChatId,
+        to: ChatId,
+        chats: Vec<Chat>,
+        state: crate::blocking::Blocklist,
+    },
     Statuses(Vec<Message>),
     ArchiveProgress(crate::model::ArchiveRecoveryProgress),
     Call(Box<crate::calls::CallUpdate>),
@@ -1343,6 +1396,14 @@ pub enum Event {
         complete: bool,
     },
     MessageUpdated(Box<Message>),
+    ChatExportProgress {
+        request: u64,
+        counts: crate::archive::chat_export::Counts,
+    },
+    ChatExportFinished {
+        request: u64,
+        result: Result<Option<(PathBuf, crate::archive::chat_export::Counts)>, String>,
+    },
     /// A send that waited, went out, and was refused again: it waits once
     /// more at the time it waited before, first of the waiting rows.
     MessageRequeued(Box<Message>),
@@ -1566,6 +1627,13 @@ pub enum Event {
         chat: ChatId,
         saving: bool,
     },
+    /// A disappearing-timer change went to WhatsApp (`saving`), or WhatsApp
+    /// answered it, for a direct chat or a group. The chat keeps its current
+    /// timer until the answer.
+    TimerSaving {
+        chat: ChatId,
+        saving: bool,
+    },
 }
 
 /// A change to a group's info, as sent to WhatsApp.
@@ -1575,6 +1643,8 @@ pub enum GroupEdit {
     Name(String),
     /// A new photo, or none.
     Picture { removed: bool },
+    /// The new disappearing-message duration in seconds; zero turns it off.
+    Timer(u32),
 }
 
 /// Where a channel's picture lives on WhatsApp's media servers, as the
@@ -1591,6 +1661,7 @@ pub struct ChannelPicture {
 /// Why the worker refused a send.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {
+    Blocked,
     /// There is no WhatsApp connection.
     Offline,
     /// The message being replied to cannot be quoted, because its row or its
