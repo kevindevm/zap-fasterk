@@ -95,6 +95,19 @@ pub fn respond(app: &mut App) {
                     Err(error) => app.toast_error(error),
                 }
             }
+            Command::SamplePicture {
+                index,
+                source,
+                width,
+                height,
+            } => {
+                if let Ok(blocks) = crate::backend::picture_edit::sample(&source, width, height)
+                    && let Some(edit) = app.picture_edit.as_mut()
+                    && edit.index == index
+                {
+                    edit.blocks = Some(std::sync::Arc::new(blocks));
+                }
+            }
             Command::ApplyPictureEdit {
                 index,
                 source,
@@ -102,6 +115,7 @@ pub fn respond(app: &mut App) {
                 height,
                 crop,
                 turns,
+                marks,
             } => {
                 // The same work the worker would do, on this thread instead.
                 let written = crate::backend::picture_edit::write(
@@ -110,6 +124,7 @@ pub fn respond(app: &mut App) {
                     height,
                     crop,
                     turns,
+                    &marks,
                     &app.dirs.media_cache_dir().join("edited"),
                 );
                 match written {

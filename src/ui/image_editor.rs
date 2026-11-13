@@ -1,10 +1,14 @@
-//! Crops and turns a staged picture over the whole window, before it is sent.
+//! Draws on, crops and turns a staged picture over the whole window, before
+//! it is sent.
 
 use egui::{Align, Color32, Layout, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2, pos2, vec2};
 
 use super::widgets;
 use crate::app::{App, Pending};
-use crate::model::{Action, CropEdge, PictureCrop, PictureSource};
+use crate::model::{
+    Action, Brush, CropEdge, Ink, Mark, PictureCrop, PictureEdit, PictureSource, PictureTool,
+    Point, Thickness,
+};
 use crate::theme::{self, Icon};
 
 /// Room left around the cropper, in points.
@@ -17,6 +21,10 @@ const HANDLE: f32 = 13.0;
 const GRIP: f32 = 22.0;
 /// The crop's border, in points.
 const BORDER: f32 = 2.0;
+/// Side of a tool, ink or thickness choice.
+const CHOICE: f32 = 30.0;
+/// How far the pointer moves, in points, before a pen takes another point.
+const PEN_STEP: f32 = 1.5;
 
 /// A change asked for by the controls under the picture. It is recorded while
 /// the window is drawn and applied afterwards, so the edit is not consumed
@@ -25,16 +33,54 @@ const BORDER: f32 = 2.0;
 enum Change {
     Reset,
     Turn { clockwise: bool },
+    Undo,
+    Redo,
 }
 
-/// Draws the cropper over the whole window and records whatever its controls
-/// asked for. The staged picture is left alone until the crop is kept.
+/// Where the picture is drawn, to carry points between the screen and the
+/// source's own pixels.
+#[derive(Clone, Copy, Debug)]
+struct Placement {
+    /// The turned picture on screen.
+    picture: Rect,
+    /// Points per pixel.
+    scale: f32,
+    turns: u8,
+    /// The source's own size, before any turn.
+    width: u32,
+    height: u32,
+}
+
+impl Placement {
+    fn new(picture: Rect, edit: &PictureEdit) -> Self {
+        let (wide, _) = edit.displayed_size();
+        Self {
+            picture,
+            scale: picture.width() / wide.max(1) as f32,
+            turns: edit.turns,
+            width: edit.width,
+            height: edit.height,
+        }
+    }
+
+    /// The source's pixel under a point on screen.
+    fn to_source(self, at: Pos2) -> Point {
+        let shown = (at - self.picture.min) / self.scale;
+        crate::model::unturned_point([shown.x, shown.y], self.turns, self.width, self.height)
+    }
+}
+
+/// Draws the editor over the whole window and records whatever its controls
+/// asked for. The staged picture is left alone until the edit is kept.
 pub fn show(app: &mut App, ctx: &egui::Context) {
     let Some(mut edit) = app.picture_edit.clone() else {
+        app.picture_marks = None;
         return;
     };
+    let mut marks_layer = app.picture_marks.take();
     let palette = app.palette;
     let locale = app.locale;
+    let mut brush = app.picture_brush;
     // Captured before the edit is borrowed mutably, so the closure does not
     // need the whole app.
     let source = edit.source.clone();
@@ -57,44 +103,37 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             let inner =
                 Rect::from_min_max(pos2(room.min.x, top.max.y), pos2(room.max.x, bottom.min.y));
             let picture = super::video_preview::fitted(vec2(wide as f32, tall as f32), inner);
-            let scale = picture.width() / wide.max(1) as f32;
+            let place = Placement::new(picture, &edit);
+            let scale = place.scale;
             if let Some(id) = texture(ui, &source, pasted.as_ref(), picture.size()) {
                 paint_turned(ui, id, picture, edit.turns);
             }
-            // The region is kept in the picture's pixels, so a drag is turned
-            // into pixels before it is applied.
-            let moving = ui.interact(
+            if let Some(id) = marks_texture(ui.ctx(), &mut marks_layer, &edit, place, palette) {
+                let whole = Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0));
+                ui.painter().image(id, picture, whole, Color32::WHITE);
+            }
+            if brush.tool == PictureTool::Crop {
+                crop_handles(ui, &mut edit, picture, scale);
+            } else {
+                draw(ui, &mut edit, brush, place);
+            }
+            shade_outside(
+                ui,
+                palette,
+                picture,
                 to_screen(edit.crop, picture, scale),
-                ui.id().with("crop-inside"),
-                Sense::drag(),
+                brush.tool == PictureTool::Crop,
             );
-            if moving.dragged() {
-                let delta = moving.drag_delta() / scale;
-                edit.crop = edit.crop.drag(
-                    CropEdge::Inside,
-                    delta.x.round() as i64,
-                    delta.y.round() as i64,
-                    wide,
-                    tall,
-                );
-            }
-            for (edge, at) in handles(to_screen(edit.crop, picture, scale)) {
-                let grip = Rect::from_center_size(at, Vec2::splat(GRIP));
-                let response = ui
-                    .interact(grip, ui.id().with(("crop-edge", edge as u8)), Sense::drag())
-                    .on_hover_cursor(cursor(edge));
-                if response.dragged() {
-                    let delta = response.drag_delta() / scale;
-                    edit.crop = edit.crop.drag(
-                        edge,
-                        delta.x.round() as i64,
-                        delta.y.round() as i64,
-                        wide,
-                        tall,
-                    );
-                }
-            }
-            shade_outside(ui, palette, picture, to_screen(edit.crop, picture, scale));
+            ui.scope_builder(
+                egui::UiBuilder::new()
+                    .max_rect(top)
+                    .layout(Layout::left_to_right(Align::Center)),
+                |ui| {
+                    if let Some(tool) = tools(ui, palette, locale, brush.tool) {
+                        edit.pick_tool(&mut brush, tool);
+                    }
+                },
+            );
             ui.scope_builder(
                 egui::UiBuilder::new()
                     .max_rect(top)
@@ -113,7 +152,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     {
                         actions.push(Action::CancelPictureEdit);
                     }
-                    let keep = crate::i18n::gettext(locale, "Keep this crop");
+                    let keep = crate::i18n::gettext(locale, "Keep changes");
                     if theme::icon_button(
                         ui,
                         Icon::Check,
@@ -128,6 +167,14 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     }
                 },
             );
+            if brush.tool.inked() {
+                ui.scope_builder(
+                    egui::UiBuilder::new()
+                        .max_rect(bottom)
+                        .layout(Layout::left_to_right(Align::Center)),
+                    |ui| inks(ui, palette, locale, &mut brush),
+                );
+            }
             ui.scope_builder(
                 egui::UiBuilder::new()
                     .max_rect(bottom)
@@ -137,31 +184,66 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     if theme::pill_button(ui, &palette, &reset, false).clicked() {
                         change = Some(Change::Reset);
                     }
-                    let right = crate::i18n::gettext(locale, "Turn right");
-                    if theme::icon_button(
-                        ui,
-                        Icon::RotateRight,
-                        18.0,
-                        palette.secondary,
-                        palette.text,
-                        &right,
-                    )
-                    .clicked()
-                    {
-                        change = Some(Change::Turn { clockwise: true });
+                    for (icon, label, step) in [
+                        (
+                            Icon::RotateRight,
+                            crate::i18n::gettext(locale, "Turn right"),
+                            Change::Turn { clockwise: true },
+                        ),
+                        (
+                            Icon::RotateLeft,
+                            crate::i18n::gettext(locale, "Turn left"),
+                            Change::Turn { clockwise: false },
+                        ),
+                    ] {
+                        if theme::icon_button(
+                            ui,
+                            icon,
+                            18.0,
+                            palette.secondary,
+                            palette.text,
+                            &label,
+                        )
+                        .clicked()
+                        {
+                            change = Some(step);
+                        }
                     }
-                    let left = crate::i18n::gettext(locale, "Turn left");
-                    if theme::icon_button(
-                        ui,
-                        Icon::RotateLeft,
-                        18.0,
-                        palette.secondary,
-                        palette.text,
-                        &left,
-                    )
-                    .clicked()
-                    {
-                        change = Some(Change::Turn { clockwise: false });
+                    ui.add_space(8.0);
+                    for (icon, label, step, possible) in [
+                        (
+                            Icon::Redo,
+                            crate::i18n::gettext(locale, "Redo"),
+                            Change::Redo,
+                            !edit.undone.is_empty(),
+                        ),
+                        (
+                            Icon::Undo,
+                            crate::i18n::gettext(locale, "Undo"),
+                            Change::Undo,
+                            !edit.marks.is_empty(),
+                        ),
+                    ] {
+                        let pressed = ui
+                            .add_enabled_ui(possible, |ui| {
+                                theme::icon_button(
+                                    ui,
+                                    icon,
+                                    18.0,
+                                    if possible {
+                                        palette.secondary
+                                    } else {
+                                        palette.dim
+                                    },
+                                    palette.text,
+                                    &label,
+                                )
+                            })
+                            .inner
+                            .clicked();
+                        if pressed {
+                            change = Some(step);
+                        }
                     }
                 },
             );
@@ -169,9 +251,13 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     match change {
         Some(Change::Reset) => edit = edit.reset(),
         Some(Change::Turn { clockwise }) => edit = edit.turned(clockwise),
+        Some(Change::Undo) => edit.undo(),
+        Some(Change::Redo) => edit.redo(),
         None => {}
     }
     app.picture_edit = Some(edit);
+    app.picture_marks = marks_layer;
+    app.picture_brush = brush;
     app.actions.extend(actions);
 }
 
@@ -293,6 +379,318 @@ fn paint_turned(ui: &egui::Ui, texture: egui::TextureId, rect: Rect, turns: u8) 
     ui.painter().add(egui::Shape::mesh(mesh));
 }
 
+/// The crop's handles and the region itself, which drag the crop.
+fn crop_handles(ui: &mut egui::Ui, edit: &mut PictureEdit, picture: Rect, scale: f32) {
+    let (wide, tall) = edit.displayed_size();
+    // The region is kept in the picture's pixels, so a drag is turned
+    // into pixels before it is applied.
+    let moving = ui.interact(
+        to_screen(edit.crop, picture, scale),
+        ui.id().with("crop-inside"),
+        // `Sense::DRAG` is not focusable: a drag needs the pointer,
+        // and a focusable area is a nameless Tab stop.
+        Sense::DRAG,
+    );
+    if moving.dragged() {
+        let delta = moving.drag_delta() / scale;
+        edit.crop = edit.crop.drag(
+            CropEdge::Inside,
+            delta.x.round() as i64,
+            delta.y.round() as i64,
+            wide,
+            tall,
+        );
+    }
+    for (edge, at) in handles(to_screen(edit.crop, picture, scale)) {
+        let grip = Rect::from_center_size(at, Vec2::splat(GRIP));
+        let response = ui
+            .interact(grip, ui.id().with(("crop-edge", edge as u8)), Sense::DRAG)
+            .on_hover_cursor(cursor(edge));
+        if response.dragged() {
+            let delta = response.drag_delta() / scale;
+            edit.crop = edit.crop.drag(
+                edge,
+                delta.x.round() as i64,
+                delta.y.round() as i64,
+                wide,
+                tall,
+            );
+        }
+    }
+}
+
+/// A drag over the picture draws a mark with the brush.
+fn draw(ui: &mut egui::Ui, edit: &mut PictureEdit, brush: Brush, place: Placement) {
+    // `Sense::DRAG` alone starts the drag on the press, so a click with the
+    // pen leaves a dot, and it is no Tab stop.
+    let response = ui
+        .interact(place.picture, ui.id().with("draw"), Sense::DRAG)
+        .on_hover_cursor(egui::CursorIcon::Crosshair);
+    if response.drag_started()
+        && let Some(at) = ui.input(|input| input.pointer.press_origin())
+    {
+        edit.begin_mark(brush, place.to_source(at));
+    }
+    if response.dragged()
+        && let Some(at) = response.interact_pointer_pos()
+    {
+        edit.extend_mark(place.to_source(at), PEN_STEP / place.scale);
+    }
+    if response.drag_stopped() {
+        edit.finish_mark();
+    }
+}
+
+/// The marks drawn last, as a texture over the picture, and what they
+/// were drawn from, so a frame that changes none of it draws nothing anew.
+pub(crate) struct MarksLayer {
+    marks: Vec<Mark>,
+    drawing: Option<Mark>,
+    /// The source's size, its turn, and the layer's size in pixels.
+    shape: (u32, u32, u8, [u32; 2]),
+    blocks: Option<std::sync::Arc<crate::model::PictureBlocks>>,
+    behind: [Color32; 2],
+    texture: egui::TextureHandle,
+}
+
+impl MarksLayer {
+    fn shows(
+        &self,
+        edit: &PictureEdit,
+        shape: (u32, u32, u8, [u32; 2]),
+        behind: [Color32; 2],
+    ) -> bool {
+        self.shape == shape
+            && self.behind == behind
+            && self.marks == edit.marks
+            && self.drawing == edit.drawing
+            && self.blocks == edit.blocks
+    }
+}
+
+/// The texture the marks are drawn on: rasterised by the code that writes
+/// them into the file, at the size the picture has on screen, so the
+/// preview cannot drift from what is sent. It is drawn again only when the
+/// marks, the picture's size on screen or its turn change.
+fn marks_texture(
+    ctx: &egui::Context,
+    cache: &mut Option<MarksLayer>,
+    edit: &PictureEdit,
+    place: Placement,
+    palette: theme::Palette,
+) -> Option<egui::TextureId> {
+    if edit.marks.is_empty() && edit.drawing.is_none() {
+        return None;
+    }
+    // Never past what the GPU takes as one texture; the quad stretches it.
+    let pixels = place.picture.size() * ctx.pixels_per_point();
+    let most = ctx.input(|input| input.max_texture_side) as f32;
+    let pixels = (pixels * (most / pixels.max_elem()).min(1.0)).round();
+    let size = [pixels.x.max(1.0) as u32, pixels.y.max(1.0) as u32];
+    let shape = (edit.width, edit.height, edit.turns, size);
+    let behind = [palette.window, palette.surface];
+    if let Some(layer) = cache.as_ref()
+        && layer.shows(edit, shape, behind)
+    {
+        return Some(layer.texture.id());
+    }
+    let blocks = edit.blocks.as_deref();
+    let drawn = crate::backend::picture_edit::preview_layer(
+        edit.marks.iter().chain(&edit.drawing),
+        (edit.width, edit.height),
+        edit.turns,
+        size,
+        |cell| {
+            let [r, g, b, _] = block_colour(blocks, cell, palette).to_array();
+            [r, g, b]
+        },
+    )?;
+    let image = egui::ColorImage::from_rgba_premultiplied(
+        [size[0] as usize, size[1] as usize],
+        drawn.data(),
+    );
+    // Nearest, not linear: filtering would blend a pixelated block's edge
+    // with the see-through texel beside it and let the sharp picture show.
+    let texture = match cache.take() {
+        Some(mut layer) => {
+            layer.texture.set(image, egui::TextureOptions::NEAREST);
+            layer.texture
+        }
+        None => ctx.load_texture("picture-marks", image, egui::TextureOptions::NEAREST),
+    };
+    let id = texture.id();
+    *cache = Some(MarksLayer {
+        marks: edit.marks.clone(),
+        drawing: edit.drawing.clone(),
+        shape,
+        blocks: edit.blocks.clone(),
+        behind,
+        texture,
+    });
+    Some(id)
+}
+
+/// The opaque colour a pixelated block shows: the average writing paints
+/// it in, over the window as a see-through picture is seen, or a plain
+/// colour until the averages are read. Never the picture itself.
+fn block_colour(
+    blocks: Option<&crate::model::PictureBlocks>,
+    cell: [u32; 4],
+    palette: theme::Palette,
+) -> Color32 {
+    let Some([r, g, b, a]) = blocks.and_then(|blocks| blocks.colour(cell)) else {
+        return palette.surface.to_opaque();
+    };
+    let behind = palette.window.to_opaque();
+    let over = |colour: u8, under: u8| {
+        ((u32::from(colour) * u32::from(a) + u32::from(under) * u32::from(255 - a) + 127) / 255)
+            as u8
+    };
+    Color32::from_rgb(
+        over(r, behind.r()),
+        over(g, behind.g()),
+        over(b, behind.b()),
+    )
+}
+
+/// A tool, ink or thickness to pick: lit while it is the one in use.
+fn choice(
+    ui: &mut egui::Ui,
+    palette: theme::Palette,
+    label: &str,
+    picked: bool,
+    paint: impl FnOnce(&egui::Ui, Rect, Color32),
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(CHOICE), Sense::click());
+    theme::reveal_focus(&response);
+    theme::focus_outline(ui, response.id, rect, 8.0);
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), picked, label)
+    });
+    if ui.is_rect_visible(rect) {
+        if picked {
+            ui.painter().rect_filled(rect, 8.0, palette.surface_active);
+        } else if response.hovered() {
+            ui.painter().rect_filled(rect, 8.0, palette.surface_hover);
+        }
+        let tint = if picked || response.hovered() || response.has_focus() {
+            palette.text
+        } else {
+            palette.secondary
+        };
+        paint(ui, rect, tint);
+    }
+    response
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .on_hover_text(label)
+}
+
+/// The tools along the top: crop, pen, highlighter, arrow, rectangle and
+/// pixelate. Answers the one picked this frame.
+fn tools(
+    ui: &mut egui::Ui,
+    palette: theme::Palette,
+    locale: crate::i18n::Locale,
+    current: PictureTool,
+) -> Option<PictureTool> {
+    let mut picked = None;
+    ui.spacing_mut().item_spacing.x = 2.0;
+    for tool in PictureTool::ALL {
+        let (icon, label) = match tool {
+            PictureTool::Crop => (Icon::Crop, crate::i18n::gettext(locale, "Crop")),
+            PictureTool::Pen => (Icon::Pencil, crate::i18n::gettext(locale, "Pen")),
+            PictureTool::Highlighter => (
+                Icon::Highlighter,
+                crate::i18n::gettext(locale, "Highlighter"),
+            ),
+            PictureTool::Arrow => (Icon::ArrowUpRight, crate::i18n::gettext(locale, "Arrow")),
+            PictureTool::Rectangle => (Icon::Square, crate::i18n::gettext(locale, "Rectangle")),
+            PictureTool::Pixelate => (Icon::Grid, crate::i18n::gettext(locale, "Pixelate")),
+        };
+        let response = choice(ui, palette, &label, current == tool, |ui, rect, tint| {
+            let size = 18.0;
+            let at = Rect::from_center_size(rect.center(), Vec2::splat(size));
+            theme::paint_icon(ui, icon, at, size, tint);
+        });
+        if response.clicked() {
+            picked = Some(tool);
+        }
+    }
+    picked
+}
+
+/// The inks and the three thicknesses, for the tools that draw in them.
+fn inks(
+    ui: &mut egui::Ui,
+    palette: theme::Palette,
+    locale: crate::i18n::Locale,
+    brush: &mut Brush,
+) {
+    ui.spacing_mut().item_spacing.x = 0.0;
+    for ink in Ink::ALL {
+        let label = match ink {
+            Ink::Red => crate::i18n::gettext(locale, "Red"),
+            Ink::Yellow => crate::i18n::gettext(locale, "Yellow"),
+            Ink::Green => crate::i18n::gettext(locale, "Green"),
+            Ink::Blue => crate::i18n::gettext(locale, "Blue"),
+            Ink::Purple => crate::i18n::gettext(locale, "Purple"),
+            Ink::White => crate::i18n::gettext(locale, "White"),
+            Ink::Black => crate::i18n::gettext(locale, "Black"),
+        };
+        let [r, g, b] = ink.rgb();
+        let response = choice(ui, palette, &label, brush.ink == ink, |ui, rect, _| {
+            // A faint ring keeps white on a light theme, and black on a
+            // dark one, from melting into the window.
+            ui.painter().circle(
+                rect.center(),
+                8.0,
+                Color32::from_rgb(r, g, b),
+                Stroke::new(1.0, palette.secondary.gamma_multiply(0.6)),
+            );
+        });
+        if response.clicked() {
+            brush.ink = ink;
+        }
+    }
+    ui.add_space(10.0);
+    let [r, g, b] = brush.ink.rgb();
+    for (thickness, label, radius) in [
+        (
+            Thickness::Thin,
+            crate::i18n::gettext(locale, "Thin line"),
+            2.5,
+        ),
+        (
+            Thickness::Medium,
+            crate::i18n::gettext(locale, "Medium line"),
+            4.0,
+        ),
+        (
+            Thickness::Thick,
+            crate::i18n::gettext(locale, "Thick line"),
+            6.0,
+        ),
+    ] {
+        let picked = brush.thickness == thickness;
+        let response = choice(ui, palette, &label, picked, |ui, rect, tint| {
+            let fill = if picked {
+                Color32::from_rgb(r, g, b)
+            } else {
+                tint
+            };
+            ui.painter().circle(
+                rect.center(),
+                radius,
+                fill,
+                Stroke::new(1.0, palette.outline),
+            );
+        });
+        if response.clicked() {
+            brush.thickness = thickness;
+        }
+    }
+}
+
 /// Where a crop's edges and corners are on screen.
 fn handles(crop: Rect) -> [(CropEdge, Pos2); 8] {
     [
@@ -326,8 +724,15 @@ fn cursor(edge: CropEdge) -> egui::CursorIcon {
     }
 }
 
-/// Dims what the crop leaves out, and marks its border and handles.
-fn shade_outside(ui: &egui::Ui, palette: theme::Palette, picture: Rect, crop: Rect) {
+/// Dims what the crop leaves out, and, while the crop tool is in use, marks
+/// the crop's border and handles.
+fn shade_outside(
+    ui: &egui::Ui,
+    palette: theme::Palette,
+    picture: Rect,
+    crop: Rect,
+    cropping: bool,
+) {
     let shade = palette.shadow.gamma_multiply(1.6);
     for outside in [
         Rect::from_min_max(picture.min, pos2(picture.max.x, crop.min.y)),
@@ -344,6 +749,9 @@ fn shade_outside(ui: &egui::Ui, palette: theme::Palette, picture: Rect, crop: Re
         if outside.is_positive() {
             ui.painter().rect_filled(outside, 0.0, shade);
         }
+    }
+    if !cropping {
+        return;
     }
     ui.painter().rect_stroke(
         crop,

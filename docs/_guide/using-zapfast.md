@@ -284,17 +284,33 @@ or clearing it keeps its draft priority until you leave again. Within each
 group, chats keep their usual latest-message order. The Favorites chip keeps
 the phone's favorites order below pins.
 
-Click a picture above the composer to crop it before you send it. The picture
-opens over the window with the region to keep marked, and you can drag that
-region by its edges and corners or move it whole. **Turn left** and **Turn
-right** turn the picture a quarter at a time, and **Reset** puts it back the way
-it started. Press Enter or click the check to keep the crop, or Escape or the
-close button to leave the picture as it was.
+Click a picture above the composer to draw on it, crop it or turn it before
+you send it. The picture opens over the window with the tools along the top:
+**Crop**, **Pen**, **Highlighter**, **Arrow**, **Rectangle** and **Pixelate**.
+The first time the editor opens, the pen is picked, so a drag across the
+picture draws a line. The pen, highlighter, arrow and rectangle draw in one
+of seven colours and three thicknesses, picked under the picture. Until the
+app quits, the editor opens with the tool, colour and thickness you used last.
+**Pixelate** turns the region you drag over into coarse blocks, to hide a name
+or a number. The blocks show in the colours the sent picture will have; a
+large picture shows them in a plain colour for a moment while the app reads
+it. **Undo** and **Redo** step through the marks, also with Ctrl+Z and
+Ctrl+Shift+Z or Ctrl+Y.
 
-Keeping a crop does not change the file you picked. Zap Fasterk writes the cropped
-picture beside its other media and sends that one. Opening the cropper again
-starts from your original with the crop you chose, so you can widen it back out
-without a second pass over the picture.
+With **Crop** picked, the region to keep is marked, and you can drag it by its
+edges and corners or move it whole. **Turn left** and **Turn right** turn the
+picture a quarter at a time, marks included, and **Reset** puts it back the
+way it started, without marks. Press Enter or click the check to keep the
+changes, or Escape or the close button to leave the picture as it was. If the
+changes cannot be saved, the app says why. Unless the editor is already busy
+with another picture, it also opens again with them, so you can try once more
+without redrawing them.
+
+Keeping the changes does not change the file you picked. The app draws the
+marks, writes the result beside its other media and sends that one, keeping
+any see-through parts of it. Opening the editor again starts from your
+original with the marks and the crop you chose, so you can still undo a mark
+or widen the crop back out without a second pass over the picture.
 
 Automatic downloads keep the 64 MiB limit. Visible stickers download
 again when automatic downloads are off, within that same safe limit. Clicking
@@ -745,6 +761,20 @@ Home and End go to the oldest loaded and the newest message, and PgUp and PgDn
 move about a screen; Home on the oldest loaded message loads older history.
 The current message stays current while new messages arrive, and follows jumps
 the app makes on its own, such as opening a quoted message.
+
+Space or Enter does what clicking the current message does: it plays or pauses
+a voice message or video, opens a photo in the viewer or a document, opens a
+link, a link preview, a location's map, a shared contact's chat or a carousel
+card's picture, or votes for a poll option. On a file that is not downloaded
+yet it starts the download, or retries one that failed, and says why if that
+download fails while its chat is open. Where clicking does nothing, as on a
+plain text message, Space and Enter do nothing either. On a phone number, Space
+or Enter opens the number's menu. A message with several of these (a file,
+links, phone numbers, cards, poll options) says how many at the end of its
+label; Left and Right move between the message's items and say each one, and
+Space or Enter plays or pauses, opens or votes for the selected one. An album
+is one message whose items are its photos and videos, each followed by the
+links and phone numbers in its caption.
 
 Notification sounds use the native system notification output. Under Settings,
 **Microphone and sound output** chooses the account's devices for recording,

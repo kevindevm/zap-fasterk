@@ -792,6 +792,19 @@ pub enum Command {
         index: usize,
         result: Result<(u32, u32), String>,
     },
+    /// Reads the colours a pixelated region of the picture being edited is
+    /// painted in, so the editor shows what writing it will.
+    SamplePicture {
+        index: usize,
+        source: crate::model::PictureSource,
+        width: u32,
+        height: u32,
+    },
+    /// Internal: the sampled colours.
+    PictureSampled {
+        index: usize,
+        blocks: crate::model::PictureBlocks,
+    },
     /// Turns and crops a staged picture, writing the result beside the media
     /// cache so it can be sent in place of the original.
     ApplyPictureEdit {
@@ -801,6 +814,7 @@ pub enum Command {
         height: u32,
         crop: crate::model::PictureCrop,
         turns: u8,
+        marks: Vec<crate::model::Mark>,
     },
     /// Internal: the edited picture, ready to replace the staged attachment.
     PictureEdited {
@@ -1388,6 +1402,12 @@ pub enum Event {
     PictureInspected {
         index: usize,
         result: Result<(u32, u32), String>,
+    },
+    /// The colours a pixelated region of the picture being edited is
+    /// painted in.
+    PictureSampled {
+        index: usize,
+        blocks: crate::model::PictureBlocks,
     },
     /// An edited picture, ready to replace the staged attachment, or why it
     /// could not be written.

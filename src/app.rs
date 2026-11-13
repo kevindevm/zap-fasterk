@@ -593,6 +593,10 @@ pub struct App {
     pub sticker_draft: Option<crate::model::StickerDraft>,
     /// The staged picture being cropped, while the cropper is open.
     pub picture_edit: Option<crate::model::PictureEdit>,
+    /// The staged picture asked to be edited again while its last edit was
+    /// still being written. The editor opens on it once that write lands, so
+    /// two writes of one picture never race.
+    pub picture_reopen: Option<usize>,
     /// Where the picture being written came from, for when it lands.
     pub picture_applying: Option<crate::model::PictureOrigin>,
     /// Where each cropped staged file came from, by the path it was written to.
@@ -601,6 +605,11 @@ pub struct App {
     /// they came from. Cropping a pasted picture leaves a file where the strip
     /// had the pixels, so the cropper has to draw from the buffer itself.
     pub picture_texture: Option<(usize, egui::TextureHandle)>,
+    /// The picture editor's last tool, ink and thickness, kept for the
+    /// session only so the next picture opens with them.
+    pub picture_brush: crate::model::Brush,
+    /// The open editor's marks, drawn as a texture.
+    pub(crate) picture_marks: Option<crate::ui::image_editor::MarksLayer>,
     /// A pack shared in a chat, being viewed: the pack and its publisher.
     pub sticker_preview: Option<(StickerPack, String)>,
     /// Whether the viewed pack is still downloading.
@@ -693,6 +702,19 @@ pub struct App {
     /// arrows move from and what a screen reader reads. A chat without one
     /// starts on its newest message.
     pub message_cursor: HashMap<ChatId, String>,
+    /// The focused message's item cursor: which of its links, cards or file
+    /// the keys act on, with the message of an album that owns it. It
+    /// belongs to that row only; any other message starts on its first
+    /// item. Never drawn.
+    pub(crate) message_item: Option<(ChatId, String, usize, String, crate::a11y::KeyTarget)>,
+    /// The attachments whose downloads Space asked for, each with the
+    /// carousel card it belongs to, if any: if one fails, the failure is
+    /// spoken.
+    pub(crate) download_heard: HashSet<(ChatId, String, Option<usize>)>,
+    /// One-shot: open the menu of a phone number in a message, by chat,
+    /// message id and the number's `tel:` address. Set by Space on the
+    /// number in the message list.
+    pub open_phone_menu: Option<(ChatId, String, String)>,
     /// The newest message the keys took the list's cursor to, with its chat,
     /// at the true bottom. While the cursor stays on it, the list holds the
     /// view at the bottom as the return-to-bottom button does, so messages
@@ -1332,9 +1354,12 @@ impl App {
             sticker_preview_pending: false,
             sticker_draft: None,
             picture_edit: None,
+            picture_reopen: None,
             picture_applying: None,
             picture_origins: Default::default(),
             picture_texture: None,
+            picture_brush: Default::default(),
+            picture_marks: None,
             scrolling: fastframe_scroll::Scrolling::default(),
             scroll_route: ScrollRoute::default(),
             page: Page::Chats,
@@ -1382,6 +1407,9 @@ impl App {
             scroll_anchor: None,
             jump_highlight: None,
             message_cursor: HashMap::new(),
+            message_item: None,
+            download_heard: HashSet::new(),
+            open_phone_menu: None,
             cursor_followed: None,
             reveal_cursor: false,
             messages_focused: false,
@@ -1571,6 +1599,9 @@ impl App {
         // can share a chat, and a hidden account's deletions do not move it.
         // The newest message the keys followed goes with it.
         self.message_cursor.clear();
+        self.message_item = None;
+        self.download_heard.clear();
+        self.open_phone_menu = None;
         self.cursor_followed = None;
         self.active = index;
         self.adding_account = false;
@@ -4648,7 +4679,7 @@ impl App {
                         | Pending::Recovered { .. } => None,
                     });
                     if let Some(path) = source {
-                        self.picture_edit = Some(crate::model::PictureEdit::new(
+                        self.open_picture_edit(crate::model::PictureEdit::new(
                             index,
                             crate::model::PictureSource::File(path),
                             width,
@@ -4660,19 +4691,41 @@ impl App {
             },
             Event::PictureEdited { index, result } => {
                 self.picture_edit = None;
+                self.picture_marks = None;
                 match result {
                     Ok(path) => {
                         if index < self.pending.len() {
                             self.pending[index] = Pending::File(path.clone());
                         }
                         if let Some(origin) = self.picture_applying.take() {
-                            self.picture_origins.insert(path, origin);
+                            self.picture_origins.insert(path.clone(), origin);
+                        }
+                        // Asked to be edited again while its last edit was
+                        // being written: the editor opens on the new file,
+                        // so trying again does not mean drawing it all again.
+                        if self.picture_reopen == Some(index) {
+                            self.picture_reopen = None;
+                            if let Some(origin) = self.picture_origins.get(&path).cloned() {
+                                self.open_picture_edit(crate::model::PictureEdit::reopened(
+                                    index, origin,
+                                ));
+                            }
                         }
                     }
                     Err(error) => {
                         self.picture_applying = None;
+                        self.picture_reopen = None;
                         self.toast_error(error);
                     }
+                }
+            }
+            Event::PictureSampled { index, blocks } => {
+                // Only for the picture still open: an answer for an editor
+                // since closed has nowhere to go.
+                if let Some(edit) = &mut self.picture_edit
+                    && edit.index == index
+                {
+                    edit.blocks = Some(std::sync::Arc::new(blocks));
                 }
             }
             Event::StickerPackPreview(result) => {
@@ -5833,8 +5886,150 @@ impl App {
                 if want_voice {
                     self.voice_wanted = None;
                 }
+                if !self.events_hidden {
+                    self.say_download_failed(chat, id, card);
+                }
             }
         }
+    }
+
+    /// Takes the download Space asked for, if it is still waiting.
+    fn take_download_heard(&mut self, chat: &str, id: &str, card: Option<usize>) -> bool {
+        self.download_heard
+            .remove(&(chat.to_owned(), id.to_owned(), card))
+    }
+
+    /// Speaks why the download Space asked for failed, in the words the
+    /// message's label ends with, and forgets it. Other downloads fail
+    /// silently: their bubble and label carry the reason.
+    fn say_download_failed(&mut self, chat: &str, id: &str, card: Option<usize>) {
+        if !self.take_download_heard(chat, id, card) {
+            return;
+        }
+        let Some(message) = self
+            .conversations
+            .get(chat)
+            .and_then(|conversation| conversation.message(id))
+        else {
+            return;
+        };
+        let media = match (card, &message.content) {
+            (None, content) => content.media(),
+            (
+                Some(index),
+                Content::Interactive {
+                    card: Some(parent), ..
+                },
+            ) => parent
+                .carousel
+                .get(index)
+                .and_then(|card| card.image.as_ref()),
+            _ => None,
+        };
+        let Some(error) =
+            media.and_then(|media| crate::a11y::media_state(self.locale, media, false))
+        else {
+            return;
+        };
+        // Said away from its message, the error names what failed: the
+        // list's cursor stays on a message while focus is elsewhere. It is
+        // said bare only while the item cursor is on what failed, in the row
+        // that draws it: a card's on that card, a file's on the file (an
+        // album item's on that item), or on no item of the row, which then
+        // stands on its first item, the file of its first message.
+        let row = self.row_message(chat, id).unwrap_or_else(|| id.to_owned());
+        let current = self.messages_focused
+            && self.open_chat.as_deref() == Some(chat)
+            && self
+                .current_message(chat)
+                .and_then(|current| self.row_message(chat, &current))
+                .as_deref()
+                == Some(row.as_str())
+            && match self
+                .message_item
+                .as_ref()
+                .filter(|(item_chat, item_row, ..)| item_chat == chat && *item_row == row)
+            {
+                None => card.is_none() && row == id,
+                Some((.., owner, item)) => {
+                    owner == id
+                        && match card {
+                            Some(index) => *item == crate::a11y::KeyTarget::Card(index),
+                            None => match item {
+                                crate::a11y::KeyTarget::Attachment => true,
+                                crate::a11y::KeyTarget::AlbumItem(member) => member == id,
+                                _ => false,
+                            },
+                        }
+                }
+            };
+        let text = if current {
+            error
+        } else {
+            let what = match (card, &message.content) {
+                (Some(index), _) => crate::a11y::fill(
+                    &crate::i18n::gettext(self.locale, "Card {number}"),
+                    &[("number", &(index + 1).to_string())],
+                ),
+                (None, Content::Document { file_name, .. }) => file_name.clone(),
+                (None, content) => {
+                    let kind = crate::a11y::file_kind(self.locale, content);
+                    // An album's photo or video says which of its items it
+                    // is, as a card says its number: two can fail alike.
+                    match self.album_position(chat, id) {
+                        Some((position, total)) => crate::a11y::fill(
+                            &crate::i18n::gettext(self.locale, "{kind} {position} of {total}"),
+                            &[
+                                ("kind", &kind),
+                                ("position", &position.to_string()),
+                                ("total", &total.to_string()),
+                            ],
+                        ),
+                        None => kind,
+                    }
+                }
+            };
+            crate::a11y::fill(
+                &crate::i18n::gettext(self.locale, "{what}: {error}"),
+                &[("what", &what), ("error", &error)],
+            )
+        };
+        self.announce_accessibility(&text);
+    }
+
+    /// Where `id` stands in the album the list draws it in, outside a
+    /// selection, counting from 1, and how many items that album has; none
+    /// for a message drawn on its own.
+    fn album_position(&self, chat: &str, id: &str) -> Option<(usize, usize)> {
+        use crate::ui::conversation::{row_members, row_of, row_starts};
+        let messages = &self.conversations.get(chat)?.messages;
+        let index = messages.iter().position(|message| message.id == id)?;
+        let starts = row_starts(messages, false);
+        let first = *starts.get(row_of(&starts, index))?;
+        let members = row_members(messages, false, first).len();
+        (members > 1).then_some((index - first + 1, members))
+    }
+
+    /// The message that names the row the list draws `id` in: an album's
+    /// first item, or `id` itself.
+    pub(crate) fn row_message(&self, chat: &str, id: &str) -> Option<String> {
+        use crate::ui::conversation::{row_of, row_starts};
+        let messages = &self.conversations.get(chat)?.messages;
+        let index = messages.iter().position(|message| message.id == id)?;
+        let starts = row_starts(messages, self.selecting_in(chat));
+        let first = *starts.get(row_of(&starts, index))?;
+        Some(messages.get(first)?.id.clone())
+    }
+
+    /// The message list's current message in `chat`: the cursor's, or the
+    /// newest, as the list resolves it.
+    pub(crate) fn current_message(&self, chat: &str) -> Option<String> {
+        let messages = &self.conversations.get(chat)?.messages;
+        self.message_cursor
+            .get(chat)
+            .filter(|id| messages.iter().any(|message| &message.id == *id))
+            .cloned()
+            .or_else(|| messages.last().map(|message| message.id.clone()))
     }
 
     fn ensure_loaded(&mut self, chat: &str) {
@@ -6060,6 +6255,10 @@ impl App {
             self.composer_tools_open = false;
             self.emoji_jump = None;
             self.jump_highlight = None;
+            // A menu asked for on the chat being left is not opened later.
+            self.open_phone_menu = None;
+            self.message_item = None;
+            self.download_heard.clear();
             if let Some(previous) = self.open_chat.take() {
                 self.save_attachment_draft(&previous);
                 let draft = self.take_composer_text();
@@ -6605,6 +6804,18 @@ impl App {
 
     fn set_pending_view_once(&mut self, view_once: bool) {
         self.pending_view_once = view_once && self.pending_supports_view_once();
+    }
+
+    /// Opens the picture editor, and asks for the colours its pixelated
+    /// regions are painted in, which take reading the whole picture.
+    pub(crate) fn open_picture_edit(&mut self, edit: crate::model::PictureEdit) {
+        self.backend.send(Command::SamplePicture {
+            index: edit.index,
+            source: edit.source.clone(),
+            width: edit.width,
+            height: edit.height,
+        });
+        self.picture_edit = Some(edit);
     }
 
     /// Adds files to the open chat's composer.
@@ -8148,6 +8359,10 @@ impl App {
                 {
                     self.selection = Some((chat, Vec::new()));
                     self.selection_anchor = None;
+                    // A menu asked for and not drawn yet is dropped as a
+                    // selection starts, rather than opened over it.
+                    self.open_phone_menu = None;
+                    self.message_item = None;
                 }
             }
             Action::SelectMessage(id) => {
@@ -8297,6 +8512,8 @@ impl App {
             Action::CancelSelection => {
                 self.selection = None;
                 self.sweep = None;
+                self.open_phone_menu = None;
+                self.message_item = None;
             }
             Action::Edit(id) => {
                 self.reply_when_loaded = None;
@@ -8420,32 +8637,37 @@ impl App {
                     rgba,
                     ..
                 }) => {
-                    self.picture_edit = Some(crate::model::PictureEdit::new(
-                        index,
-                        crate::model::PictureSource::Pasted(rgba.clone()),
-                        *width as u32,
-                        *height as u32,
-                    ));
+                    if self.picture_applying.is_some() {
+                        // Its last edit is still being written: the editor
+                        // opens on it once the write lands.
+                        self.picture_reopen = Some(index);
+                    } else {
+                        self.open_picture_edit(crate::model::PictureEdit::new(
+                            index,
+                            crate::model::PictureSource::Pasted(rgba.clone()),
+                            *width as u32,
+                            *height as u32,
+                        ));
+                    }
                 }
                 Some(Pending::File(path)) => {
-                    // A picture that was cropped before opens on the original
-                    // with the crop it had, so cropping it again does not
-                    // stack another lossy pass on the one before it.
-                    let origin = self.picture_origins.get(path).cloned();
-                    if let Some(origin) = origin {
-                        self.picture_edit = Some(crate::model::PictureEdit {
-                            index,
-                            source: origin.source,
-                            width: origin.width,
-                            height: origin.height,
-                            crop: origin.crop,
-                            turns: origin.turns,
-                        });
-                    } else if Pending::is_picture_file(path) {
-                        self.backend.send(Command::InspectPicture {
-                            index,
-                            path: path.clone(),
-                        });
+                    // A picture that was edited before opens on the original
+                    // with the marks and crop it had, so editing it again does
+                    // not stack another lossy pass on the one before it.
+                    if self.picture_applying.is_some() {
+                        self.picture_reopen = Some(index);
+                    } else {
+                        let origin = self.picture_origins.get(path).cloned();
+                        if let Some(origin) = origin {
+                            self.open_picture_edit(crate::model::PictureEdit::reopened(
+                                index, origin,
+                            ));
+                        } else if Pending::is_picture_file(path) {
+                            self.backend.send(Command::InspectPicture {
+                                index,
+                                path: path.clone(),
+                            });
+                        }
                     }
                 }
                 Some(Pending::Document(_) | Pending::Recovered { .. }) | None => {}
@@ -8454,13 +8676,7 @@ impl App {
                 if let Some(edit) = self.picture_edit.take() {
                     // Held until the file lands, so it can be filed under the
                     // path the cropped picture is written to.
-                    self.picture_applying = Some(crate::model::PictureOrigin {
-                        source: edit.source.clone(),
-                        width: edit.width,
-                        height: edit.height,
-                        crop: edit.crop,
-                        turns: edit.turns,
-                    });
+                    self.picture_applying = Some(edit.origin());
                     self.backend.send(Command::ApplyPictureEdit {
                         index: edit.index,
                         source: edit.source,
@@ -8468,10 +8684,14 @@ impl App {
                         height: edit.height,
                         crop: edit.crop,
                         turns: edit.turns,
+                        marks: edit.marks,
                     });
                 }
             }
-            Action::CancelPictureEdit => self.picture_edit = None,
+            Action::CancelPictureEdit => {
+                self.picture_edit = None;
+                self.picture_marks = None;
+            }
             Action::ClearPending => {
                 self.pending.clear();
                 self.pending_view_once = false;
@@ -9432,6 +9652,11 @@ impl App {
                 };
                 let id = messages[starts[row]].id.clone();
                 let newest = row + 1 == starts.len();
+                // Another message starts on its first item; the same one,
+                // where the list stood without a cursor of its own, does not.
+                if current.map(|current| &messages[starts[current]].id) != Some(&id) {
+                    self.message_item = None;
+                }
                 self.message_cursor.insert(chat.clone(), id);
                 self.reveal_cursor = true;
                 // Home on the oldest loaded message asks for older ones, as
@@ -9467,6 +9692,15 @@ impl App {
                     self.announce_accessibility(&crate::i18n::gettext(self.locale, "No chat open"));
                 }
             }
+            Action::OpenPhoneMenu { message, url } => {
+                // The number's message opens the menu when it is next drawn,
+                // brought into view so that it is.
+                if let Some(chat) = self.open_chat.clone() {
+                    self.open_phone_menu = Some((chat, message, url));
+                    self.reveal_cursor = true;
+                }
+            }
+            Action::PhoneMenuOpened => self.open_phone_menu = None,
             Action::ScrollTo(id) => {
                 self.scroll_to_bottom = false;
                 let Some(chat) = self.open_chat.clone() else {
@@ -10243,7 +10477,7 @@ impl App {
         });
     }
 
-    fn announce_accessibility(&mut self, message: &str) {
+    pub(crate) fn announce_accessibility(&mut self, message: &str) {
         if !self.app_lock.is_locked()
             && !self.events_hidden
             && !self.window_hidden
@@ -10952,6 +11186,10 @@ impl App {
     /// a search result), so the list and the view agree. A focused list also
     /// scrolls it into view.
     pub fn follow_message(&mut self, chat: &str, message: &str) {
+        // Another message starts on its first item.
+        if self.message_cursor.get(chat).map(String::as_str) != Some(message) {
+            self.message_item = None;
+        }
         self.message_cursor
             .insert(chat.to_owned(), message.to_owned());
         if self.messages_focused && self.open_chat.as_deref() == Some(chat) {
@@ -14856,6 +15094,108 @@ mod tests {
             app.open_chat, None,
             "the first account's chat is not restored"
         );
+    }
+
+    /// A phone number's menu opens once on the message that asked for it.
+    #[test]
+    fn a_phone_menu_opens_once_where_space_asked_for_it() {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        assert!(app.open_phone_menu.is_none());
+        app.open_chat = Some("1@s.whatsapp.net".into());
+        app.apply(
+            Action::OpenPhoneMenu {
+                message: "m1".into(),
+                url: "tel:0501234567".into(),
+            },
+            &ctx,
+        );
+        assert_eq!(
+            app.open_phone_menu,
+            Some((
+                "1@s.whatsapp.net".into(),
+                "m1".into(),
+                "tel:0501234567".into()
+            ))
+        );
+        assert!(app.reveal_cursor);
+        app.apply(Action::PhoneMenuOpened, &ctx);
+        assert!(app.open_phone_menu.is_none());
+        // Without an open chat there is nothing to open it on.
+        app.open_chat = None;
+        app.apply(
+            Action::OpenPhoneMenu {
+                message: "m1".into(),
+                url: "tel:0501234567".into(),
+            },
+            &ctx,
+        );
+        assert!(app.open_phone_menu.is_none());
+    }
+
+    /// A failed download Space asked for is spoken; other failures stay in
+    /// their bubble.
+    #[test]
+    fn a_failed_download_space_asked_for_is_spoken() {
+        use crate::model::{Content, Media, MediaState};
+        let mut app = app();
+        let chat = "1@s.whatsapp.net";
+        let message = crate::model::Message {
+            id: "file".into(),
+            chat: chat.into(),
+            sender: chat.into(),
+            sender_name: None,
+            from_me: false,
+            timestamp: 100,
+            history_order: None,
+            content: Content::Document {
+                media: Media {
+                    mime: "application/pdf".into(),
+                    size: 1,
+                    width: None,
+                    height: None,
+                    path: None,
+                    state: MediaState::Idle,
+                    album: None,
+                },
+                file_name: "report.pdf".into(),
+                caption: None,
+                pages: None,
+            },
+            status: crate::model::Delivery::None,
+            delivered_at: None,
+            read_at: None,
+            quoted: None,
+            reactions: Vec::new(),
+            edited: false,
+            mentions: Vec::new(),
+            forwarded: false,
+            thumbnail: None,
+        };
+        app.conversations
+            .entry(chat.into())
+            .or_default()
+            .messages
+            .push(message);
+        // Not asked for by Space: silence.
+        app.say_download_failed(chat, "file", None);
+        assert!(app.accessibility_announcements.is_empty());
+        app.download_heard
+            .insert((chat.into(), "file".into(), None));
+        app.say_download_failed(chat, "file", None);
+        assert_eq!(app.accessibility_announcements.len(), 1);
+        assert!(
+            app.accessibility_announcements[0].contains("not downloaded"),
+            "{:?}",
+            app.accessibility_announcements
+        );
+        assert!(app.download_heard.is_empty(), "said once");
+        // The cursor elsewhere names the file.
+        app.message_cursor.insert(chat.into(), "file".into());
+        app.download_heard
+            .insert((chat.into(), "file".into(), None));
+        app.say_download_failed(chat, "file", None);
+        assert_eq!(app.accessibility_announcements.len(), 2);
     }
 
     #[test]

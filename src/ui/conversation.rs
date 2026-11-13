@@ -2336,6 +2336,10 @@ struct View<'a> {
     anchor: Option<&'a str>,
     /// Demo/test: keep this message's context menu open.
     open_menu: Option<&'a str>,
+    /// One-shot: open the menu of a phone number in a message, by chat,
+    /// message id and the number's `tel:` address. Set by Space on the
+    /// number in the message list.
+    open_phone_menu: Option<&'a (ChatId, String, String)>,
     /// Ids of the starred messages of this chat, for the mark in the footer.
     starred: Option<&'a HashSet<String>>,
     /// Ids of this chat's pinned messages, for the menu and the bubble mark.
@@ -2427,6 +2431,17 @@ fn album_continuation(messages: &[Message], index: usize) -> bool {
         && previous.from_me == message.from_me
         && previous.sender == message.sender
         && crate::util::day_key(previous.timestamp) == crate::util::day_key(message.timestamp)
+}
+
+/// The messages one row of the list draws, from the one at `index`, which
+/// names the row: the items of an album, or that message alone. A selection
+/// draws each item of an album in a row of its own.
+pub(crate) fn row_members(messages: &[Message], selecting: bool, index: usize) -> &[Message] {
+    let mut end = index + 1;
+    while !selecting && end < messages.len() && album_continuation(messages, end) {
+        end += 1;
+    }
+    &messages[index.min(messages.len())..end.min(messages.len())]
 }
 
 /// A row height to assume for a message that has not been laid out yet. Rows
@@ -2679,6 +2694,10 @@ fn messages(app: &mut App, ui: &mut egui::Ui, chat: &Chat, under: f32) {
             app.scroll_anchor.as_deref()
         },
         open_menu: app.open_message_menu.as_deref(),
+        open_phone_menu: app
+            .open_phone_menu
+            .as_ref()
+            .filter(|(chat_id, ..)| chat_id == &chat.id),
         starred: app.stars.get(&chat.id),
         pins: app.pins.get(&chat.id),
         pin_notices: app
@@ -3550,6 +3569,19 @@ fn messages(app: &mut App, ui: &mut egui::Ui, chat: &Chat, under: f32) {
                                     download_starts_by_itself(&member.content, view.auto_download),
                                 )
                             });
+                            // Two or more things to act on: the arrows move between
+                            // them, so the label says how many. An album's items are
+                            // not among them.
+                            let targets = album
+                                .is_none()
+                                .then(|| {
+                                    crate::a11y::targets_count(
+                                        view.locale,
+                                        &message.content,
+                                        &message.mentions,
+                                    )
+                                })
+                                .flatten();
                             let label = crate::a11y::message_label(
                                 view.locale,
                                 &crate::a11y::MessageLabel {
@@ -3569,6 +3601,7 @@ fn messages(app: &mut App, ui: &mut egui::Ui, chat: &Chat, under: f32) {
                                     pinned: view.pins.is_some_and(|ids| ids.contains(&last.id)),
                                     reactions: &reactions,
                                     attachment: attachment.as_deref(),
+                                    targets: targets.as_deref(),
                                 },
                             );
                             super::list_nav::mark_row(
@@ -5403,6 +5436,504 @@ fn message_shortcut(message: &Message, key: Key, mentions: &[markup::Mention]) -
     }
 }
 
+/// What a poll's options can do now: votes need the link, and a vote on its
+/// way holds the poll until it lands.
+pub(crate) struct Voting<'a> {
+    pub connected: bool,
+    pub pending: &'a HashSet<(ChatId, String)>,
+}
+
+impl Voting<'_> {
+    fn pending(&self, message: &Message) -> bool {
+        self.pending
+            .contains(&(message.chat.clone(), message.id.clone()))
+    }
+}
+
+/// Why a poll option cannot be chosen now, as its hint says, if it cannot.
+pub(crate) fn option_blocked(
+    message: &Message,
+    option: usize,
+    voting: &Voting<'_>,
+) -> Option<&'static str> {
+    let Content::Poll { state, .. } = &message.content else {
+        return None;
+    };
+    let pending = voting.pending(message);
+    if super::polls::vote_action(message, option, voting.connected, pending).is_some() {
+        return None;
+    }
+    Some(
+        super::polls::vote_blocker(state, voting.connected, pending)
+            .unwrap_or("Remove an answer first to choose another"),
+    )
+}
+
+/// A poll option's reason for taking no vote, as the ballot and the option's
+/// hint show it, in words for a screen reader: translated, and without the
+/// dot the ballot draws between its two parts.
+pub(crate) fn blocker_said(locale: crate::i18n::Locale, reason: &str) -> String {
+    use crate::i18n::gettext;
+    match reason {
+        "Sending vote…" => gettext(locale, "Sending vote…"),
+        "Voting key unavailable · use your phone" => {
+            gettext(locale, "Voting key unavailable, use your phone")
+        }
+        "Reconnect to vote" => gettext(locale, "Reconnect to vote"),
+        "Remove an answer first to choose another" => {
+            gettext(locale, "Remove an answer first to choose another")
+        }
+        other => std::borrow::Cow::Owned(other.replace(" · ", ", ")),
+    }
+    .into_owned()
+}
+
+/// What Space on a poll option says once it voted: the option and how the
+/// vote leaves it, "Afternoon, selected". The vote lands later; this is
+/// the choice it sends.
+pub(crate) fn vote_said(
+    locale: crate::i18n::Locale,
+    message: &Message,
+    option: usize,
+    choices: &[usize],
+) -> String {
+    let Content::Poll { options, .. } = &message.content else {
+        return String::new();
+    };
+    crate::a11y::fill(
+        &crate::i18n::gettext(locale, "{option}, {choice}"),
+        &[
+            (
+                "option",
+                &crate::a11y::spoken(options.get(option).map_or("", String::as_str)),
+            ),
+            ("choice", &chosen_word(locale, choices.contains(&option))),
+        ],
+    )
+}
+
+/// The site a link preview names: its address without scheme or path.
+fn preview_domain(url: &str) -> String {
+    url.split("://")
+        .nth(1)
+        .unwrap_or(url)
+        .split('/')
+        .next()
+        .unwrap_or_default()
+        .to_owned()
+}
+
+/// What the item cursor stands on, in words: "Link 2 of 3, example.com".
+/// Poll options name their votes and choice; attachments their file and
+/// state.
+pub(crate) fn target_label(
+    locale: crate::i18n::Locale,
+    message: &Message,
+    targets: &[crate::a11y::KeyTarget],
+    index: usize,
+    voting: &Voting<'_>,
+) -> String {
+    use crate::a11y::{KeyTarget, fill};
+    use crate::i18n::gettext;
+    let Some(target) = targets.get(index) else {
+        return String::new();
+    };
+    let at = (index + 1).to_string();
+    let of = targets.len().to_string();
+    // "Photo 1 of 3", then what else there is to say, if anything.
+    let kind = |kind: &str, extra: Vec<String>| {
+        std::iter::once(fill(
+            &gettext(locale, "{kind} {position} of {total}"),
+            &[("kind", kind), ("position", &at), ("total", &of)],
+        ))
+        .chain(extra.into_iter().filter(|part| !part.is_empty()))
+        .collect::<Vec<_>>()
+        .join(", ")
+    };
+    match target {
+        KeyTarget::Link { written, .. } => fill(
+            &gettext(locale, "Link {position} of {total}, {link}"),
+            &[("position", &at), ("total", &of), ("link", written)],
+        ),
+        KeyTarget::Phone { written, .. } => fill(
+            &gettext(locale, "Phone number {position} of {total}, {number}"),
+            &[("position", &at), ("total", &of), ("number", written)],
+        ),
+        KeyTarget::Preview => {
+            let name = match &message.content {
+                Content::Text {
+                    preview: Some(preview),
+                    ..
+                } => preview
+                    .title
+                    .clone()
+                    .filter(|title| !title.trim().is_empty())
+                    .unwrap_or_else(|| preview_domain(&preview.url)),
+                _ => String::new(),
+            };
+            fill(
+                &gettext(locale, "Link preview {position} of {total}, {name}"),
+                &[("position", &at), ("total", &of), ("name", &name)],
+            )
+        }
+        KeyTarget::Attachment | KeyTarget::AlbumItem(_) => {
+            let name = match &message.content {
+                Content::Document { file_name, .. } => file_name.clone(),
+                _ => String::new(),
+            };
+            let state = message
+                .content
+                .media()
+                .and_then(|media| crate::a11y::media_state(locale, media, false))
+                .unwrap_or_default();
+            kind(
+                &crate::a11y::file_kind(locale, &message.content),
+                vec![name, state],
+            )
+        }
+        KeyTarget::Card(card) => {
+            let child = match &message.content {
+                Content::Interactive {
+                    card: Some(parent), ..
+                } => parent.carousel.get(*card),
+                _ => None,
+            };
+            let line = child
+                .and_then(|child| child.body.lines().find(|line| !line.trim().is_empty()))
+                .map(|line| crate::a11y::spoken(&markup::plain(line, &[])))
+                .unwrap_or_default();
+            let state = child
+                .and_then(|child| child.image.as_ref())
+                .and_then(|image| crate::a11y::media_state(locale, image, false))
+                .unwrap_or_default();
+            std::iter::once(fill(
+                &gettext(locale, "Card {position} of {total}"),
+                &[("position", &at), ("total", &of)],
+            ))
+            .chain([line, state].into_iter().filter(|part| !part.is_empty()))
+            .collect::<Vec<_>>()
+            .join(", ")
+        }
+        KeyTarget::Map => kind(&gettext(locale, "Location"), Vec::new()),
+        // The button's own name: Space starts a chat.
+        KeyTarget::Contact => kind(&gettext(locale, "Chat"), Vec::new()),
+        KeyTarget::AddContact => kind(&gettext(locale, "Add contact"), Vec::new()),
+        KeyTarget::PollResults => kind(&gettext(locale, "Show votes"), Vec::new()),
+        KeyTarget::PollOption(option) => {
+            poll_option_label(locale, message, *option, voting, &at, &of)
+        }
+        KeyTarget::StickerPack => kind(&gettext(locale, "Sticker pack"), Vec::new()),
+    }
+}
+
+/// A poll option as the item cursor names it: "Afternoon, 1 vote, not
+/// selected, 2 of 3". A poll that takes no vote now leaves out whether it is
+/// chosen, and an option that cannot be chosen ends with why, as the
+/// ballot's own note and the option's hint say it.
+fn poll_option_label(
+    locale: crate::i18n::Locale,
+    message: &Message,
+    option: usize,
+    voting: &Voting<'_>,
+    at: &str,
+    of: &str,
+) -> String {
+    use crate::a11y::fill;
+    use crate::i18n::{gettext, ngettext};
+    let Content::Poll { options, state, .. } = &message.content else {
+        return String::new();
+    };
+    let votes = state.counts.get(option).copied().unwrap_or_default() as u32;
+    let mut parts = vec![
+        crate::a11y::spoken(options.get(option).map_or("", String::as_str)),
+        fill(
+            &ngettext(locale, "{count} vote", "{count} votes", votes),
+            &[("count", &votes.to_string())],
+        ),
+    ];
+    let blocker = super::polls::vote_blocker(state, voting.connected, voting.pending(message));
+    if blocker.is_none() {
+        parts.push(chosen_word(locale, state.selected.contains(&option)));
+    }
+    parts.push(fill(
+        &gettext(locale, "{position} of {total}"),
+        &[("position", at), ("total", of)],
+    ));
+    let text = parts.join(", ");
+    match option_blocked(message, option, voting) {
+        Some(reason) => fill(
+            &gettext(locale, "{option}, unavailable: {reason}"),
+            &[("option", &text), ("reason", &blocker_said(locale, reason))],
+        ),
+        None => text,
+    }
+}
+
+/// "selected" or "not selected".
+fn chosen_word(locale: crate::i18n::Locale, chosen: bool) -> String {
+    if chosen {
+        crate::i18n::gettext(locale, "selected").into_owned()
+    } else {
+        crate::i18n::gettext(locale, "not selected").into_owned()
+    }
+}
+
+/// The targets of a row the keys walk, each with the index in `members`
+/// of the message it belongs to: one message's own (`message_targets`), or,
+/// for an album, each item's photo or video followed by the links in its
+/// caption. The keys act on the album item the cursor is on, as the
+/// pointer's menu does on the tile it was opened over.
+pub(crate) fn row_targets(
+    members: &[Message],
+    contacts: &HashMap<String, crate::model::Contact>,
+) -> (Vec<crate::a11y::KeyTarget>, Vec<usize>) {
+    use crate::a11y::KeyTarget;
+    let album = members.len() > 1;
+    let mut targets = Vec::new();
+    let mut owners = Vec::new();
+    for (owner, member) in members.iter().enumerate() {
+        for target in message_targets(member, contacts) {
+            targets.push(match target {
+                KeyTarget::Attachment if album => KeyTarget::AlbumItem(member.id.clone()),
+                target => target,
+            });
+            owners.push(owner);
+        }
+    }
+    (targets, owners)
+}
+
+/// The targets of a message the keys walk: `crate::a11y::key_targets`, less
+/// a contact's buttons its bubble does not show. Chat and Add need the
+/// contact's WhatsApp account, and Add one not saved yet.
+pub(crate) fn message_targets(
+    message: &Message,
+    contacts: &HashMap<String, crate::model::Contact>,
+) -> Vec<crate::a11y::KeyTarget> {
+    use crate::a11y::KeyTarget;
+    let mut targets = crate::a11y::key_targets(&message.content, &message.mentions);
+    if let Content::Contact {
+        display_name,
+        vcard,
+    } = &message.content
+    {
+        let account =
+            shared_contact_details(vcard, display_name).and_then(|contact| contact.account);
+        targets.retain(|target| match (target, &account) {
+            (KeyTarget::Contact, account) => account.is_some(),
+            (KeyTarget::AddContact, Some(account)) => {
+                !contacts.contains_key(&format!("{account}@s.whatsapp.net"))
+            }
+            (KeyTarget::AddContact, None) => false,
+            _ => true,
+        });
+    }
+    targets
+}
+
+/// What Space does on one target of a message (`crate::a11y::key_targets`):
+/// what clicking that part of the bubble does. That includes fetching a file
+/// that is not downloaded yet or retrying a failed fetch, and nothing while
+/// it downloads.
+pub(crate) fn target_actions(
+    chat: &str,
+    message: &Message,
+    target: Option<&crate::a11y::KeyTarget>,
+    voting: &Voting<'_>,
+) -> Vec<Action> {
+    use crate::a11y::KeyTarget;
+    let mut actions = Vec::new();
+    match (target, &message.content) {
+        (Some(KeyTarget::Attachment), _) => {
+            attachment_target(chat, message, &mut actions);
+        }
+        (Some(KeyTarget::AlbumItem(_)), _) => album_item_target(message, &mut actions),
+        (
+            Some(KeyTarget::Preview),
+            Content::Text {
+                preview: Some(preview),
+                ..
+            },
+        ) => actions.push(Action::OpenUrl(preview.url.clone())),
+        (Some(KeyTarget::Link { url, .. }), _) => {
+            actions.push(Action::OpenUrl(url.clone()));
+        }
+        // Clicking a phone number opens its menu, which Space opens too
+        // (`Action::OpenPhoneMenu`): nothing to do on the spot.
+        (Some(KeyTarget::Phone { .. }), _) => {}
+        (
+            Some(KeyTarget::Card(index)),
+            Content::Interactive {
+                card: Some(card), ..
+            },
+        ) => {
+            if let Some(image) = card
+                .carousel
+                .get(*index)
+                .and_then(|card| card.image.as_ref())
+            {
+                if let Some(path) = &image.path {
+                    actions.push(Action::OpenFile(path.clone()));
+                } else if !matches!(
+                    image.state,
+                    MediaState::Downloading | MediaState::Transferring { .. }
+                ) {
+                    actions.push(Action::Download {
+                        chat: chat.to_owned(),
+                        message: message.id.clone(),
+                        card: Some(*index),
+                    });
+                }
+            }
+        }
+        (
+            Some(KeyTarget::Map),
+            Content::Location {
+                latitude,
+                longitude,
+                ..
+            }
+            | Content::LiveLocation {
+                latitude,
+                longitude,
+                ..
+            },
+        ) => actions.push(Action::OpenUrl(crate::geo::map_url(Spot {
+            latitude: *latitude,
+            longitude: *longitude,
+        }))),
+        (
+            Some(KeyTarget::Contact),
+            Content::Contact {
+                display_name,
+                vcard,
+            },
+        ) => {
+            if let Some(contact) = shared_contact_details(vcard, display_name)
+                && let Some(account) = contact.account
+            {
+                actions.push(Action::StartChat {
+                    id: format!("{account}@s.whatsapp.net"),
+                    name: contact.name,
+                    dismiss_dialog: true,
+                });
+            }
+        }
+        (
+            Some(KeyTarget::AddContact),
+            Content::Contact {
+                display_name,
+                vcard,
+            },
+        ) => {
+            if let Some(contact) = shared_contact_details(vcard, display_name)
+                && let Some(account) = contact.account
+            {
+                let (first, last) =
+                    crate::util::editor_names(&contact.name, contact.first_name.as_deref());
+                actions.push(Action::NewContact {
+                    phone: account,
+                    first,
+                    last,
+                    to_phone: None,
+                });
+            }
+        }
+        (Some(KeyTarget::StickerPack), _) => {
+            actions.push(Action::ViewStickerPack(message.id.clone()));
+        }
+        // An option's click, with its conditions: the link, a vote on its
+        // way, and how many answers the poll takes.
+        (Some(KeyTarget::PollOption(index)), _) => {
+            actions.extend(super::polls::vote_action(
+                message,
+                *index,
+                voting.connected,
+                voting.pending(message),
+            ));
+        }
+        (Some(KeyTarget::PollResults), _) => {
+            actions.extend(super::polls::results_action(message));
+        }
+        _ => {}
+    }
+    actions
+}
+
+/// What clicking a message's own file does: the media, document or sticker,
+/// or an interactive card's header picture. As Space on the message does.
+fn attachment_target(chat: &str, message: &Message, actions: &mut Vec<Action>) {
+    let id = message.id.clone();
+    let Some(media) = message.content.media() else {
+        return;
+    };
+    if let Some(path) = &media.path {
+        actions.push(match &message.content {
+            Content::Audio { .. } => Action::PlayVoice {
+                message: id,
+                path: path.clone(),
+            },
+            Content::Video { .. } => Action::PlayVideo {
+                message: id,
+                path: path.clone(),
+            },
+            Content::Image { .. } => Action::PreviewMedia {
+                chat: chat.to_owned(),
+                message: id,
+            },
+            Content::Sticker { .. } => Action::PreviewSticker(path.clone()),
+            _ => Action::OpenFile(path.clone()),
+        });
+        return;
+    }
+    if matches!(
+        media.state,
+        MediaState::Downloading | MediaState::Transferring { .. }
+    ) {
+        return;
+    }
+    actions.push(Action::Download {
+        card: None,
+        chat: chat.to_owned(),
+        message: id,
+    });
+}
+
+/// What clicking an album's item does: its photo or video.
+fn album_item_target(message: &Message, actions: &mut Vec<Action>) {
+    let Some(media) = message.content.media() else {
+        return;
+    };
+    if let Some(path) = &media.path {
+        actions.push(if matches!(message.content, Content::Image { .. }) {
+            Action::PreviewImage(path.clone())
+        } else {
+            Action::OpenFile(path.clone())
+        });
+    } else if !matches!(
+        media.state,
+        MediaState::Downloading | MediaState::Transferring { .. }
+    ) {
+        actions.push(Action::Download {
+            card: None,
+            chat: message.chat.clone(),
+            message: message.id.clone(),
+        });
+    }
+}
+
+/// What Space does on a message whose item cursor was not moved: what
+/// clicking its first target does.
+#[cfg(test)]
+pub(crate) fn primary_key_actions(chat: &str, message: &Message) -> Vec<Action> {
+    let voting = Voting {
+        connected: true,
+        pending: &HashSet::new(),
+    };
+    let targets = crate::a11y::key_targets(&message.content, &message.mentions);
+    target_actions(chat, message, targets.first(), &voting)
+}
+
 const CARD_WIDTH: f32 = 320.0;
 const CAROUSEL_CARD_WIDTH: f32 = 280.0;
 /// Location cards: a map preview across the top, then the details.
@@ -6510,6 +7041,7 @@ pub(crate) fn list_menu(
         // Nothing scrolls, highlights, or selects in a list row.
         anchor: None,
         open_menu: None,
+        open_phone_menu: None,
         reaction: None,
         reaction_menu: false,
         reaction_emoji: &app.settings.reaction_emoji,
@@ -8829,8 +9361,20 @@ fn rich_body(
             });
             theme::reveal_focus(&link);
             let link = focus::phone_link(link);
+            // The keys asked for this number's menu: open it on its link and
+            // focus the link, so the menu is reachable from the keyboard.
+            let from_keys = view
+                .open_phone_menu
+                .is_some_and(|(_, message_id, link_url)| {
+                    message_id == &message.id && *link_url == *url
+                });
+            if from_keys {
+                link.request_focus();
+            }
+            let popup = link.id.with("popup");
             egui::Popup::menu(&link)
-                .id(link.id.with("popup"))
+                .id(popup)
+                .open_memory(from_keys.then_some(egui::SetOpenCommand::Bool(true)))
                 .width(widgets::menu_width(ui, &menu_labels, true))
                 .frame(widgets::menu_frame(&view.palette))
                 .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
@@ -8869,6 +9413,9 @@ fn rich_body(
                         actions.push(Action::CopyText(copy_text.clone()));
                     }
                 });
+            if from_keys && egui::Popup::is_id_open(ui.ctx(), popup) {
+                actions.push(Action::PhoneMenuOpened);
+            }
         }
     }
     if !laid.links.is_empty()
@@ -11730,6 +12277,173 @@ mod tests {
         ];
         assert_eq!(album_run(&messages, 0).map(<[Message]>::len), Some(2));
         assert!(album_run(&messages, 2).is_none());
+    }
+
+    /// One row draws an album's items together, or a message alone; a
+    /// selection draws each item in a row of its own.
+    #[test]
+    fn rows_draw_an_album_together_and_split_it_when_selecting() {
+        let messages = vec![
+            album_picture("one", Some("album-1"), "alice"),
+            album_picture("two", Some("album-1"), "alice"),
+            album_picture("three", Some("album-2"), "alice"),
+        ];
+        fn ids(members: &[Message]) -> Vec<&str> {
+            members
+                .iter()
+                .map(|message| message.id.as_str())
+                .collect::<Vec<_>>()
+        }
+        assert_eq!(ids(row_members(&messages, false, 0)), ["one", "two"]);
+        assert_eq!(ids(row_members(&messages, false, 2)), ["three"]);
+        assert_eq!(ids(row_members(&messages, true, 0)), ["one"]);
+        assert_eq!(ids(row_members(&messages, true, 2)), ["three"]);
+    }
+
+    /// A row walks each album item's file, and a contact keeps only the
+    /// buttons its bubble shows.
+    #[test]
+    fn row_targets_walk_album_items_and_shown_contact_buttons() {
+        use crate::a11y::KeyTarget;
+        let contacts = HashMap::new();
+        let messages = vec![
+            album_picture("one", Some("album-1"), "alice"),
+            album_picture("two", Some("album-1"), "alice"),
+        ];
+        let (targets, owners) = row_targets(&messages, &contacts);
+        assert_eq!(
+            targets,
+            [
+                KeyTarget::AlbumItem("one".into()),
+                KeyTarget::AlbumItem("two".into())
+            ]
+        );
+        assert_eq!(owners, [0, 1]);
+        let (targets, _) = row_targets(&messages[..1], &contacts);
+        assert_eq!(targets, [KeyTarget::Attachment]);
+    }
+
+    /// A poll option that can be chosen now is not blocked, and one that
+    /// cannot says why.
+    #[test]
+    fn blocked_poll_options_say_why() {
+        let voting = Voting {
+            connected: true,
+            pending: &HashSet::new(),
+        };
+        let poll = |selectable: usize, selected: Vec<usize>| Message {
+            id: "poll".into(),
+            chat: "chat@example".into(),
+            sender: "alice".into(),
+            sender_name: None,
+            from_me: false,
+            timestamp: 1,
+            history_order: None,
+            content: Content::Poll {
+                question: "When?".into(),
+                options: vec!["Morning".into(), "Midday".into(), "Evening".into()],
+                state: crate::model::PollState {
+                    selectable,
+                    selected,
+                    can_vote: true,
+                    ..Default::default()
+                },
+            },
+            status: Delivery::None,
+            delivered_at: None,
+            read_at: None,
+            quoted: None,
+            reactions: Vec::new(),
+            edited: false,
+            mentions: Vec::new(),
+            forwarded: false,
+            thumbnail: None,
+        };
+        assert_eq!(option_blocked(&poll(1, vec![]), 0, &voting), None);
+        assert_eq!(
+            option_blocked(&poll(2, vec![0, 1]), 2, &voting),
+            Some("Remove an answer first to choose another")
+        );
+        let offline = Voting {
+            connected: false,
+            pending: &HashSet::new(),
+        };
+        assert_eq!(
+            option_blocked(&poll(1, vec![]), 0, &offline),
+            Some("Reconnect to vote")
+        );
+    }
+
+    /// Space on a target does what clicking that part of the bubble does.
+    #[test]
+    fn space_on_a_target_acts_as_its_click_does() {
+        use crate::a11y::KeyTarget;
+        let message = |content: Content| Message {
+            id: "m".into(),
+            chat: "chat@example".into(),
+            sender: "alice".into(),
+            sender_name: None,
+            from_me: false,
+            timestamp: 1,
+            history_order: None,
+            content,
+            status: Delivery::None,
+            delivered_at: None,
+            read_at: None,
+            quoted: None,
+            reactions: Vec::new(),
+            edited: false,
+            mentions: Vec::new(),
+            forwarded: false,
+            thumbnail: None,
+        };
+        // A file that is not downloaded yet downloads.
+        let photo = message(Content::Image {
+            caption: None,
+            media: media(None, None),
+            motion: None,
+        });
+        assert_eq!(
+            primary_key_actions("chat@example", &photo),
+            [Action::Download {
+                card: None,
+                chat: "chat@example".into(),
+                message: "m".into(),
+            }]
+        );
+        // A link opens its address.
+        let linked = message(Content::Text {
+            text: "see https://a.org".into(),
+            preview: None,
+        });
+        assert_eq!(
+            primary_key_actions("chat@example", &linked),
+            [Action::OpenUrl("https://a.org".into())]
+        );
+        // A phone number opens no menu on the spot.
+        let call = message(Content::Text {
+            text: "call 0501234567".into(),
+            preview: None,
+        });
+        let targets = crate::a11y::key_targets(&call.content, &[]);
+        assert!(matches!(targets.first(), Some(KeyTarget::Phone { .. })));
+        assert!(primary_key_actions("chat@example", &call).is_empty());
+        // A downloaded voice message plays.
+        let mut heard = media(Some(1), Some(1));
+        heard.path = Some("/cache/voice.ogg".into());
+        let voice = message(Content::Audio {
+            media: heard,
+            seconds: Some(4),
+            voice_note: true,
+            waveform: Vec::new(),
+        });
+        assert_eq!(
+            primary_key_actions("chat@example", &voice),
+            [Action::PlayVoice {
+                message: "m".into(),
+                path: "/cache/voice.ogg".into(),
+            }]
+        );
     }
 
     /// A protocol album splits at the local day boundary even when its identity stays the same.

@@ -7779,6 +7779,28 @@ impl Worker {
             Command::PictureInspected { index, result } => {
                 self.emit(Event::PictureInspected { index, result });
             }
+            Command::SamplePicture {
+                index,
+                source,
+                width,
+                height,
+            } => {
+                let commands = self.commands.clone();
+                tokio::task::spawn_blocking(move || {
+                    // A picture that cannot be read fails again, and says
+                    // so, when the edit is kept; until then the preview
+                    // paints pixelated blocks in a plain colour.
+                    match super::picture_edit::sample(&source, width, height) {
+                        Ok(blocks) => {
+                            let _ = commands.send(Command::PictureSampled { index, blocks });
+                        }
+                        Err(error) => log::debug!("picture sample failed: {error}"),
+                    }
+                });
+            }
+            Command::PictureSampled { index, blocks } => {
+                self.emit(Event::PictureSampled { index, blocks });
+            }
             Command::ApplyPictureEdit {
                 index,
                 source,
@@ -7786,12 +7808,14 @@ impl Worker {
                 height,
                 crop,
                 turns,
+                marks,
             } => {
                 let commands = self.commands.clone();
                 let dir = self.dirs.media_cache_dir().join("edited");
                 tokio::task::spawn_blocking(move || {
-                    let result =
-                        super::picture_edit::write(&source, width, height, crop, turns, &dir);
+                    let result = super::picture_edit::write(
+                        &source, width, height, crop, turns, &marks, &dir,
+                    );
                     let _ = commands.send(Command::PictureEdited { index, result });
                 });
             }

@@ -5863,6 +5863,7 @@ mod tests {
                 height,
                 crop: crate::model::PictureCrop::full(width, height),
                 turns: 0,
+                marks: Vec::new(),
             },
         );
         app.actions.push(crate::model::Action::EditPicture(index));

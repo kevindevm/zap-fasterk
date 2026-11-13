@@ -33,6 +33,181 @@ pub(crate) fn close_shortcut_action(app: &App, ctx: &egui::Context) -> Option<Ac
     .then_some(Action::CloseChat)
 }
 
+/// The focused message's items: Left and Right walk them, Space and Enter
+/// act on the current one as clicking it does.
+fn message_item_keys(app: &mut App, ctx: &egui::Context, chat: &str, row: &str) {
+    use crate::ui::conversation as view;
+    // The row's messages; the keys act on the album item the cursor is on.
+    // An item that is gone leaves the cursor lost until it moves again.
+    struct Setup {
+        owners: Vec<crate::model::Message>,
+        targets: Vec<crate::a11y::KeyTarget>,
+        owner_ids: Vec<String>,
+        current: usize,
+        lost: bool,
+    }
+    let setup = (|| {
+        let conversation = app.conversations.get(chat)?;
+        let index = conversation
+            .messages
+            .iter()
+            .position(|message| message.id == row)?;
+        let members = view::row_members(&conversation.messages, false, index);
+        let (targets, owners) = view::row_targets(members, &app.contacts);
+        if targets.is_empty() {
+            return None;
+        }
+        let owner_id = |index: usize| members[owners[index]].id.clone();
+        let owner_ids = (0..targets.len()).map(owner_id).collect::<Vec<_>>();
+        let (current, lost) = match app
+            .message_item
+            .as_ref()
+            .filter(|(item_chat, item_row, ..)| item_chat == chat && *item_row == row)
+        {
+            None => (0, false),
+            Some((.., index, owner, item))
+                if targets.get(*index) == Some(item) && owner_ids[*index] == *owner =>
+            {
+                (*index, false)
+            }
+            Some((.., owner, item)) => match targets
+                .iter()
+                .enumerate()
+                .position(|(index, target)| target == item && owner_ids[index] == *owner)
+            {
+                Some(index) => (index, false),
+                None => (0, true),
+            },
+        };
+        let owners = (0..targets.len())
+            .map(|index| members[owners[index]].clone())
+            .collect::<Vec<_>>();
+        Some(Setup {
+            owners,
+            targets,
+            owner_ids,
+            current,
+            lost,
+        })
+    })();
+    let Some(setup) = setup else {
+        return;
+    };
+    let owner = &setup.owners[setup.current];
+    let voting = view::Voting {
+        connected: app.link.is_connected(),
+        pending: &app.poll_voting,
+    };
+    let primary = view::target_actions(chat, owner, setup.targets.get(setup.current), &voting);
+    let option = match setup.targets.get(setup.current) {
+        Some(crate::a11y::KeyTarget::PollOption(option)) => Some(*option),
+        _ => None,
+    };
+    let blocked = option.and_then(|option| view::option_blocked(owner, option, &voting));
+    let phone_menu = match setup.targets.get(setup.current) {
+        Some(crate::a11y::KeyTarget::Phone { url, .. }) => Some(url.clone()),
+        _ => None,
+    };
+    enum ItemKey {
+        Activate,
+        Move(isize),
+    }
+    let pressed = ctx.input_mut(|input| {
+        if take_plain(input, Key::Space) || take_plain(input, Key::Enter) {
+            Some(ItemKey::Activate)
+        } else if take_plain(input, Key::ArrowLeft) {
+            Some(ItemKey::Move(-1))
+        } else if take_plain(input, Key::ArrowRight) {
+            Some(ItemKey::Move(1))
+        } else {
+            None
+        }
+    });
+    let mut actions = Vec::new();
+    match pressed {
+        Some(ItemKey::Move(delta)) => {
+            let index = setup
+                .current
+                .saturating_add_signed(delta)
+                .min(setup.targets.len().saturating_sub(1));
+            if let Some(target) = setup.targets.get(index) {
+                let text = view::target_label(
+                    app.locale,
+                    &setup.owners[index],
+                    &setup.targets,
+                    index,
+                    &voting,
+                );
+                // The list stays on this row while its items are
+                // walked: a message arriving meanwhile does not
+                // become the current one.
+                app.message_cursor.insert(chat.to_owned(), row.to_owned());
+                app.reveal_cursor = true;
+                app.message_item = Some((
+                    chat.to_owned(),
+                    row.to_owned(),
+                    index,
+                    setup.owner_ids[index].clone(),
+                    target.clone(),
+                ));
+                app.announce_accessibility(&text);
+            }
+        }
+        Some(ItemKey::Activate) if setup.lost && !setup.targets.is_empty() => {
+            // The item heard last is gone: say where the cursor is
+            // now rather than act on something else.
+            if let Some(target) = setup.targets.first() {
+                let text = view::target_label(app.locale, owner, &setup.targets, 0, &voting);
+                app.message_cursor.insert(chat.to_owned(), row.to_owned());
+                app.reveal_cursor = true;
+                app.message_item = Some((
+                    chat.to_owned(),
+                    row.to_owned(),
+                    0,
+                    setup.owner_ids[0].clone(),
+                    target.clone(),
+                ));
+                app.announce_accessibility(&text);
+            }
+        }
+        Some(ItemKey::Activate) => {
+            if let Some(url) = phone_menu {
+                actions.push(Action::OpenPhoneMenu {
+                    message: owner.id.clone(),
+                    url,
+                });
+            } else if !primary.is_empty() {
+                // A download Space or Enter asked for is spoken if it
+                // fails. Play and pause are not announced: the
+                // player's own state is the feedback.
+                if let Some((message, card)) = primary.iter().find_map(|action| match action {
+                    Action::Download { message, card, .. } => Some((message.clone(), *card)),
+                    _ => None,
+                }) {
+                    app.download_heard.insert((chat.to_owned(), message, card));
+                }
+                actions.extend(primary.iter().cloned());
+                if let (Some(option), Some(Action::VotePoll { choices, .. })) =
+                    (option, primary.first())
+                {
+                    // A vote says the choice it sends, as the ballot
+                    // will show it once the vote lands.
+                    let text = view::vote_said(app.locale, owner, option, choices);
+                    app.announce_accessibility(&text);
+                }
+            } else if let Some(reason) = blocked {
+                let text = crate::a11y::fill(
+                    &crate::i18n::gettext(app.locale, "unavailable: {reason}"),
+                    &[("reason", &view::blocker_said(app.locale, reason))],
+                );
+                app.announce_accessibility(&text);
+            }
+        }
+        None => {}
+    }
+    app.actions.extend(actions);
+}
+
 /// Routes keyboard commands to actions, respecting overlays and text focus.
 pub fn handle(app: &mut App, ctx: &egui::Context) {
     if app.picture_edit.is_some() {
@@ -228,8 +403,27 @@ pub fn handle(app: &mut App, ctx: &egui::Context) {
         });
         actions.push(Action::CopyText(text));
     }
-    // The focused message list takes the arrows, Home, End and the page keys
-    // to move its current message, ahead of the scrolling below.
+    // The focused message's items: Left and Right walk the message's links,
+    // cards and files, Space and Enter act on the current one as clicking
+    // it does.
+    if app.page == Page::Chats
+        && app.open_chat.is_some()
+        && app.dialog.is_none()
+        && !app.show_update
+        && app.picker.is_none()
+        && app.reaction_target.is_none()
+        && app.recording.is_none()
+        && !menu_open
+        && app.call.is_none()
+        && let Some(chat) = app.open_chat.clone()
+        && ctx.memory(|memory| memory.has_focus(crate::ui::conversation::messages_list_id(&chat)))
+        && !app.selecting_in(&chat)
+        && let Some(row) = app
+            .current_message(&chat)
+            .and_then(|id| app.row_message(&chat, &id))
+    {
+        message_item_keys(app, ctx, &chat, &row);
+    }
     if app.page == Page::Chats
         && app.open_chat.is_some()
         && app.dialog.is_none()
@@ -757,6 +951,10 @@ fn drop_shortcut_text(ctx: &egui::Context) {
 
 /// Handles keys while the cropper covers the window: Escape leaves the
 /// staged picture alone, Enter keeps the crop.
+/// Handles keys while the editor covers the window: Escape leaves the
+/// staged picture alone, Enter keeps the edit, Ctrl+Z takes the latest mark
+/// back, and Ctrl+Shift+Z or Ctrl+Y puts it back. Enter on a focused button
+/// presses that button instead, as anywhere else.
 fn editor_keys(app: &mut App, ctx: &egui::Context) {
     let mut actions = Vec::new();
     ctx.input_mut(|input| {
@@ -767,6 +965,34 @@ fn editor_keys(app: &mut App, ctx: &egui::Context) {
             actions.push(Action::ApplyPictureEdit);
         }
     });
+    /// A step through the editor's marks.
+    enum Step {
+        Undo,
+        Redo,
+    }
+    let mut history = None;
+    ctx.input_mut(|input| {
+        // A pattern without Shift matches with Shift held too, so the redo
+        // spelling is asked for first.
+        if input.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z)
+            || input.consume_key(Modifiers::COMMAND, Key::Y)
+        {
+            history = Some(Step::Redo);
+        } else if input.consume_key(Modifiers::COMMAND, Key::Z) {
+            history = Some(Step::Undo);
+        }
+    });
+    if let Some(edit) = app
+        .picture_edit
+        .as_mut()
+        .filter(|edit| edit.drawing.is_none())
+    {
+        match history {
+            Some(Step::Undo) => edit.undo(),
+            Some(Step::Redo) => edit.redo(),
+            None => {}
+        }
+    }
     app.actions.extend(actions);
 }
 
@@ -923,6 +1149,14 @@ pub const SHORTCUTS: &[(&str, &str)] = &[
     ("Ctrl+. / Ctrl+;", "Emoji picker (in the message input)"),
     ("Alt+↑ / Alt+↓", "Previous / next chat"),
     ("Ctrl+Tab", "Switch between the two most recent chats"),
+    (
+        "Space / Enter",
+        "Play or pause, open or vote for the selected item, downloading it first when needed (in the message list)",
+    ),
+    (
+        "← / →",
+        "Move between the items of a message: its file, links, phone numbers, cards or poll options (in the message list)",
+    ),
     ("Ctrl+Shift+[ / ]", "Previous / next chat, as in WhatsApp"),
     ("Ctrl+1..9", "Open a chat by its position in the chat list"),
     ("↑", "Edit the previous message (when the input is empty)"),
@@ -1161,6 +1395,58 @@ mod tests {
             app.actions.as_slice(),
             [Action::Open(Page::Chats)]
         ));
+    }
+
+    /// Ctrl+Z takes the latest mark back, and Ctrl+Shift+Z and Ctrl+Y put
+    /// it back: the Shift spelling must not undo again.
+    #[test]
+    fn the_editors_undo_and_redo_keys_step_through_its_marks() {
+        let root = tempfile::tempdir().unwrap();
+        let mut app = App::headless(
+            crate::paths::AppDirs::under(root.path()),
+            crate::settings::Settings::default(),
+        )
+        .0;
+        let mut edit = crate::model::PictureEdit::new(
+            0,
+            crate::model::PictureSource::File("photo.png".into()),
+            100,
+            100,
+        );
+        for at in [10.0, 30.0] {
+            edit.begin_mark(crate::model::Brush::default(), [at, at]);
+            edit.finish_mark();
+        }
+        app.picture_edit = Some(edit);
+        let ctx = egui::Context::default();
+        let press = |app: &mut App, key: Key, modifiers: Modifiers| {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    events: vec![egui::Event::Key {
+                        key,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers,
+                    }],
+                    ..Default::default()
+                },
+                |ui| handle(app, ui.ctx()),
+            );
+            output.textures_delta.clear();
+            app.picture_edit.as_ref().map_or(0, |edit| edit.marks.len())
+        };
+        assert_eq!(press(&mut app, Key::Z, Modifiers::COMMAND), 1);
+        assert_eq!(press(&mut app, Key::Z, Modifiers::COMMAND), 0);
+        let redo = Modifiers::COMMAND | Modifiers::SHIFT;
+        assert_eq!(press(&mut app, Key::Z, redo), 1);
+        assert_eq!(press(&mut app, Key::Y, Modifiers::COMMAND), 2);
+        assert_eq!(
+            press(&mut app, Key::Z, Modifiers::NONE),
+            2,
+            "Z alone does nothing"
+        );
+        assert!(app.actions.is_empty());
     }
 
     fn escape(app: &mut App, ctx: &egui::Context) {
@@ -1797,6 +2083,92 @@ mod tests {
         app.actions.clear();
         assert!(press(&mut app, &ctx, Key::ArrowDown, Modifiers::NONE));
         assert!(app.actions.is_empty());
+    }
+
+    #[test]
+    fn arrows_walk_a_messages_items_and_space_opens_a_phone_menu() {
+        use crate::model::{Content, Delivery, Message};
+        let (_root, mut app, ids) = app_with_chats(1);
+        let chat = ids[0].clone();
+        app.open_chat = Some(chat.clone());
+        app.conversations
+            .entry(chat.clone())
+            .or_default()
+            .messages
+            .push(Message {
+                id: "m1".into(),
+                chat: chat.clone(),
+                sender: "alice".into(),
+                sender_name: None,
+                from_me: false,
+                timestamp: 1,
+                history_order: None,
+                content: Content::Text {
+                    text: "see https://a.org or call 0501234567".into(),
+                    preview: None,
+                },
+                status: Delivery::None,
+                delivered_at: None,
+                read_at: None,
+                quoted: None,
+                reactions: Vec::new(),
+                edited: false,
+                mentions: Vec::new(),
+                forwarded: false,
+                thumbnail: None,
+            });
+        app.message_cursor.insert(chat.clone(), "m1".into());
+        let ctx = egui::Context::default();
+        let list = crate::ui::conversation::messages_list_id(&chat);
+        // Right walks from the first item on, announcing each.
+        for (index, words) in [(1, "Phone number 2 of 2"), (1, "Phone number 2 of 2")] {
+            ctx.memory_mut(|memory| memory.request_focus(list));
+            app.actions.clear();
+            app.accessibility_announcements.clear();
+            assert!(!press(&mut app, &ctx, Key::ArrowRight, Modifiers::NONE));
+            assert!(
+                app.actions.is_empty(),
+                "walking says rather than acts: {:?}",
+                app.actions
+            );
+            assert!(
+                app.message_item
+                    .as_ref()
+                    .is_some_and(|(item_chat, row, item, ..)| item_chat == &chat
+                        && row == "m1"
+                        && *item == index),
+                "{:?}",
+                app.message_item
+            );
+            assert!(
+                app.accessibility_announcements
+                    .iter()
+                    .any(|said| said.contains(words)),
+                "{:?}",
+                app.accessibility_announcements
+            );
+        }
+        // Space on the phone number asks for its menu.
+        ctx.memory_mut(|memory| memory.request_focus(list));
+        app.actions.clear();
+        assert!(!press(&mut app, &ctx, Key::Space, Modifiers::NONE));
+        assert!(
+            app.actions.contains(&Action::OpenPhoneMenu {
+                message: "m1".into(),
+                url: "tel:0501234567".into(),
+            }),
+            "{:?}",
+            app.actions
+        );
+        // Left walks back to the link.
+        ctx.memory_mut(|memory| memory.request_focus(list));
+        app.actions.clear();
+        assert!(!press(&mut app, &ctx, Key::ArrowLeft, Modifiers::NONE));
+        assert!(
+            app.message_item
+                .as_ref()
+                .is_some_and(|(_, _, item, ..)| *item == 0)
+        );
     }
 
     #[test]
