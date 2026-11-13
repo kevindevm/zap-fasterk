@@ -1,15 +1,94 @@
 //! Durable automation request identities prevent repeated CLI commands from sending twice.
 use super::*;
+use crate::automation::ChatOrder;
 use sha2::{Digest, Sha256};
 pub type CliWatchPage = (Vec<Message>, Option<(i64, String)>);
 impl Archive {
-    pub(crate) fn cli_chat_page(&self, after: Option<&str>, limit: usize) -> Result<Vec<Chat>> {
+    pub(crate) fn cli_chat_page(
+        &self,
+        after: Option<&str>,
+        limit: usize,
+        kind: Option<ChatKind>,
+        order: ChatOrder,
+        unread_only: bool,
+        include_archived: bool,
+    ) -> Result<Vec<Chat>> {
+        // `after` names the last chat of the previous page; resolve its sort
+        // position so pages stay stable under the chosen order. A chat that
+        // vanished since restarts from the top rather than failing the list.
+        let anchor: Option<(i64, String, i64)> = match after {
+            Some(id) => self
+                .connection
+                .query_row(
+                    "SELECT last_activity, name, unread FROM chats WHERE id=?1",
+                    [id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .optional()?,
+            None => None,
+        };
+        // The anchor id positions the keyset; unknown ids restart from the top.
+        let anchor_id = match (&anchor, after) {
+            (Some(_), Some(id)) => Some(id.to_owned()),
+            _ => None,
+        };
+        let kind_filter = kind.map(kind_name);
+        // Bound values only; the ORDER BY fragments below are fixed per order.
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        params.push(Box::new(kind_filter));
+        params.push(Box::new(i64::from(unread_only)));
+        params.push(Box::new(i64::from(include_archived)));
+        let mut sql = String::from("SELECT id FROM chats WHERE (?1 IS NULL OR kind = ?1)");
+        sql.push_str(" AND (?2 = 0 OR unread > 0 OR marked_unread != 0)");
+        sql.push_str(" AND (?3 = 1 OR archived = 0)");
+        let order_sql = match order {
+            ChatOrder::Activity => {
+                if let (Some((activity, _, _)), Some(id)) = (&anchor, &anchor_id) {
+                    params.push(Box::new(*activity));
+                    params.push(Box::new(*activity));
+                    params.push(Box::new(id.clone()));
+                    sql.push_str(
+                        " AND (?4 IS NULL OR last_activity < ?4 OR (last_activity = ?5 AND id > ?6))",
+                    );
+                }
+                " ORDER BY last_activity DESC, id ASC"
+            }
+            ChatOrder::Name => {
+                if let (Some((_, name, _)), Some(id)) = (&anchor, &anchor_id) {
+                    params.push(Box::new(name.clone()));
+                    params.push(Box::new(name.clone()));
+                    params.push(Box::new(id.clone()));
+                    sql.push_str(
+                        " AND (?4 IS NULL OR name COLLATE NOCASE > ?4 OR (name COLLATE NOCASE = ?5 AND id > ?6))",
+                    );
+                }
+                " ORDER BY name COLLATE NOCASE ASC, id ASC"
+            }
+            ChatOrder::Unread => {
+                if let (Some((activity, _, unread)), Some(id)) = (&anchor, &anchor_id) {
+                    params.push(Box::new(*unread));
+                    params.push(Box::new(*unread));
+                    params.push(Box::new(*activity));
+                    params.push(Box::new(*activity));
+                    params.push(Box::new(id.clone()));
+                    sql.push_str(
+                        " AND (?4 IS NULL OR unread < ?4 OR (unread = ?5 AND (last_activity < ?6 OR (last_activity = ?7 AND id > ?8)))",
+                    );
+                }
+                " ORDER BY unread DESC, last_activity DESC, id ASC"
+            }
+        };
+        sql.push_str(order_sql);
+        sql.push_str(" LIMIT ?");
+        // The LIMIT placeholder follows however many anchor values were pushed.
+        let limit_index = params.len() + 1;
+        sql.push_str(&limit_index.to_string());
+        params.push(Box::new(limit as i64));
+        let refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|param| param.as_ref()).collect();
         let ids = self
             .connection
-            .prepare("SELECT id FROM chats WHERE id>?1 ORDER BY id LIMIT ?2")?
-            .query_map(params![after.unwrap_or(""), limit as i64], |row| {
-                row.get::<_, String>(0)
-            })?
+            .prepare(&sql)?
+            .query_map(refs.as_slice(), |row| row.get::<_, String>(0))?
             .collect::<Result<Vec<_>>>()?;
         ids.into_iter()
             .map(|id| self.chat(&id))

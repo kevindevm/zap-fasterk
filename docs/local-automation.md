@@ -6,6 +6,17 @@ running. Account ids are the numeric account-folder ids, and chat ids must name
 an existing conversation in that account. Restoring a backup disables this
 computer-specific authority until explicitly enabled again.
 
+On Windows, prefer the console companion `zapfasterk-cli` (installed next to
+the app) for the commands below: unlike the GUI program, it waits for each
+answer and prints it before your shell prompt returns. With `zap-fasterk.exe`
+itself, either wait explicitly (`start /wait zap-fasterk.exe chats --account 2`)
+or pipe the output (`zap-fasterk chats --account 2 | findstr /R "^"`), since
+`cmd` returns immediately for GUI programs and a redrawn prompt can hide a
+late answer. Redirecting to a file always captures the full output.
+
+With a single linked account, `--account` may be omitted and the only account
+is used; with several, the command names them and asks for the flag.
+
 The CLI uses a separate private fastframe-instance slot named
 zap-fasterk-automation-v1 under runtime/automation-v1. Unix filesystem permissions
 and Windows's random token authenticate the local user. The compatibility
@@ -16,12 +27,14 @@ No network service, account system or telemetry is introduced.
 Examples below use synthetic ids; substitute your chosen account/conversation.
 
 ```powershell
-zap-fasterk chats --account 2
+zapfasterk-cli chats
+zapfasterk-cli groups --unread
+zapfasterk-cli channels --sort name
 zap-fasterk contacts --account 2 --all
 zap-fasterk messages fixture@s.whatsapp.net --account 2 --limit 10 --before 1700000000
 zap-fasterk search "synthetic phrase" --account 2 --chat fixture@s.whatsapp.net
 zap-fasterk watch --account 2 --since 1700000000 --interval 2
-zap-fasterk send fixture@s.whatsapp.net "Synthetic text" --account 2 --request-id 0123456789abcdef0123456789abcdef
+zapfasterk-cli send 15550101111 "Synthetic text" --request-id 0123456789abcdef0123456789abcdef
 "Synthetic stdin text" | zap-fasterk send fixture@s.whatsapp.net - --account 2 --request-id 1123456789abcdef0123456789abcdef
 zap-fasterk send fixture@s.whatsapp.net "Synthetic caption" --file ./synthetic.pdf --file ./synthetic.png --account 2 --request-id 2123456789abcdef0123456789abcdef
 zap-fasterk automation read --account 2 --chat fixture@s.whatsapp.net --limit 10
@@ -29,7 +42,19 @@ zap-fasterk automation send --account 2 --chat fixture@s.whatsapp.net --request-
 zap-fasterk status --account 2 --chat fixture@s.whatsapp.net --request-id 2123456789abcdef0123456789abcdef
 ```
 
+Chats lists direct conversations most recent first, like the app's list;
+`groups` and `channels` list those kinds instead, and `chats --kind all`
+restores the combined list. Each row carries its kind, unread count, last
+activity, and pinned/archived flags for client-side ordering. `--sort name`
+orders alphabetically, `--sort unread` by unread count, `--unread` keeps only
+chats needing attention, and `--archived` includes archived chats, hidden by
+default. Pages continue from the last row's chat id with the same flags.
+
 Read returns ascending rows from a bounded recent archive page, plus next_before.
+Send accepts a full chat id, a bare phone number, or a conversation name; numbers
+and names must single out one conversation, otherwise the error lists the
+candidates with their full ids. A repeated request id returns the original
+message instead of sending twice; query it with status.
 Pass its timestamp and id with --before-time and --before-id to read older rows.
 Watch polls archived arrival order once per second for 1 through 3600 seconds,
 including late history. Resume with --after-row and --after-id from the returned

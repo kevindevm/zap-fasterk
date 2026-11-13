@@ -12,9 +12,24 @@ impl Worker {
         }
         let chat = pending.request.chat().to_owned();
         let collection = match pending.request.base() {
-            Request::Chats { after, limit, .. } => Some(self.archive.cli_chat_page(after.as_deref(), *limit).map(|rows| {
+            Request::Chats {
+                after,
+                limit,
+                kind,
+                order,
+                unread_only,
+                include_archived,
+                ..
+            } => Some(self.archive.cli_chat_page(
+                after.as_deref(),
+                *limit,
+                *kind,
+                *order,
+                *unread_only,
+                *include_archived,
+            ).map(|rows| {
                 let next = rows.last().map(|row| row.id.clone());
-                let rows:Vec<_> = rows.into_iter().filter(|row| !row.locked && row.disappearing_timer().is_none()).map(|row|serde_json::json!({"id":row.id,"name":row.name,"kind":row.kind,"unread":row.unread,"last_activity":row.last_activity})).collect();
+                let rows:Vec<_> = rows.into_iter().filter(|row| !row.locked && row.disappearing_timer().is_none()).map(|row|serde_json::json!({"id":row.id,"name":row.name,"kind":row.kind,"unread":row.unread,"last_activity":row.last_activity,"pinned":row.pinned,"archived":row.archived})).collect();
                 serde_json::json!({"chats":rows,"cursor":next}).to_string()
             })),
             Request::Contacts { all, after, limit, .. } => Some(self.archive.cli_contact_page(*all,after.as_deref(),*limit).map(|rows| {
@@ -313,6 +328,10 @@ mod tests {
             account: "1".into(),
             after: None,
             limit: 25,
+            kind: None,
+            order: crate::automation::ChatOrder::Activity,
+            unread_only: false,
+            include_archived: false,
         });
         worker.automation(pending);
         let value: serde_json::Value = serde_json::from_str(&received.recv().unwrap()).unwrap();

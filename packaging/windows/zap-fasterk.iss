@@ -70,6 +70,7 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 
 [Files]
 Source: "{#Binary}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#CliBinary}"; DestDir: "{app}"; Flags: ignoreversion
 ; Updaters up to 0.16.5 relaunch the executable they were started from, so an
 ; update begun as fastsapp.exe needs that file to come back (as Spotifast's
 ; #582). The app deletes the copy once it starts as zap-fasterk.exe with no update

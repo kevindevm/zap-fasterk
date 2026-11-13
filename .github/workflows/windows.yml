@@ -39,6 +39,7 @@ jobs:
           name="zap-fasterk-$version-windows-x64-$short"
           mkdir -p "dist/$name"
           cp "target/x86_64-pc-windows-msvc/release/zap-fasterk.exe" "dist/$name/"
+          cp "target/x86_64-pc-windows-msvc/release/zapfasterk-cli.exe" "dist/$name/"
           cp README.md LICENSE THIRD-PARTY-NOTICES.md packaging/zap-fasterk-portable.txt "dist/$name/"
           cd dist
           7z a "$name.zip" "$name"
@@ -59,7 +60,7 @@ jobs:
           $env:Path += ";$env:USERPROFILE\.dotnet\tools"
           $payload = "dist\windows-input-x86_64-pc-windows-msvc"
           New-Item -ItemType Directory -Force $payload | Out-Null
-          Copy-Item "target\x86_64-pc-windows-msvc\release\zap-fasterk.exe", README.md, LICENSE, THIRD-PARTY-NOTICES.md, `
+          Copy-Item "target\x86_64-pc-windows-msvc\release\zap-fasterk.exe", "target\x86_64-pc-windows-msvc\release\zapfasterk-cli.exe", README.md, LICENSE, THIRD-PARTY-NOTICES.md, `
             packaging\windows\zap-fasterk-installer.txt $payload
           $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.*)"$').Matches[0].Groups[1].Value
           native-packages build --version $version --target windows-amd64 `

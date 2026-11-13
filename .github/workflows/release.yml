@@ -81,6 +81,7 @@ jobs:
           name="zap-fasterk-${GITHUB_REF_NAME}-${{ matrix.target }}"
           mkdir -p "dist/$name"
           cp "target/${{ matrix.target }}/release/zap-fasterk.exe" "dist/$name/"
+          cp "target/${{ matrix.target }}/release/zapfasterk-cli.exe" "dist/$name/"
           cp README.md LICENSE THIRD-PARTY-NOTICES.md packaging/zap-fasterk-portable.txt "dist/$name/"
           cd dist
           7z a "$name.zip" "$name"
@@ -105,7 +106,7 @@ jobs:
           $target = "${{ matrix.target }}"
           $payload = "dist\windows-input-$target"
           New-Item -ItemType Directory -Force $payload | Out-Null
-          Copy-Item "target\$target\release\zap-fasterk.exe", README.md, LICENSE, THIRD-PARTY-NOTICES.md, `
+          Copy-Item "target\$target\release\zap-fasterk.exe", "target\$target\release\zapfasterk-cli.exe", README.md, LICENSE, THIRD-PARTY-NOTICES.md, `
             packaging\windows\zap-fasterk-installer.txt $payload
           $packageTarget = if ($target.StartsWith("aarch64")) { "windows-arm64" } else { "windows-amd64" }
           $version = $env:GITHUB_REF_NAME.TrimStart("v")

@@ -3,8 +3,8 @@
 #
 #   ruby packaging/windows/msi.rb PAYLOAD PACKAGE VERSION [ARCH]
 #
-# PAYLOAD holds zap-fasterk.exe, README.md, LICENSE, THIRD-PARTY-NOTICES.md and
-# zap-fasterk-installer.txt. A GNU toolchain payload also holds the MinGW
+# PAYLOAD holds zap-fasterk.exe and zapfasterk-cli.exe, README.md, LICENSE,
+# THIRD-PARTY-NOTICES.md and zap-fasterk-installer.txt. A GNU toolchain payload also holds the MinGW
 # runtime next to the program (libstdc++-6.dll, libgcc_s_seh-1.dll,
 # libwinpthread-1.dll); an MSVC payload has none. ARCH is x64 or arm64; without it, it comes from
 # NATIVE_PACKAGES_TARGET. Needs WiX 5 and its Util extension:

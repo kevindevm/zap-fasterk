@@ -1,4 +1,5 @@
 //! Explicit local automation over a separate authenticated fastframe-instance slot.
+use crate::model::ChatKind;
 use serde::{Deserialize, Serialize};
 use std::{
     path::Path,
@@ -22,6 +23,18 @@ pub enum Request {
         account: String,
         after: Option<String>,
         limit: usize,
+        /// `None` lists every kind; the CLI defaults to direct chats, with
+        /// dedicated `groups` and `channels` commands for the rest.
+        #[serde(default)]
+        kind: Option<ChatKind>,
+        #[serde(default)]
+        order: ChatOrder,
+        /// Only chats with unread messages or a marked-unread dot.
+        #[serde(default)]
+        unread_only: bool,
+        /// Archived chats stay out unless asked for, like in the app's list.
+        #[serde(default)]
+        include_archived: bool,
     },
     Contacts {
         account: String,
@@ -73,6 +86,17 @@ pub enum Request {
         request_id: String,
     },
 }
+/// Listing order for `Chats`: most recent activity first (the app's chat-list
+/// order), by name, or by unread count.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum ChatOrder {
+    #[default]
+    Activity,
+    Name,
+    Unread,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Attachment {
@@ -607,6 +631,10 @@ mod tests {
                 account: "1".into(),
                 after: None,
                 limit: 25,
+                kind: None,
+                order: ChatOrder::Activity,
+                unread_only: false,
+                include_archived: false,
             },
             Request::Contacts {
                 account: "1".into(),
@@ -660,6 +688,10 @@ mod tests {
             account: "1".into(),
             after: None,
             limit: 25,
+            kind: None,
+            order: ChatOrder::Activity,
+            unread_only: false,
+            include_archived: false,
         };
         let first = Arc::new(Permit::allowed());
         let mut streams = ReplyStreams::default();
@@ -785,6 +817,10 @@ mod tests {
             account: "1".into(),
             after: None,
             limit: 25,
+            kind: None,
+            order: ChatOrder::Activity,
+            unread_only: false,
+            include_archived: false,
         };
         let result = assemble_reply(&request, |_| {
             Ok(serde_json::json!({"fragment":{"token":"a".repeat(32),"offset":0,"total":REPLY_LIMIT+1,"digest":"fixture","data":"fixture"}}).to_string())
@@ -800,6 +836,10 @@ mod tests {
                 account: "2".into(),
                 after: None,
                 limit: 1,
+                kind: None,
+                order: ChatOrder::Activity,
+                unread_only: false,
+                include_archived: false,
             },
             permit: Arc::new(Permit::default()),
             reply,

@@ -20,6 +20,7 @@ mod call_transport;
 pub mod calls;
 pub mod camera;
 pub mod chat_link;
+pub mod cli;
 pub mod custom_emoji;
 pub mod custom_font;
 #[cfg(any(test, feature = "demo"))]

@@ -31,7 +31,8 @@ function Payload($version) {
   $dir = Join-Path $root "payload-$version"
   New-Item -ItemType Directory -Force $dir | Out-Null
   Set-Content -NoNewline -Path (Join-Path $dir "zap-fasterk.exe") -Value "zap-fasterk.exe $version"
-  Copy-Item README.md, LICENSE, THIRD-PARTY-NOTICES.md, packaging\windows\zap-fasterk-installer.txt $dir
+  Set-Content -NoNewline -Path (Join-Path $dir "zapfasterk-cli.exe") -Value "zapfasterk-cli.exe $version"
+  Copy-Item README.md, LICENSE, THIRD-PARTY-NOTICES.md, packaging\windows\zapfasterk-installer.txt $dir
   Get-ChildItem $dir | ForEach-Object { $_.LastWriteTime = (Get-Date).AddDays(-30) }
   $dir
 }
@@ -40,7 +41,8 @@ function Inno($version, $arguments) {
   $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
   if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
   $binary = Join-Path (Payload "inno-$version") "zap-fasterk.exe"
-  & $iscc /Q "/DVersion=$version" /DArch=x86_64 "/DBinary=$binary" `
+  $cliBinary = Join-Path (Payload "inno-$version") "zapfasterk-cli.exe"
+  & $iscc /Q "/DVersion=$version" /DArch=x86_64 "/DBinary=$binary" "/DCliBinary=$cliBinary" `
     "/DOutputDir=$root" packaging\windows\zap-fasterk.iss
   if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
   $setup = Join-Path $root "zap-fasterk-v$version-x86_64-pc-windows-msvc-setup.exe"
@@ -93,6 +95,7 @@ $code = Msiexec "/i `"$v1`" /qn /norestart INSTALLFOLDER=`"$defaultFolder`""
 Check ($code -in 0, 3010) "the MSI takes over the Inno install ($code)"
 Check ((Program $defaultFolder) -eq "zap-fasterk.exe msi-0.18.1-x64") "the program is replaced"
 Check (Test-Path (Join-Path $defaultFolder "zap-fasterk-installer.txt")) "the installer marker is in place"
+Check (Test-Path (Join-Path $defaultFolder "zapfasterk-cli.exe")) "the console companion is installed"
 Check (-not (Test-Path (Join-Path $defaultFolder "unins000.exe"))) "Inno's uninstaller is gone"
 Check (-not (Test-Path (Join-Path $defaultFolder "unins000.dat"))) "Inno's uninstall log is gone"
 Check (-not (Test-Path $innoKey)) "Inno's Settings > Apps entry is gone"
