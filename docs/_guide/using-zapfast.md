@@ -44,6 +44,20 @@ below the grid fetches the next page. A failed page keeps the earlier results
 and offers **Retry**; pressing Enter with the same search also retries that
 page.
 
+When you write a new text message with a web link and pause, Zap Fasterk
+fetches that page, and its picture from wherever the page says it is, directly,
+through your proxy if one is set, and shows a preview card above the message
+box, for the first link. Edits and captions get no card. The card is sent with
+the message. Zap Fasterk identifies itself to the site as Zap Fasterk, and some
+sites give no preview to apps they do not recognise, in which case the message
+goes out with a plain link. Zap Fasterk never looks up or contacts addresses
+on this computer or your local network itself, and refuses links that name one
+outright. With a proxy set, the proxy looks up the name instead. Click the
+cross on the card to send the link without a preview. If your phone has
+**Privacy > Advanced > Disable link previews** on, Zap Fasterk makes no
+previews either, and it makes none until it has read that setting from your
+phone.
+
 Links in a received message show a preview card below the text. Media links
 show a large picture above the title: reels and other video links a square
 poster with a play badge, articles their picture kept in aspect ratio.
@@ -987,8 +1001,11 @@ their original timestamp and are not added to the permanent conversation archive
 each sender's newest update with a dot while any of theirs is unseen; opening
 an update, or stepping to it, marks it seen here. The phone is not told, so no
 read receipt is sent. A green ring on a chat's avatar means that sender has an
-unseen update. Photos stay inside the filtered viewer; downloaded videos open
-in the system player. Escape leaves the viewer for the authors' list. Locked
+unseen update. Photos stay inside the filtered viewer; downloaded videos play
+in the viewer with sound, seek, and mute controls, and can still be opened in
+the system player. The viewer opens on the oldest unseen update; ← and →
+(or the chevrons under it, which never scroll away) step through the rest.
+Escape leaves the viewer for the authors' list. Locked
 senders and screen privacy retain their restrictions.
 
 ## Automatic exports (development builds)

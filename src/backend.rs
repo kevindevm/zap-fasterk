@@ -277,6 +277,13 @@ pub enum Command {
         text: String,
         quoting: Option<crate::model::ReplyTarget>,
         mentions: Vec<String>,
+        /// A preview built here for the first link in `text`.
+        preview: Option<crate::model::ComposedPreview>,
+    },
+    /// Reads the page behind a link in the composer; answered by
+    /// [`Event::LinkPreview`]. A newer request replaces an unfinished one.
+    FetchLinkPreview {
+        url: String,
     },
     /// Stores a text for a later send; the worker files it once due.
     ScheduleText {
@@ -1231,6 +1238,13 @@ pub enum SendFailure {
 
 #[derive(Debug)]
 pub enum Event {
+    /// The phone's "Disable link previews", sent at start and on every change.
+    LinkPreviewsDisabled(bool),
+    /// What the page at `url` says about itself, or `None` when it said nothing.
+    LinkPreview {
+        url: String,
+        preview: Option<crate::model::ComposedPreview>,
+    },
     Blocklist {
         state: crate::blocking::Blocklist,
         error: Option<crate::blocking::Failure>,

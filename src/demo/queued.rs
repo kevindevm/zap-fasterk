@@ -179,6 +179,7 @@ impl QueueDemo {
                 text: text.into(),
                 quoting: None,
                 mentions: Vec::new(),
+                preview: None,
             });
         }
         // WhatsApp refused the first: all three wait out the cooldown.
@@ -682,6 +683,7 @@ mod tests {
                     text: format!("Stress step {step}"),
                     quoting: None,
                     mentions: Vec::new(),
+                    preview: None,
                 }),
                 40..=49 if !sent.is_empty() => {
                     // Mostly what a reader would cancel: a row not sent yet.

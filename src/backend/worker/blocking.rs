@@ -383,6 +383,7 @@ mod tests {
                 text: "Fixture draft".into(),
                 quoting: None,
                 mentions: vec![],
+                preview: None,
             })
             .await;
         assert!(events.try_iter().any(|event| matches!(event, Event::SendRefused { unsent: Unsent::Text(text), reason: Refusal::Blocked, .. } if text == "Fixture draft")));

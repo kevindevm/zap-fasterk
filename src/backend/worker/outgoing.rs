@@ -837,6 +837,7 @@ mod tests {
                 text: text.into(),
                 quoting: None,
                 mentions: Vec::new(),
+                preview: None,
             })
             .await;
     }

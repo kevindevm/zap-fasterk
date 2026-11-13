@@ -40,6 +40,8 @@ pub struct Account {
     pub me_lid: Option<String>,
     pub me_name: Option<String>,
     pub me_about: Option<String>,
+    /// The phone's "Disable link previews", for this account.
+    pub link_previews_disabled: bool,
     pub chats: Vec<Chat>,
     /// The archive's initial chat list has arrived, including offline.
     pub(crate) chats_loaded: bool,
@@ -201,6 +203,7 @@ impl Account {
             me_lid: None,
             me_name: None,
             me_about: None,
+            link_previews_disabled: false,
             chats: Vec::new(),
             chats_loaded: false,
             contacts: HashMap::new(),

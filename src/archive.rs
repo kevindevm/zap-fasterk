@@ -116,6 +116,9 @@ pub type Result<T> = std::result::Result<T, rusqlite::Error>;
 /// `meta` keys for the phone's "Keep chats archived" and when it changed.
 const UNARCHIVE_CHATS: &str = "unarchive_chats";
 const UNARCHIVE_CHATS_AT: &str = "unarchive_chats_at";
+/// `meta` keys for the phone's "Disable link previews" and when it changed.
+const LINK_PREVIEWS_DISABLED: &str = "link_previews_disabled";
+const LINK_PREVIEWS_DISABLED_AT: &str = "link_previews_disabled_at";
 
 /// Marks an archived photo whose clip is known as a motion photo. Only the
 /// photo's own sender can give it a clip.
@@ -995,6 +998,36 @@ impl Archive {
             ],
         )?;
         Ok(unarchive)
+    }
+
+    /// The phone's "Disable link previews": `Some(true)` when it is on.
+    /// `None` until the phone has said.
+    pub fn link_previews_disabled(&self) -> Result<Option<bool>> {
+        Ok(self.meta(LINK_PREVIEWS_DISABLED)?.map(|value| value == "1"))
+    }
+
+    /// Records the phone's "Disable link previews" changed at `timestamp`
+    /// milliseconds, unless a newer change is stored, so a replayed snapshot
+    /// cannot undo it. Returns the setting in force.
+    pub fn set_link_previews_disabled_at(&self, disabled: bool, timestamp: i64) -> Result<bool> {
+        let stored = self
+            .meta(LINK_PREVIEWS_DISABLED_AT)?
+            .and_then(|value| value.parse::<i64>().ok());
+        if stored.is_some_and(|stored| stored > timestamp) {
+            return Ok(self.link_previews_disabled()?.unwrap_or(disabled));
+        }
+        // One statement, so a failed write leaves the previous pair intact.
+        self.connection.execute(
+            "INSERT INTO meta (key, value) VALUES (?1, ?2), (?3, ?4)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![
+                LINK_PREVIEWS_DISABLED,
+                if disabled { "1" } else { "0" },
+                LINK_PREVIEWS_DISABLED_AT,
+                timestamp.to_string()
+            ],
+        )?;
+        Ok(disabled)
     }
 
     /// A chat's own notification sound; `None` follows Settings.
@@ -4943,6 +4976,19 @@ pub(crate) mod tests {
         assert_eq!(archive.unarchive_chats().unwrap(), Some(true));
         assert!(!archive.set_unarchive_chats_at(false, 300).unwrap());
         assert_eq!(archive.unarchive_chats().unwrap(), Some(false));
+    }
+
+    #[test]
+    fn the_phones_link_preview_setting_applies_in_timestamp_order() {
+        let archive = Archive::in_memory().unwrap();
+        assert_eq!(archive.link_previews_disabled().unwrap(), None);
+        assert!(archive.set_link_previews_disabled_at(true, 200).unwrap());
+        assert_eq!(archive.link_previews_disabled().unwrap(), Some(true));
+        // A replayed older change does not undo it; a newer one does.
+        assert!(archive.set_link_previews_disabled_at(false, 100).unwrap());
+        assert_eq!(archive.link_previews_disabled().unwrap(), Some(true));
+        assert!(!archive.set_link_previews_disabled_at(false, 300).unwrap());
+        assert_eq!(archive.link_previews_disabled().unwrap(), Some(false));
     }
 
     #[test]

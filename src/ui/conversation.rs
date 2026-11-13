@@ -12,7 +12,7 @@ use egui::{
 };
 
 use crate::animation;
-use crate::app::{App, Conversation, JumpHighlight, KeyScroll, RowHeight};
+use crate::app::{App, Conversation, JumpHighlight, KeyScroll, LinkPreviewState, RowHeight};
 use crate::geo::Spot;
 use crate::markup;
 use crate::model::{
@@ -1495,6 +1495,10 @@ fn composer(app: &mut App, ui: &mut egui::Ui, chat: &Chat) {
                     None => app.reply_to = None,
                 }
             }
+            // Nearest the pill, under a reply. A caption goes without one.
+            if app.pending.is_empty() && app.recording.is_none() {
+                link_preview_strip(app, ui);
+            }
             app.prepare_composer_undo(ui.ctx());
             let id = egui::Id::new("composer-text");
             let has_focus = ui.memory(|memory| memory.has_focus(id));
@@ -2428,6 +2432,89 @@ fn reply_strip(app: &mut App, ui: &mut egui::Ui, quoted: &Message) {
         widgets::privacy_cover(ui, text, palette.surface_hover, 6.0);
     }
     strip_gap(ui);
+}
+
+/// The link preview that goes with the message being written: "Loading
+/// preview…" while it is fetched, then the card with an X that sends the
+/// message without it. Nothing once dismissed.
+fn link_preview_strip(app: &mut App, ui: &mut egui::Ui) {
+    let palette = app.palette;
+    let Some(shown) = app.shown_preview() else {
+        return;
+    };
+    let mut dismiss = false;
+    let strip = match &shown.state {
+        LinkPreviewState::Dismissed => return,
+        LinkPreviewState::Loading => {
+            let loading = crate::i18n::gettext(app.locale, "Loading preview…");
+            widgets::raised(ui, &palette, strip_frame(&palette), |ui| {
+                ui.set_width(ui.available_width().max(0.0));
+                ui.horizontal(|ui| {
+                    let (bar, _) = ui.allocate_exact_size(vec2(3.0, 18.0), Sense::hover());
+                    ui.painter().rect_filled(bar, 2.0, palette.accent);
+                    theme::text(ui, loading, theme::regular(12.5), palette.secondary);
+                });
+            })
+        }
+        LinkPreviewState::Ready(composed) => {
+            let remove = crate::i18n::gettext(app.locale, "Remove link preview");
+            // The card has no message: its picture is named by its chat and
+            // link instead, the same each frame.
+            let image = composer_thumbnail_id(&composed.preview.url);
+            let thumbnail = composed
+                .thumbnail
+                .as_deref()
+                .map(|bytes| (shown.chat.as_str(), image.as_str(), bytes));
+            widgets::raised(ui, &palette, strip_frame(&palette), |ui| {
+                ui.set_width(ui.available_width().max(0.0));
+                ui.horizontal(|ui| {
+                    let (bar, _) = ui.allocate_exact_size(vec2(3.0, 0.0), Sense::hover());
+                    let width = (ui.available_width() - 40.0).max(0.0);
+                    let (card, _) =
+                        composer_preview_layout(ui, &palette, &composed.preview, thumbnail, width);
+                    ui.painter().rect_filled(
+                        Rect::from_x_y_ranges(bar.x_range(), card.y_range()),
+                        2.0,
+                        palette.accent,
+                    );
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        let button = theme::icon_button(
+                            ui,
+                            Icon::X,
+                            16.0,
+                            palette.secondary,
+                            palette.text,
+                            remove.as_ref(),
+                        );
+                        #[cfg(test)]
+                        ui.ctx().data_mut(|data| {
+                            data.insert_temp(egui::Id::new("link-preview-dismiss"), button.rect)
+                        });
+                        dismiss = button.clicked();
+                    });
+                });
+            })
+        }
+    };
+    ui.ctx()
+        .data_mut(|data| data.insert_temp(link_preview_strip_id(), strip.response.rect));
+    if dismiss {
+        app.actions.push(Action::DismissLinkPreview);
+    }
+    strip_gap(ui);
+}
+
+/// The image id of the composer card's thumbnail for `url`.
+fn composer_thumbnail_id(url: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    url.hash(&mut hasher);
+    format!("composer-preview-{:016x}", hasher.finish())
+}
+
+/// Where the composer's link preview was drawn, for layout tests.
+pub(crate) fn link_preview_strip_id() -> egui::Id {
+    egui::Id::new("link-preview-strip")
 }
 
 /// Where the emoji or @mention suggestion list was drawn, for layout tests.

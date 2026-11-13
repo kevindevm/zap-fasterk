@@ -226,6 +226,13 @@ pub fn handle(app: &mut App, ctx: &egui::Context) {
         sticker_view_keys(app, ctx);
         return;
     }
+    if matches!(app.dialog, Some(Dialog::Statuses))
+        && app.status_shown.is_some()
+        && app.picker.is_none()
+    {
+        status_keys(app, ctx);
+        return;
+    }
     let editing_text = ctx.text_edit_focused();
     accessibility_shortcuts(app, ctx);
     let find = find_action(app);
@@ -1051,6 +1058,26 @@ fn video_keys(app: &mut App, ctx: &egui::Context) {
     app.actions.extend(actions);
 }
 
+/// While a status update is open, Left and Right step through its author's
+/// updates, and Escape goes back to the authors' list. The viewer has no
+/// text fields, so no caret loses its arrows; the picker showing over it
+/// keeps them.
+fn status_keys(app: &mut App, ctx: &egui::Context) {
+    let mut actions = Vec::new();
+    ctx.input_mut(|input| {
+        if input.consume_key(Modifiers::NONE, Key::Escape) {
+            actions.push(Action::StatusClose);
+        }
+        if input.consume_key(Modifiers::NONE, Key::ArrowLeft) {
+            actions.push(Action::StatusStep { back: true });
+        }
+        if input.consume_key(Modifiers::NONE, Key::ArrowRight) {
+            actions.push(Action::StatusStep { back: false });
+        }
+    });
+    app.actions.extend(actions);
+}
+
 /// While the sticker viewer is open, do not type into the chat behind it.
 fn sticker_view_keys(app: &mut App, ctx: &egui::Context) {
     let close = ctx.input_mut(|input| {
@@ -1511,6 +1538,42 @@ mod tests {
         app.status_shown = None;
         escape(&mut app, &ctx);
         assert!(matches!(app.actions.as_slice(), [Action::CloseDialog]));
+    }
+
+    fn press_consumed(app: &mut App, ctx: &egui::Context, key: Key) {
+        assert!(
+            !press(app, ctx, key, Modifiers::NONE),
+            "the viewer takes the arrow key"
+        );
+    }
+
+    #[test]
+    fn status_viewer_steps_with_the_arrow_keys() {
+        let root = tempfile::tempdir().unwrap();
+        let mut app = App::headless(
+            crate::paths::AppDirs::under(root.path()),
+            crate::settings::Settings::default(),
+        )
+        .0;
+        let ctx = egui::Context::default();
+        app.dialog = Some(Dialog::Statuses);
+        app.status_shown = Some("ana:new".into());
+        press_consumed(&mut app, &ctx, Key::ArrowLeft);
+        assert!(matches!(
+            app.actions.as_slice(),
+            [Action::StatusStep { back: true }]
+        ));
+        app.actions.clear();
+        press_consumed(&mut app, &ctx, Key::ArrowRight);
+        assert!(matches!(
+            app.actions.as_slice(),
+            [Action::StatusStep { back: false }]
+        ));
+        app.actions.clear();
+        // Back at the authors' list, the arrows are left alone.
+        app.status_shown = None;
+        assert!(press(&mut app, &ctx, Key::ArrowLeft, Modifiers::NONE));
+        assert!(app.actions.is_empty());
     }
 
     #[test]

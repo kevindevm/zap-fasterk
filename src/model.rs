@@ -538,6 +538,13 @@ impl LinkPreview {
     }
 }
 
+/// A link preview made here for an outgoing message, with its picture as JPEG.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ComposedPreview {
+    pub preview: LinkPreview,
+    pub thumbnail: Option<Vec<u8>>,
+}
+
 pub const EDIT_WINDOW: std::time::Duration = std::time::Duration::from_secs(15 * 60);
 
 impl Message {
@@ -3049,6 +3056,9 @@ pub enum Action {
         message: String,
     },
     CancelReply,
+    /// Takes away the link preview above the composer, for its link only:
+    /// the message goes without one.
+    DismissLinkPreview,
     /// Forwards archived messages to one destination chosen by the caller.
     Forward {
         from_chat: ChatId,
@@ -3209,6 +3219,11 @@ pub enum Action {
     /// Searches GIFs or lists trending results for an empty query.
     SearchGifs(String),
     MoreGifs,
+    /// Plays a status video in the viewer, keyed without a chat.
+    PlayStatusVideo {
+        key: String,
+        path: PathBuf,
+    },
     /// Wraps the selected character range in WhatsApp markup.
     FormatComposer {
         format: ComposerFormat,

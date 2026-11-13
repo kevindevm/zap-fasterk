@@ -35,7 +35,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 Dialog::Shortcuts => shortcuts_width(ui.ctx().content_rect().width()),
                 Dialog::About => 380.0,
                 Dialog::Statuses => {
-                    400.0_f32.min((ui.ctx().content_rect().width() - 64.0).max(180.0))
+                    520.0_f32.min((ui.ctx().content_rect().width() - 64.0).max(180.0))
                 }
                 Dialog::ArchiveBackup { .. }
                 | Dialog::ResumeRestoredAccount(_)

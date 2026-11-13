@@ -1691,15 +1691,11 @@ fn status_segments(app: &App, sender: &str) -> Vec<bool> {
     entries.iter().map(|row| row.read_at.is_none()).collect()
 }
 
-/// The sender's newest update, named by its row id, if it has not expired.
+/// The update a viewer for the sender opens on: the oldest unexpired one
+/// not seen here yet, so stepping forward meets something new first.
 /// The ring's click target opens it instead of the chat.
-fn newest_status_key(app: &App, sender: &str) -> Option<String> {
-    let now = crate::util::now();
-    app.statuses
-        .iter()
-        .filter(|row| row.sender == sender && row.timestamp > now - 86400)
-        .max_by_key(|row| row.timestamp)
-        .map(|row| row.id.clone())
+fn open_status_key(app: &App, sender: &str) -> Option<String> {
+    app.status_open_key(sender)
 }
 
 /// WhatsApp Web's ring, split into one arc per update: accent while the
@@ -1820,11 +1816,11 @@ fn row(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> egui::Response {
             // WhatsApp Web's ring, split into one arc per update.
             paint_status_ring(ui, &palette, avatar_rect, &status_segments(app, &chat.id));
         }
-        // The ring's click target opens the sender's newest update instead
-        // of the chat, as on WhatsApp Web. It goes after the row's own
-        // target, so the row's click below yields to it.
+        // The ring's click target opens the sender's oldest unseen update
+        // instead of the chat, as on WhatsApp Web. It goes after the row's
+        // own target, so the row's click below yields to it.
         let status_target = (!hidden_avatar && has_unseen_status(app, &chat.id))
-            .then(|| newest_status_key(app, &chat.id))
+            .then(|| open_status_key(app, &chat.id))
             .flatten()
             .map(|key| {
                 let target = ui.interact(
@@ -2391,7 +2387,7 @@ fn compact_row(app: &mut App, ui: &mut egui::Ui, chat: &Chat) -> egui::Response 
         // As in a full row, the ring's click target opens the sender's
         // newest update instead of the chat.
         let status_target = (!hidden_avatar && has_unseen_status(app, &chat.id))
-            .then(|| newest_status_key(app, &chat.id))
+            .then(|| open_status_key(app, &chat.id))
             .flatten()
             .map(|key| {
                 let target = ui.interact(
@@ -2899,11 +2895,38 @@ mod tests {
             "another sender's update is not this chat's ring"
         );
         assert_eq!(
-            newest_status_key(&app, "ana"),
+            open_status_key(&app, "ana"),
             Some("fresh".into()),
-            "the ring opens the sender's newest update"
+            "a lone update opens itself"
         );
-        assert_eq!(newest_status_key(&app, "bea"), None);
+        assert_eq!(open_status_key(&app, "bea"), None);
+        app.statuses = vec![
+            story("old", now - 300, Some(now - 200)),
+            story("fresh", now - 100, None),
+        ];
+        assert_eq!(
+            open_status_key(&app, "ana"),
+            Some("fresh".into()),
+            "the ring opens the oldest unseen update first"
+        );
+        app.statuses = vec![
+            story("old", now - 300, None),
+            story("fresh", now - 100, None),
+        ];
+        assert_eq!(
+            open_status_key(&app, "ana"),
+            Some("old".into()),
+            "several unseen updates open at the oldest"
+        );
+        app.statuses = vec![
+            story("old", now - 300, Some(now - 200)),
+            story("fresh", now - 100, Some(now - 50)),
+        ];
+        assert_eq!(
+            open_status_key(&app, "ana"),
+            Some("old".into()),
+            "all seen still opens at the oldest"
+        );
         app.statuses = vec![
             story("old", now - 300, Some(now - 200)),
             story("fresh", now - 100, None),

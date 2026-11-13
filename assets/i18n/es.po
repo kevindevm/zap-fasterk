@@ -4530,3 +4530,11 @@ msgstr "No se pudo leer un adjunto; prueba a exportar sin adjuntos"
 #: src/archive/chat_export.rs
 msgid "An attachment is not a regular file"
 msgstr "Un adjunto no es un archivo normal"
+
+#: src/ui/conversation.rs
+msgid "Loading preview…"
+msgstr "Cargando vista previa…"
+
+#: src/ui/conversation.rs
+msgid "Remove link preview"
+msgstr "Quitar la vista previa del enlace"

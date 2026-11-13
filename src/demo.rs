@@ -3227,6 +3227,37 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
                 app.composer_tools_open = true;
                 app.focus_composer = true;
             }
+            // The card above the composer for a link being written, loaded
+            // and shown.
+            "link-preview" | "link-preview-loading" => {
+                const LINK: &str = "https://spotifast.rocks/";
+                app.open_chat = Some(SAMPLES[0].id.to_owned());
+                app.composer = format!("Have you tried {LINK} yet?");
+                app.composer_preview = Some(crate::app::ComposerPreview {
+                    account: app.account().id.clone(),
+                    chat: SAMPLES[0].id.to_owned(),
+                    url: LINK.to_owned(),
+                    state: if part == "link-preview" {
+                        crate::app::LinkPreviewState::Ready(crate::model::ComposedPreview {
+                            preview: LinkPreview {
+                                url: LINK.to_owned(),
+                                title: Some("spotifast.rocks".into()),
+                                description: Some(
+                                    "Spotify, native and fast. A lightweight Spotify client written in Rust with egui."
+                                        .into(),
+                                ),
+                                video: false,
+                                image: None,
+                                image_sha256: None,
+                            },
+                            thumbnail: Some(stock::thumbnail(stock::SPOTIFAST)),
+                        })
+                    } else {
+                        crate::app::LinkPreviewState::Loading
+                    },
+                });
+                app.focus_composer = true;
+            }
             "mention" => {
                 let group = SAMPLES[1].id;
                 app.open_chat = Some(group.to_owned());
@@ -6514,6 +6545,9 @@ mod tests {
             "sticker-pack-view",
             "typing",
             "composer-tools",
+            "link-preview",
+            "link-preview,light",
+            "link-preview-loading",
             "mention",
             "emoji-complete",
             "reply",

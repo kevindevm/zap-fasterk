@@ -101,6 +101,7 @@ impl Worker {
                         text.clone(),
                         None,
                         Vec::new(),
+                        None,
                         Some(request_id.clone()),
                     )
                 }) {

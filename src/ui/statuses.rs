@@ -148,8 +148,9 @@ fn author_row(app: &mut App, ui: &mut egui::Ui, group: &AuthorGroup) {
         )
         .on_hover_cursor(egui::CursorIcon::PointingHand);
     theme::reveal_focus(&response);
-    let key = newest.id.clone();
-    if response.clicked() {
+    if let Some(key) = app.status_open_key(&group.sender)
+        && response.clicked()
+    {
         app.actions.push(Action::StatusOpen(key));
     }
     if !ui.is_rect_visible(rect) {
@@ -197,79 +198,83 @@ fn viewer(app: &mut App, ui: &mut egui::Ui, key: &str) {
         .find(|group| group.sender == entry.sender)
         .map(|group| group.entries)
         .unwrap_or_default();
+    ui.horizontal(|ui| {
+        if theme::icon_button(
+            ui,
+            theme::Icon::ArrowLeft,
+            20.0,
+            palette.secondary,
+            palette.text,
+            &crate::i18n::gettext(app.locale, "Back"),
+        )
+        .clicked()
+        {
+            app.actions.push(Action::StatusClose);
+        }
+        let name = author_name(app, &entry);
+        let picture = app.avatar(&entry.sender);
+        widgets::avatar(ui, &palette, &name, &entry.sender, 32.0, picture.as_deref());
+        ui.vertical(|ui| {
+            widgets::rich_text(ui, &name, theme::medium(14.0), palette.text);
+            widgets::rich_text(
+                ui,
+                &util::clock(entry.timestamp),
+                theme::regular(12.0),
+                palette.secondary,
+            );
+        });
+    });
+    ui.add_space(12.0);
+    // Only the update itself scrolls: the author above and the stepping row
+    // below stay put, so a tall photo never pushes stepping out of reach.
     egui::ScrollArea::vertical()
         .id_salt(("status-viewer", app.account().id.as_str()))
         .max_height(super::widgets::dialog_scroll_height(ui))
         .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                if theme::icon_button(
-                    ui,
-                    theme::Icon::ArrowLeft,
-                    20.0,
-                    palette.secondary,
-                    palette.text,
-                    &crate::i18n::gettext(app.locale, "Back"),
-                )
-                .clicked()
-                {
-                    app.actions.push(Action::StatusClose);
-                }
-                let name = author_name(app, &entry);
-                let picture = app.avatar(&entry.sender);
-                widgets::avatar(ui, &palette, &name, &entry.sender, 32.0, picture.as_deref());
-                ui.vertical(|ui| {
-                    widgets::rich_text(ui, &name, theme::medium(14.0), palette.text);
-                    widgets::rich_text(
-                        ui,
-                        &util::clock(entry.timestamp),
-                        theme::regular(12.0),
-                        palette.secondary,
-                    );
-                });
-            });
-            ui.add_space(12.0);
             status_entry(app, ui, &entry);
-            if entries.len() > 1 {
-                let at = entries.iter().position(|row| row.id == key);
-                let where_they_stand = match at {
-                    Some(at) => format!("{}/{}", at + 1, entries.len()),
-                    None => format!("{}", entries.len()),
-                };
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    if theme::icon_button(
-                        ui,
-                        theme::Icon::ChevronLeft,
-                        18.0,
-                        palette.secondary,
-                        palette.text,
-                        &crate::i18n::gettext(app.locale, "Previous update"),
-                    )
-                    .clicked()
-                    {
-                        app.actions.push(Action::StatusStep { back: true });
-                    }
-                    widgets::rich_text(
-                        ui,
-                        &where_they_stand,
-                        theme::regular(12.5),
-                        palette.secondary,
-                    );
-                    if theme::icon_button(
-                        ui,
-                        theme::Icon::ChevronRight,
-                        18.0,
-                        palette.secondary,
-                        palette.text,
-                        &crate::i18n::gettext(app.locale, "Next update"),
-                    )
-                    .clicked()
-                    {
-                        app.actions.push(Action::StatusStep { back: false });
-                    }
-                });
+        });
+    if entries.len() > 1 {
+        let at = entries.iter().position(|row| row.id == key);
+        let where_they_stand = match at {
+            // Numbered oldest first, so stepping forward from the
+            // first update meets the second, not the last.
+            Some(at) => format!("{}/{}", entries.len() - at, entries.len()),
+            None => format!("{}", entries.len()),
+        };
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            if theme::icon_button(
+                ui,
+                theme::Icon::ChevronLeft,
+                18.0,
+                palette.secondary,
+                palette.text,
+                &crate::i18n::gettext(app.locale, "Previous update"),
+            )
+            .clicked()
+            {
+                app.actions.push(Action::StatusStep { back: true });
+            }
+            widgets::rich_text(
+                ui,
+                &where_they_stand,
+                theme::regular(12.5),
+                palette.secondary,
+            );
+            if theme::icon_button(
+                ui,
+                theme::Icon::ChevronRight,
+                18.0,
+                palette.secondary,
+                palette.text,
+                &crate::i18n::gettext(app.locale, "Next update"),
+            )
+            .clicked()
+            {
+                app.actions.push(Action::StatusStep { back: false });
             }
         });
+    }
 }
 
 /// One update's body: text large, a photo or a video with its download
@@ -330,15 +335,7 @@ fn status_entry(app: &mut App, ui: &mut egui::Ui, row: &Message) {
                     return;
                 }
                 if matches!(row.content, Content::Video { .. }) {
-                    use std::hash::{Hash, Hasher};
-                    let mut key = std::collections::hash_map::DefaultHasher::new();
-                    (app.account().id.as_str(), &row.id).hash(&mut key);
-                    let uri = format!("status/{:016x}", key.finish());
-                    let (rect, _) = ui.allocate_exact_size(
-                        egui::vec2(ui.available_width().min(340.0), 200.0),
-                        egui::Sense::hover(),
-                    );
-                    super::gallery::thumbnail(ui, &palette, rect, row, Some(&uri));
+                    status_video(app, ui, row, &palette);
                 }
                 if super::widgets::menu_item(
                     ui,
@@ -374,9 +371,187 @@ fn status_entry(app: &mut App, ui: &mut egui::Ui, row: &Message) {
                     &crate::i18n::gettext(app.locale, "Download status"),
                 ) {
                     app.actions.push(Action::DownloadStatus(row.id.clone()));
+                    if matches!(row.content, Content::Video { .. }) {
+                        // Play it as soon as the download lands.
+                        app.status_video_wanted = Some(app.status_video_key(row));
+                    }
                 }
             }
         }
         _ => {}
+    }
+}
+
+/// A status video with in-app playback: the thumbnail until it plays, then
+/// the decoded frames with a control strip. Videos never open a chat, so
+/// they play under a `status/…` key instead of a message id.
+fn status_video(app: &mut App, ui: &mut egui::Ui, row: &Message, palette: &theme::Palette) {
+    let key = app.status_video_key(row);
+    let path = match &row.content {
+        Content::Video { media, .. } => media.path.clone(),
+        _ => None,
+    };
+    let Some(path) = path else {
+        // Not downloaded yet: tapping fetches it and plays it on arrival.
+        let (rect, response) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width().min(340.0), 200.0),
+            Sense::click(),
+        );
+        if ui.is_rect_visible(rect) {
+            ui.painter().rect_filled(rect, 6.0, palette.surface);
+            let icon = egui::pos2(rect.center().x - 13.0, rect.center().y - 13.0);
+            theme::paint_icon(
+                ui,
+                theme::Icon::Play,
+                Rect::from_min_size(icon, Vec2::splat(26.0)),
+                26.0,
+                palette.secondary,
+            );
+        }
+        if response
+            .on_hover_cursor(egui::CursorIcon::PointingHand)
+            .clicked()
+        {
+            app.actions.push(Action::DownloadStatus(row.id.clone()));
+            app.status_video_wanted = Some(key);
+        }
+        return;
+    };
+    let size = egui::vec2(ui.available_width().min(480.0), 270.0);
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+    let status = app.video.status(&key);
+    let playing = status
+        .as_ref()
+        .is_some_and(|status| status.state == crate::video::State::Playing);
+    if ui.is_rect_visible(rect) {
+        if status.is_some() {
+            app.video.saw(&key);
+        }
+        match status.as_ref().and_then(|status| status.frame.as_ref()) {
+            Some(frame) => {
+                ui.painter().image(
+                    frame.id(),
+                    rect,
+                    Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+                    egui::Color32::WHITE,
+                );
+            }
+            None => {
+                super::gallery::thumbnail(ui, palette, rect, row, None);
+                let icon = egui::pos2(rect.center().x - 16.0, rect.center().y - 16.0);
+                theme::paint_icon(
+                    ui,
+                    theme::Icon::Play,
+                    Rect::from_min_size(icon, Vec2::splat(32.0)),
+                    32.0,
+                    egui::Color32::WHITE,
+                );
+            }
+        }
+    }
+    if response
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .clicked()
+    {
+        app.actions.push(Action::PlayStatusVideo {
+            key: key.clone(),
+            path: path.clone(),
+        });
+    }
+    let bar = Rect::from_min_max(pos2(rect.left(), rect.bottom() - 32.0), rect.max);
+    ui.painter()
+        .rect_filled(bar, 6.0, egui::Color32::from_black_alpha(150));
+    let id = ui.id().with(("status-video", &key));
+    let toggle = Rect::from_center_size(pos2(bar.left() + 18.0, bar.center().y), Vec2::splat(26.0));
+    theme::paint_icon(
+        ui,
+        if playing {
+            theme::Icon::Pause
+        } else {
+            theme::Icon::Play
+        },
+        toggle,
+        16.0,
+        egui::Color32::WHITE,
+    );
+    if ui
+        .interact(toggle, id.with("toggle"), Sense::click())
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .clicked()
+    {
+        app.actions.push(Action::PlayStatusVideo {
+            key: key.clone(),
+            path: path.clone(),
+        });
+    }
+    if let Some(status) = status.as_ref() {
+        let fraction = status.fraction();
+        let track = Rect::from_min_max(
+            pos2(toggle.right() + 8.0, bar.center().y - 3.0),
+            pos2(bar.right() - 76.0, bar.center().y + 3.0),
+        );
+        ui.painter()
+            .rect_filled(track, 3.0, egui::Color32::from_white_alpha(60));
+        let filled = Rect::from_min_max(
+            track.left_top(),
+            pos2(track.left() + track.width() * fraction, track.bottom()),
+        );
+        ui.painter().rect_filled(filled, 3.0, egui::Color32::WHITE);
+        let seek = ui.interact(track, id.with("seek"), Sense::click_and_drag());
+        if seek.clicked() || seek.dragged() {
+            let x = ui
+                .input(|input| input.pointer.interact_pos())
+                .or_else(|| seek.hover_pos())
+                .map(|pos| pos.x)
+                .unwrap_or(track.left());
+            let at = ((x - track.left()) / track.width().max(1.0)).clamp(0.0, 1.0);
+            app.actions.push(Action::SeekVideo {
+                message: key.clone(),
+                fraction: at,
+            });
+        }
+    }
+    let window =
+        Rect::from_center_size(pos2(bar.right() - 44.0, bar.center().y), Vec2::splat(26.0));
+    theme::paint_icon(
+        ui,
+        theme::Icon::Maximize,
+        window,
+        16.0,
+        egui::Color32::WHITE,
+    );
+    if ui
+        .interact(window, id.with("window"), Sense::click())
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .on_hover_text(crate::i18n::gettext(app.locale, "Fill the window"))
+        .clicked()
+    {
+        app.actions.push(Action::ExpandVideo {
+            message: key.clone(),
+            path: path.clone(),
+        });
+    }
+    let sound = Rect::from_center_size(
+        pos2(window.left() - 15.0, bar.center().y),
+        Vec2::splat(26.0),
+    );
+    let muted = app.video.muted();
+    theme::paint_icon(
+        ui,
+        if muted {
+            theme::Icon::VolumeX
+        } else {
+            theme::Icon::Volume2
+        },
+        sound,
+        16.0,
+        egui::Color32::WHITE,
+    );
+    if ui
+        .interact(sound, id.with("sound"), Sense::click())
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .clicked()
+    {
+        app.actions.push(Action::ToggleVideoSound);
     }
 }
